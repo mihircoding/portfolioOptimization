@@ -1,0 +1,232 @@
+"""Driver: four allocation methods, in sample and out of sample.
+
+The in-sample table is the easy part and it flatters max-Sharpe, because
+max-Sharpe is *defined* as the in-sample winner. The walk-forward test is the
+one that means anything: estimate mu and Sigma on a trailing window, hold for a
+year, roll forward, and compare what you actually earned.
+
+ETFs rather than single stocks: they are diversified already, so the covariance
+structure is stable enough for the differences between methods to be visible
+rather than drowned in noise.
+
+Usage:  python run_optimization.py
+"""
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import yfinance as yf
+
+from src.frontier import efficient_frontier
+from src.optimizer import max_sharpe_weights, min_variance_weights, portfolio_performance
+from src.returns import TRADING_DAYS, annualized_cov, annualized_mean, daily_returns
+from src.risk_parity import (equal_risk_contribution_weights, inverse_vol_weights,
+                             risk_contributions, shrink_covariance)
+
+# stocks / intl stocks / bonds / gold / real estate — deliberately heterogeneous
+UNIVERSE = ["SPY", "EFA", "AGG", "GLD", "VNQ"]
+START, END = "2007-01-01", "2024-12-31"
+LOOKBACK_YEARS = 3
+SHRINKAGE = 0.3
+
+
+def section(title: str) -> None:
+    print(f"\n{title}\n" + "-" * len(title))
+
+
+def build_portfolios(mu: np.ndarray, cov: np.ndarray) -> dict:
+    n = len(mu)
+    return {
+        "Equal weight": np.full(n, 1 / n),
+        "Inverse vol": inverse_vol_weights(cov),
+        "Min variance": min_variance_weights(cov),
+        "Max Sharpe": max_sharpe_weights(mu, cov),
+        "Equal risk contribution": equal_risk_contribution_weights(cov),
+    }
+
+
+def weight_string(w: np.ndarray) -> str:
+    return " ".join(f"{t}:{x:>4.0%}" for t, x in zip(UNIVERSE, w))
+
+
+def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
+    mu = annualized_mean(prices).values
+    cov = annualized_cov(prices).values
+
+    section(f"1. In sample, whole history ({prices.index[0].date()} "
+            f"-> {prices.index[-1].date()})")
+    print(f"{'portfolio':<26} {'ret':>7} {'vol':>7} {'sharpe':>7}   weights")
+    portfolios = build_portfolios(mu, cov)
+    for name, w in portfolios.items():
+        ret, vol, sharpe = portfolio_performance(w, mu, cov)
+        print(f"{name:<26} {ret:>7.2%} {vol:>7.2%} {sharpe:>7.2f}   {weight_string(w)}")
+    print("\nMax Sharpe wins by construction - it is the in-sample argmax. The only")
+    print("question worth asking is whether it repeats out of sample.")
+
+    section("2. Risk contributions: weights lie, risk doesn't")
+    print(f"{'portfolio':<26} " + " ".join(f"{t:>6}" for t in UNIVERSE))
+    for name in ("Equal weight", "Min variance", "Max Sharpe",
+                 "Equal risk contribution"):
+        rc = risk_contributions(portfolios[name], cov)
+        print(f"{name:<26} " + " ".join(f"{x:>6.0%}" for x in rc))
+    ew_rc = risk_contributions(portfolios["Equal weight"], cov)
+    worst = UNIVERSE[int(np.argmax(ew_rc))]
+    print(f"\nEqual weight puts 20% of capital in every asset and "
+          f"{ew_rc.max():.0%} of its RISK\nin {worst} alone. "
+          "That is the gap ERC exists to close.")
+
+    section(f"3. Covariance shrinkage (alpha = {SHRINKAGE})")
+    shrunk = shrink_covariance(cov, SHRINKAGE)
+    w_raw = min_variance_weights(cov)
+    w_shrunk = min_variance_weights(shrunk)
+    print(f"{'min-var on raw cov':<26} {weight_string(w_raw)}")
+    print(f"{'min-var on shrunk cov':<26} {weight_string(w_shrunk)}")
+    print(f"{'L1 weight change':<26} {np.abs(w_raw - w_shrunk).sum():.4f}")
+    eig_raw = np.linalg.eigvalsh(cov)
+    eig_shrunk = np.linalg.eigvalsh(shrunk)
+    print(f"\ncondition number: raw {eig_raw[-1] / eig_raw[0]:>8.1f}  ->  "
+          f"shrunk {eig_shrunk[-1] / eig_shrunk[0]:.1f}")
+    print("Shrinkage lifts the smallest eigenvalue. Those near-zero directions are")
+    print("the worst-estimated ones, and they are exactly where an optimizer piles")
+    print("in - a spuriously low variance looks like free risk reduction.")
+
+    return mu, cov, portfolios
+
+
+def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
+                 verbose: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Refit annually on a trailing window, hold for the next year."""
+    if verbose:
+        section(f"4. Walk-forward, out of sample ({lookback}y trailing estimate, "
+                "annual rebalance)")
+
+    rets = daily_returns(prices)
+    years = sorted(rets.index.year.unique())
+    test_years = [y for y in years if y - lookback >= years[0]]
+
+    records = []
+    prev_weights: dict[str, np.ndarray] = {}
+    turnover: dict[str, list] = {}
+
+    for year in test_years:
+        train = prices[(prices.index.year >= year - lookback)
+                       & (prices.index.year < year)]
+        test = rets[rets.index.year == year]
+        if len(train) < 250 or test.empty:
+            continue
+
+        mu = annualized_mean(train).values
+        cov = annualized_cov(train).values
+        try:
+            portfolios = build_portfolios(mu, cov)
+        except RuntimeError as e:
+            if verbose:
+                print(f"  {year}: optimizer failed ({e}); skipped")
+            continue
+
+        for name, w in portfolios.items():
+            # buy-and-hold within the year, so drift is realistic
+            realized = (test.values @ w)
+            records.append({"year": year, "portfolio": name,
+                            "ret": float(np.prod(1 + realized) - 1),
+                            "vol": float(realized.std(ddof=1) * np.sqrt(TRADING_DAYS))})
+            if name in prev_weights:
+                turnover.setdefault(name, []).append(
+                    float(np.abs(w - prev_weights[name]).sum() / 2))
+            prev_weights[name] = w
+
+    panel = pd.DataFrame(records)
+
+    summary = []
+    for name in panel["portfolio"].unique():
+        g = panel[panel["portfolio"] == name]
+        cagr = float(np.prod(1 + g["ret"]) ** (1 / len(g)) - 1)
+        vol = float(g["ret"].std(ddof=1))
+        summary.append({"portfolio": name, "cagr": cagr, "vol": vol,
+                        "sharpe": cagr / vol if vol > 0 else 0.0,
+                        "worst": float(g["ret"].min()),
+                        "turnover": float(np.mean(turnover.get(name, [0.0])))})
+    summary = pd.DataFrame(summary)
+
+    if verbose:
+        print(f"{len(test_years)} annual rebalances, "
+              f"{panel['year'].min()}-{panel['year'].max()}\n")
+        print(f"{'portfolio':<26} {'ann ret':>8} {'ann vol':>8} {'sharpe':>7} "
+              f"{'worst yr':>9} {'turnover':>9}")
+        for _, r in summary.iterrows():
+            print(f"{r['portfolio']:<26} {r['cagr']:>8.2%} {r['vol']:>8.2%} "
+                  f"{r['sharpe']:>7.2f} {r['worst']:>9.2%} {r['turnover']:>9.1%}")
+        print("\nSharpe here uses annual return dispersion, not daily - it measures how")
+        print("reliably each method delivered year to year. Turnover is the average")
+        print("one-way weight change per rebalance: what you pay to hold the view.")
+
+    return panel, summary
+
+
+def lookback_sensitivity(prices: pd.DataFrame) -> None:
+    """The same test at four estimation windows.
+
+    One walk-forward result could be an accident of the window length. If the
+    ranking survives 2, 3, 5 and 7 years it is telling you something about the
+    methods rather than about the choice.
+    """
+    section("5. Does the ranking survive a different estimation window?")
+    print(f"{'portfolio':<26} " + " ".join(f"{lb}y".rjust(7) for lb in (2, 3, 5, 7)))
+
+    results = {lb: walk_forward(prices, lookback=lb, verbose=False)[1]
+               for lb in (2, 3, 5, 7)}
+    names = results[3]["portfolio"].tolist()
+    for name in names:
+        row = " ".join(
+            f"{float(results[lb].loc[results[lb]['portfolio'] == name, 'sharpe'].iloc[0]):>7.2f}"
+            for lb in (2, 3, 5, 7)
+        )
+        print(f"{name:<26} {row}")
+    print("\n(out-of-sample Sharpe of annual returns, by trailing estimation window)")
+
+
+def main() -> None:
+    prices = yf.download(UNIVERSE, start=START, end=END, auto_adjust=True,
+                         progress=False)["Close"].dropna()
+    prices = prices[UNIVERSE]  # yfinance sorts columns; keep our order
+    print(f"Universe: {', '.join(UNIVERSE)}")
+    print(f"Data: {prices.index[0].date()} -> {prices.index[-1].date()}, "
+          f"{len(prices):,} trading days")
+
+    mu, cov, portfolios = in_sample(prices)
+    panel, _ = walk_forward(prices)
+    lookback_sensitivity(prices)
+
+    ef = efficient_frontier(mu, cov, n_points=60)
+    fig, axes = plt.subplots(2, 1, figsize=(10, 11))
+
+    axes[0].plot(ef["volatility"], ef["target_return"], "-", lw=1.5,
+                 label="efficient frontier")
+    for name, w in portfolios.items():
+        ret, vol, _ = portfolio_performance(w, mu, cov)
+        axes[0].scatter(vol, ret, s=45, zorder=3, label=name)
+    for i, ticker in enumerate(UNIVERSE):
+        axes[0].scatter(np.sqrt(cov[i, i]), mu[i], marker="x", c="gray", zorder=2)
+        axes[0].annotate(ticker, (np.sqrt(cov[i, i]), mu[i]), fontsize=8,
+                         xytext=(4, -2), textcoords="offset points", color="gray")
+    axes[0].set_xlabel("Volatility (annualized)")
+    axes[0].set_ylabel("Expected return (annualized)")
+    axes[0].set_title("Efficient frontier, full sample — individual assets in grey")
+    axes[0].legend(fontsize=8)
+
+    wide = panel.pivot(index="year", columns="portfolio", values="ret")
+    cumulative = (1 + wide).cumprod()
+    for col in cumulative.columns:
+        axes[1].plot(cumulative.index, cumulative[col], marker="o", ms=3, label=col)
+    axes[1].axhline(1.0, c="gray", lw=0.6)
+    axes[1].set_xlabel("year"); axes[1].set_ylabel("growth of $1")
+    axes[1].set_title("Out of sample — 3y trailing estimates, annual rebalance")
+    axes[1].legend(fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig("frontier.png", dpi=120)
+    print("\nSaved plot to frontier.png")
+
+
+if __name__ == "__main__":
+    main()

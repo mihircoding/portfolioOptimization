@@ -1,0 +1,174 @@
+# Portfolio Optimization
+
+Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, and risk
+parity — implemented, then tested the only way that matters: out of sample.
+
+In sample, the max-Sharpe portfolio wins with a Sharpe of 0.90. It has to; it's defined as the
+in-sample argmax. Walk it forward on a trailing estimation window and it finishes **fourth of
+five**, behind equal weighting — which requires no estimation, no optimizer, and no turnover.
+That result holds at every estimation window tested. [RESULTS.md](RESULTS.md) has the numbers;
+[INTERVIEW.md](INTERVIEW.md) has how to talk about them.
+
+20 tests.
+
+```bash
+pip install -r requirements.txt
+python -m pytest -q            # 20 passed
+python run_optimization.py     # full analysis, writes frontier.png
+```
+
+![Efficient frontier and out-of-sample growth](frontier.png)
+
+---
+
+## How it works
+
+### The Markowitz problem
+
+Given `n` assets with expected returns `μ` and covariance matrix `Σ`, a portfolio with weights
+`w` (summing to 1) has:
+
+```
+expected return  =  wᵀμ
+variance         =  wᵀΣw
+volatility       =  √(wᵀΣw)
+```
+
+The second line is the whole idea. Portfolio volatility is **not** the weighted average of the
+individual volatilities — it's lower whenever assets are less than perfectly correlated, and the
+gap is exactly diversification. Markowitz's contribution was making that quantitative: an asset
+is not risky or safe on its own, only in the context of what it's held alongside. A volatile
+asset that zigs when the rest of your book zags *reduces* portfolio risk.
+
+Three portfolios fall out of it:
+
+- **Minimum variance** — minimize `wᵀΣw` subject to `Σw = 1`. Note what's missing: **no μ**.
+  This portfolio needs no return forecasts at all.
+- **Maximum Sharpe (tangency)** — maximize `(wᵀμ − rf) / √(wᵀΣw)`. The best risk-adjusted
+  portfolio available, and the one every textbook builds to.
+- **Efficient frontier** — for each target return, the minimum-variance portfolio achieving it.
+  The set of portfolios you can't improve on. Everything below the curve is dominated.
+
+All three are the same `scipy.optimize.minimize` call with SLSQP, different objectives, and a
+budget constraint. Long-only is a box constraint on the weights.
+
+### Why the textbook answer fails
+
+Mean-variance optimization treats `μ` and `Σ` as **known constants**. They aren't — they're
+noisy estimates from a finite sample. And the optimizer's response to noise is pathological: it
+systematically loads into whatever asset had the best estimation luck, because from inside the
+objective, a spuriously high mean or spuriously low variance is indistinguishable from a real
+edge. Michaud's name for it is the **"error-maximizing" property**, and it's earned.
+
+The asymmetry that makes this bite: **expected returns are much harder to estimate than
+covariances.** You need decades of data to pin down a mean return to any useful precision,
+while a covariance converges in months. So the input the optimizer is most sensitive to is the
+one you know least about.
+
+This project's numbers make the point concretely rather than rhetorically:
+
+| | In-sample Sharpe | Out-of-sample Sharpe | Turnover |
+|---|---|---|---|
+| Max Sharpe | **0.90** (1st) | 0.75 (4th) | 16.2% |
+| Equal weight | 0.55 (5th) | **0.82** (1st) | 0.0% |
+
+### The three standard responses
+
+**1. Covariance shrinkage.** Pull the sample covariance toward a structured target:
+
+```
+Σ_shrunk = (1 − α)·Σ_sample + α·diag(Σ_sample)
+```
+
+A sample covariance over `N` assets estimates `N(N+1)/2` parameters — 1,275 for 50 assets — from
+data that rarely supports it. The *extreme eigenvalues* are the worst-estimated, and those are
+exactly the directions an optimizer loads into. Shrinkage adds bias and removes much more
+variance; it's a straight bias-variance trade. Ledoit-Wolf derive the optimal α in closed form.
+
+Measured here: α = 0.3 cuts the condition number of Σ from 54.9 to 44.7 and moves the
+min-variance weights by 0.07 in L1.
+
+**2. Drop the unreliable input.** Min-variance never sees μ. That's not a limitation, it's the
+selling point — the optimizer can't be wrecked by an input it never receives.
+
+**3. Risk-based weighting.** Skip forecasting entirely and allocate by risk.
+
+### Risk contributions and ERC
+
+Asset `i`'s share of total portfolio variance:
+
+```
+rc_i = w_i · (Σw)_i / (wᵀΣw)
+```
+
+This decomposition is **exact**, not approximate — portfolio variance is homogeneous of degree 2
+in `w`, so Euler's theorem makes the parts sum to the whole with nothing left over.
+
+It's the number that reveals a portfolio isn't diversified in the way its weights suggest. From
+the run:
+
+| Portfolio | SPY | EFA | AGG | GLD | VNQ |
+|---|---|---|---|---|---|
+| Equal weight (20% capital each) | 25% | 28% | **1%** | 9% | **37%** |
+| Equal risk contribution | 20% | 20% | 20% | 20% | 20% |
+
+Equal weight puts a fifth of the *capital* in bonds and gets 1% of its *risk* from them. It
+looks balanced and isn't. **Equal risk contribution** solves for the weights where every asset
+contributes equally — no closed form except when all correlations are equal (where it reduces to
+inverse-vol), so it's solved numerically, started from inverse-vol weights because the objective
+isn't convex.
+
+ERC also needs no expected returns. Same robustness argument as min-variance, taken further.
+
+---
+
+## Layout
+
+```
+├── run_optimization.py    # driver: in-sample, risk contributions, shrinkage,
+│                          #   walk-forward, lookback sensitivity
+├── src/
+│   ├── returns.py         # returns, annualized mu and Sigma
+│   ├── optimizer.py       # performance, min-variance, max-Sharpe
+│   ├── frontier.py        # efficient frontier sweep
+│   └── risk_parity.py     # shrinkage, inverse-vol, risk contributions, ERC
+└── tests/                 # 20 tests
+```
+
+## What the tests check
+
+Properties with known answers, not smoke tests:
+
+- Min-variance matches the **two-asset closed form** `w₁ = (σ₂² − σ₁₂)/(σ₁² + σ₂² − 2σ₁₂)`.
+- Min-variance variance ≤ equal-weight variance. Always.
+- No frontier point has lower volatility than the global minimum-variance portfolio.
+- Every frontier point actually **hits its target return** to 1e-4 — a constraint that silently
+  fails is the classic frontier bug.
+- On the upper branch, volatility is monotonically increasing in target return.
+- Risk contributions **sum to exactly 1**, and a single-asset portfolio owns 100% of the risk.
+- ERC produces equal contributions to 1e-3 on a correlated, unequal-vol covariance, and
+  **reduces to inverse-vol when assets are uncorrelated** — the one case with a known answer.
+- Annualization: covariance scales by 252, volatility by √252.
+
+## Known simplifications
+
+- Sample estimators only. No factor model, no Ledoit-Wolf optimal α, no Black-Litterman.
+- Historical mean as the return forecast, which is the weakest possible choice and part of what
+  the walk-forward demonstrates.
+- Variance as the risk measure — symmetric, so upside "risk" is penalized identically. CVaR and
+  semi-variance don't share that flaw.
+- Five liquid ETFs. With 50+ assets the covariance estimation problem gets far worse and
+  shrinkage stops being optional.
+- Turnover is measured but not charged. At 16% one-way turnover and realistic ETF costs the drag
+  is a couple of basis points a year — real, but not what explains the results here.
+- Annual rebalancing on calendar years. No tax, no drift bands, no rebalancing-cost optimization.
+
+## Reading
+
+- Markowitz (1952), *Portfolio Selection* — seven pages, still worth reading.
+- DeMiguel, Garlappi & Uppal (2009), *Optimal Versus Naive Diversification* — the paper this
+  project's walk-forward result reproduces.
+- Ledoit & Wolf (2004), *Honey, I Shrunk the Sample Covariance Matrix*.
+- Maillard, Roncalli & Teïletche (2010), *The Properties of Equally Weighted Risk Contribution
+  Portfolios* — the ERC reference.
+- Michaud (1989), *The Markowitz Optimization Enigma: Is Optimized Optimal?*
