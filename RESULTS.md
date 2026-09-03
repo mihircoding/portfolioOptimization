@@ -1,6 +1,6 @@
 # Results
 
-All 20 tests pass (`python -m pytest -q`). Numbers below are `python run_optimization.py`.
+All 24 tests pass (`python -m pytest -q`). Numbers below are `python run_optimization.py`.
 
 Universe: SPY (US equity), EFA (intl equity), AGG (bonds), GLD (gold), VNQ (REITs).
 Data: 2007-01-03 → 2024-12-30, 4,529 trading days. Risk-free rate assumed 0 throughout.
@@ -93,7 +93,39 @@ The two risk-based methods (inverse vol, ERC) land in the middle with far lower 
 max-Sharpe and much better returns than min-variance. That's the practical case for them: most
 of the benefit of optimizing, without the input you can't estimate.
 
-## 5. Is this an artifact of the 3-year window?
+## 5. Trading the turnover away
+
+Section 4 charges max-Sharpe with 16.2% one-way turnover a year and blames that turnover for
+nothing in particular - the text there is explicit that at realistic ETF costs, 16% is a couple
+of basis points and the real gap is estimation error. This asks the question directly instead of
+asserting the answer: what happens to Sharpe if the optimizer is actually charged for trading?
+
+Same walk-forward, same rebalance dates, but `max_sharpe_turnover_penalized()` adds
+`penalty * sum((w - w_prev)^2)` to the objective - a quadratic cost for moving away from last
+year's holding, in the same units as squared Sharpe. penalty=0 reproduces the section 4 row
+exactly (16.2% turnover, Sharpe 0.75), which is the check that the penalty term is wired in
+correctly and not just decorative.
+
+| Penalty | Ann. return | Ann. vol | Sharpe | Turnover |
+|---|---|---|---|---|
+| 0 (plain max-Sharpe) | 6.65% | 8.89% | 0.75 | 16.2% |
+| 5 | 5.24% | 6.94% | **0.76** | 5.9% |
+| 15 | 4.75% | 7.05% | 0.67 | 3.8% |
+| 40 | 4.37% | 7.31% | 0.60 | 2.8% |
+| 100 | 4.05% | 7.32% | 0.55 | 1.2% |
+
+A small penalty is close to free: turnover drops by two-thirds (16.2% → 5.9%) for a Sharpe that
+is, if anything, marginally *better* (0.75 → 0.76) — well within the noise given 15 annual
+observations, so read that as "no worse," not "improved." Past that point it is a real trade-off:
+by penalty 100, turnover is down to 1.2% but Sharpe has fallen to 0.55, worse than min-variance.
+
+So "penalize turnover in the objective" — item 4 on the old build-next list below — is not a
+free lunch in general, but there is a cheap first step available: a light penalty kills most of
+the unnecessary trading without giving up return. It still does not touch the actual problem,
+which is that mu is poorly estimated; it just makes the optimizer trade less on a bad estimate
+rather than fixing the estimate.
+
+## 6. Is this an artifact of the 3-year window?
 
 Out-of-sample Sharpe at four estimation windows:
 
@@ -147,7 +179,9 @@ which are implemented here.
    views and confidences, instead of feeding raw historical means into an optimizer.
 3. **Factor-model covariance** — estimate `Σ = BΩBᵀ + D` from a handful of factors instead of
    `N(N+1)/2` free parameters.
-4. **Turnover penalty in the objective**, which is what actually makes optimized portfolios
-   usable in production.
+4. ~~Turnover penalty in the objective~~ — done, see section 5. A quadratic penalty helps up to
+   a point (turnover -63% for flat Sharpe) and then trades real return for lower turnover past
+   that; a proper linear/transaction-cost penalty would need slack variables but is the more
+   correct version of the same idea.
 5. **CVaR optimization** — because variance penalizes upside and downside identically, and
    nobody actually minds the upside.

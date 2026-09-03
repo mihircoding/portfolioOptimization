@@ -76,3 +76,33 @@ def max_sharpe_weights(mu: np.ndarray, cov: np.ndarray, rf: float = 0.0,
     if not result.success:
         raise RuntimeError(f"max-Sharpe optimization failed: {result.message}")
     return result.x
+
+
+def max_sharpe_turnover_penalized(mu: np.ndarray, cov: np.ndarray, w_prev: np.ndarray,
+                                  penalty: float, rf: float = 0.0,
+                                  long_only: bool = True) -> np.ndarray:
+    """Max-Sharpe, penalized for straying from last period's weights.
+
+    Plain max-Sharpe re-optimizes every period as if trading were free, so it
+    fully re-chases the new mu/cov estimate each time - see RESULTS.md, 16.2%
+    turnover a year for not much return. This adds a quadratic penalty on the
+    move away from w_prev to the objective:
+
+        minimize   -sharpe(w)  +  penalty * sum((w - w_prev)^2)
+
+    A quadratic penalty rather than the more standard turnover-linear cost
+    (|w - w_prev|, i.e. proportional to trade size) keeps the problem smooth
+    for SLSQP with no extra slack variables. It still buys less turnover at
+    some cost in Sharpe, which is the point; penalty=0 recovers
+    max_sharpe_weights() exactly.
+    """
+    n = len(mu)
+
+    def objective(w):
+        _, _, sharpe = portfolio_performance(w, mu, cov, rf)
+        return -sharpe + penalty * float(np.sum((w - w_prev) ** 2))
+
+    result = minimize(objective, x0=w_prev, **_setup(n, long_only))
+    if not result.success:
+        raise RuntimeError(f"turnover-penalized optimization failed: {result.message}")
+    return result.x

@@ -18,7 +18,8 @@ import pandas as pd
 import yfinance as yf
 
 from src.frontier import efficient_frontier
-from src.optimizer import max_sharpe_weights, min_variance_weights, portfolio_performance
+from src.optimizer import (max_sharpe_turnover_penalized, max_sharpe_weights,
+                          min_variance_weights, portfolio_performance)
 from src.returns import TRADING_DAYS, annualized_cov, annualized_mean, daily_returns
 from src.risk_parity import (equal_risk_contribution_weights, inverse_vol_weights,
                              risk_contributions, shrink_covariance)
@@ -163,6 +164,75 @@ def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
     return panel, summary
 
 
+def turnover_penalized_walk_forward(prices: pd.DataFrame,
+                                    lookback: int = LOOKBACK_YEARS,
+                                    penalties=(0.0, 5.0, 15.0, 40.0, 100.0)) -> pd.DataFrame:
+    """Same walk-forward as max-Sharpe, but re-run at several turnover penalties.
+
+    Unlike the stateless methods in build_portfolios(), this one needs last
+    period's weights, so it keeps its own rolling state instead of reusing
+    walk_forward(). penalty=0 should reproduce the plain max-Sharpe row from
+    section 4 (same optimizer, same data, same rebalance dates).
+    """
+    section("5. Trading the turnover away - max-Sharpe at several penalties")
+    print("Same walk-forward as section 4's Max Sharpe row, but the optimizer now")
+    print("pays a quadratic cost for moving away from last year's weights.\n")
+
+    rets = daily_returns(prices)
+    years = sorted(rets.index.year.unique())
+    test_years = [y for y in years if y - lookback >= years[0]]
+
+    rows = []
+    for penalty in penalties:
+        records = []
+        turnovers = []
+        w_prev = None
+        for year in test_years:
+            train = prices[(prices.index.year >= year - lookback)
+                           & (prices.index.year < year)]
+            test = rets[rets.index.year == year]
+            if len(train) < 250 or test.empty:
+                continue
+
+            mu = annualized_mean(train).values
+            cov = annualized_cov(train).values
+            if w_prev is None:
+                # No prior holding to penalize against on the very first
+                # rebalance - fall back to plain max-Sharpe, same as
+                # walk_forward() implicitly does by only recording turnover
+                # from the second rebalance on.
+                w = max_sharpe_weights(mu, cov)
+            else:
+                try:
+                    w = max_sharpe_turnover_penalized(mu, cov, w_prev, penalty)
+                except RuntimeError:
+                    w = w_prev
+                turnovers.append(float(np.abs(w - w_prev).sum() / 2))
+
+            realized = test.values @ w
+            records.append({"year": year, "ret": float(np.prod(1 + realized) - 1)})
+            w_prev = w
+
+        panel = pd.DataFrame(records)
+        cagr = float(np.prod(1 + panel["ret"]) ** (1 / len(panel)) - 1)
+        vol = float(panel["ret"].std(ddof=1))
+        rows.append({"penalty": penalty, "cagr": cagr, "vol": vol,
+                    "sharpe": cagr / vol if vol > 0 else 0.0,
+                    "turnover": float(np.mean(turnovers))})
+
+    summary = pd.DataFrame(rows)
+    print(f"{'penalty':>9} {'ann ret':>8} {'ann vol':>8} {'sharpe':>7} {'turnover':>9}")
+    for _, r in summary.iterrows():
+        print(f"{r['penalty']:>9.0f} {r['cagr']:>8.2%} {r['vol']:>8.2%} "
+              f"{r['sharpe']:>7.2f} {r['turnover']:>9.1%}")
+    print("\nCompare the penalty=0 row above to Max Sharpe in section 4 - same")
+    print("optimizer, same data, same dates, so it should land in the same place.")
+    print("As the penalty rises, turnover drops toward the risk-based methods'")
+    print("levels. Whether Sharpe improves, holds, or degrades on the way there")
+    print("is the actual answer to 'does penalizing turnover help' - not assumed.")
+    return summary
+
+
 def lookback_sensitivity(prices: pd.DataFrame) -> None:
     """The same test at four estimation windows.
 
@@ -170,7 +240,7 @@ def lookback_sensitivity(prices: pd.DataFrame) -> None:
     ranking survives 2, 3, 5 and 7 years it is telling you something about the
     methods rather than about the choice.
     """
-    section("5. Does the ranking survive a different estimation window?")
+    section("6. Does the ranking survive a different estimation window?")
     print(f"{'portfolio':<26} " + " ".join(f"{lb}y".rjust(7) for lb in (2, 3, 5, 7)))
 
     results = {lb: walk_forward(prices, lookback=lb, verbose=False)[1]
@@ -195,6 +265,7 @@ def main() -> None:
 
     mu, cov, portfolios = in_sample(prices)
     panel, _ = walk_forward(prices)
+    turnover_penalized_walk_forward(prices)
     lookback_sensitivity(prices)
 
     ef = efficient_frontier(mu, cov, n_points=60)
