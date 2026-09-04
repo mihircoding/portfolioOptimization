@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 from src.risk_parity import (equal_risk_contribution_weights,
-                             inverse_vol_weights, risk_contributions,
-                             shrink_covariance)
+                             inverse_vol_weights, ledoit_wolf_alpha,
+                             risk_contributions, shrink_covariance)
 
 
 class TestShrinkage:
@@ -54,3 +54,40 @@ class TestERC:
         cov = np.diag([0.10**2, 0.20**2])
         w = equal_risk_contribution_weights(cov)
         np.testing.assert_allclose(w, inverse_vol_weights(cov), atol=1e-3)
+
+
+class TestLedoitWolfAlpha:
+    def _correlated_returns(self, rng, T, N=5):
+        # a single common factor plus idiosyncratic noise -> genuinely
+        # correlated assets, not the degenerate all-independent case
+        factor = rng.normal(0, 0.01, T)
+        idio = rng.normal(0, 0.01, (T, N))
+        loadings = np.array([0.8, 0.6, 1.0, 0.4, 0.7])
+        return factor[:, None] * loadings[None, :] + idio
+
+    def test_alpha_is_a_valid_shrinkage_intensity(self):
+        rng = np.random.default_rng(0)
+        returns = self._correlated_returns(rng, T=750)
+        alpha = ledoit_wolf_alpha(returns)
+        assert 0.0 <= alpha <= 1.0
+
+    def test_less_data_means_more_shrinkage(self):
+        # same generating process, just truncated - the short sample should
+        # need MORE help from the target, not less. This is the property
+        # the whole estimator exists for; if this direction were backwards
+        # the formula would be wrong, not just imprecise.
+        rng = np.random.default_rng(1)
+        returns = self._correlated_returns(rng, T=1500)
+        alpha_short = ledoit_wolf_alpha(returns[:60])
+        alpha_long = ledoit_wolf_alpha(returns)
+        assert alpha_short > alpha_long
+
+    def test_exactly_diagonal_sample_shrinks_fully(self):
+        # a 2x2 Hadamard block, tiled: both columns are exactly mean-zero
+        # and exactly orthogonal by construction (not approximately, by
+        # cancellation), so the sample covariance IS the diagonal target
+        # already. alpha should saturate at 1.0 instead of dividing by a
+        # near-zero denominator and blowing up.
+        block = np.array([[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]])
+        returns = np.tile(block, (25, 1))  # 100 x 2, still exactly orthogonal
+        assert ledoit_wolf_alpha(returns) == 1.0

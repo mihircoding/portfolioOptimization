@@ -35,6 +35,55 @@ def shrink_covariance(sample_cov: np.ndarray, alpha: float) -> np.ndarray:
     return (1 - alpha) * sample_cov + alpha * target
 
 
+def ledoit_wolf_alpha(returns: np.ndarray) -> float:
+    """The analytic optimal alpha for shrink_covariance's target (shrink toward
+    the diagonal of sample variances), from Ledoit & Wolf (2003), "Honey, I
+    Shrunk the Sample Covariance Matrix." `shrink_covariance`'s docstring names
+    this as the thing to use instead of a hand-picked alpha; this is that.
+
+    `returns` is T observations x N assets, NOT annualized - the estimator's
+    theory is asymptotic in T (number of observations), so it needs the raw
+    daily count, not a covariance already scaled by 252.
+
+    The idea: alpha trades off two errors. The sample covariance S is unbiased
+    but each entry is noisy (variance shrinks like 1/T). The diagonal target F
+    is badly biased (it says every correlation is exactly zero) but has no
+    sampling noise at all. The optimal alpha is the one that minimizes expected
+    squared error between the shrunk estimate and the unknown true covariance -
+    which works out to a ratio of "how noisy is S" to "how far is S from F":
+
+        alpha* = (sum of asymptotic variances of the off-diagonal entries of S)
+                 / (T * sum of squared off-diagonal entries of S)
+
+    More data (larger T) drives alpha toward 0 - the sample estimate needs less
+    help. Fewer assets relative to observations does too. Clipped to [0, 1]
+    because the asymptotic formula can technically overshoot in a finite sample.
+    """
+    X = np.asarray(returns, dtype=float)
+    T, N = X.shape
+    X = X - X.mean(axis=0)
+
+    S = (X.T @ X) / T  # population covariance (divisor T, matches the theory)
+
+    # pihat_ij = (1/T) * sum_t (x_it * x_jt - s_ij)^2 : the asymptotic variance
+    # of each sample covariance entry. Built via one (T, N, N) array - fine at
+    # this scale (a handful of assets), not how you'd do this for N in the
+    # hundreds.
+    outer = X[:, :, None] * X[:, None, :]           # (T, N, N)
+    pihat_matrix = ((outer - S) ** 2).mean(axis=0)   # (N, N)
+    pihat = pihat_matrix.sum()
+    rhohat = np.trace(pihat_matrix)  # diagonal target's entries ARE the sample
+                                      # variances, so their asymptotic covariance
+                                      # with the target collapses to Var(s_ii)
+
+    off_diag_sq_sum = (S ** 2).sum() - np.sum(np.diag(S) ** 2)
+    if off_diag_sq_sum <= 0:
+        return 1.0  # sample is already exactly diagonal - fully "shrunk" already
+
+    kappa = (pihat - rhohat) / off_diag_sq_sum
+    return float(np.clip(kappa / T, 0.0, 1.0))
+
+
 def inverse_vol_weights(cov: np.ndarray) -> np.ndarray:
     """w_i proportional to 1 / vol_i, normalized to sum to 1.
 

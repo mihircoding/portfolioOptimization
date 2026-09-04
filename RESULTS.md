@@ -174,7 +174,17 @@ which are implemented here.
 
 ## What I'd build next
 
-1. **Ledoit-Wolf optimal α** rather than a hand-picked 0.3, and compare.
+1. ~~Ledoit-Wolf optimal α rather than a hand-picked 0.3~~ — done, see
+   `ledoit_wolf_alpha()` in `src/risk_parity.py`. On the full 2007-2024 daily
+   history for this 5-asset universe, the analytic optimum comes out to
+   **alpha ~ 0.005** — essentially no shrinkage — against the 0.3 used
+   everywhere else in this writeup. That's not a contradiction, it's the
+   formula doing its job: alpha* trades off sampling noise against target
+   bias, and with ~4,500 daily observations for only 5 assets, the sample
+   covariance barely has any noise left to correct for. The 0.3 used above
+   is closer to what the formula would recommend on a much shorter window
+   (a few hundred observations, or many more assets) — worth keeping in mind
+   before copying 0.3 into a problem with a different N and T.
 2. **Black-Litterman** — start from market-implied equilibrium returns and tilt with explicit
    views and confidences, instead of feeding raw historical means into an optimizer.
 3. **Factor-model covariance** — estimate `Σ = BΩBᵀ + D` from a handful of factors instead of

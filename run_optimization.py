@@ -22,7 +22,8 @@ from src.optimizer import (max_sharpe_turnover_penalized, max_sharpe_weights,
                           min_variance_weights, portfolio_performance)
 from src.returns import TRADING_DAYS, annualized_cov, annualized_mean, daily_returns
 from src.risk_parity import (equal_risk_contribution_weights, inverse_vol_weights,
-                             risk_contributions, shrink_covariance)
+                             ledoit_wolf_alpha, risk_contributions,
+                             shrink_covariance)
 
 # stocks / intl stocks / bonds / gold / real estate — deliberately heterogeneous
 UNIVERSE = ["SPY", "EFA", "AGG", "GLD", "VNQ"]
@@ -90,6 +91,14 @@ def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
     print("Shrinkage lifts the smallest eigenvalue. Those near-zero directions are")
     print("the worst-estimated ones, and they are exactly where an optimizer piles")
     print("in - a spuriously low variance looks like free risk reduction.")
+
+    lw_alpha = ledoit_wolf_alpha(daily_returns(prices).values)
+    print(f"\nSHRINKAGE={SHRINKAGE} above was hand-picked. Ledoit-Wolf's own "
+          f"analytic optimum\non this data (whole-history daily returns) is "
+          f"alpha = {lw_alpha:.3f}.")
+    w_lw = min_variance_weights(shrink_covariance(cov, lw_alpha))
+    print(f"{'min-var on LW-shrunk cov':<26} {weight_string(w_lw)}")
+    print(f"{'L1 vs hand-picked shrunk':<26} {np.abs(w_shrunk - w_lw).sum():.4f}")
 
     return mu, cov, portfolios
 
