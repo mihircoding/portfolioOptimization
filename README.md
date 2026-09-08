@@ -1,19 +1,20 @@
 # Portfolio Optimization
 
-Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, and risk
-parity — implemented, then tested the only way that matters: out of sample.
+Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, risk
+parity, and CVaR (tail-risk) optimization — implemented, then tested the only way that matters:
+out of sample.
 
 In sample, the max-Sharpe portfolio wins with a Sharpe of 0.90. It has to; it's defined as the
 in-sample argmax. Walk it forward on a trailing estimation window and it finishes **fourth of
-five**, behind equal weighting — which requires no estimation, no optimizer, and no turnover.
+six**, behind equal weighting — which requires no estimation, no optimizer, and no turnover.
 That result holds at every estimation window tested. [RESULTS.md](RESULTS.md) has the numbers;
 [INTERVIEW.md](INTERVIEW.md) has how to talk about them.
 
-20 tests.
+36 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q            # 20 passed
+python -m pytest -q            # 36 passed
 python run_optimization.py     # full analysis, writes frontier.png
 ```
 
@@ -120,6 +121,40 @@ isn't convex.
 
 ERC also needs no expected returns. Same robustness argument as min-variance, taken further.
 
+### CVaR: optimizing the tail directly
+
+Every portfolio above minimizes or is scored by **variance** — `wᵀΣw` — which penalizes a
+surprise gain exactly as much as a surprise loss of the same size. **CVaR** (Conditional
+Value-at-Risk, a.k.a. Expected Shortfall) only looks at the downside: it's the average loss in
+the worst `(1 - alpha)` fraction of scenarios, e.g. the average of the worst 5% of days at
+`alpha = 0.95`.
+
+The naive definition — sort scenario returns, average the worst tail — can't be optimized
+directly: sorting isn't differentiable, and which scenarios ARE the worst tail changes
+discontinuously as the weights move. Rockafellar & Uryasev (2000) show minimizing CVaR is
+exactly equivalent to a **linear program** in an expanded variable space:
+
+```
+minimize_{w, ζ, u}   ζ + 1/((1-α)T) · Σ u_t
+subject to            u_t ≥ -(w · r_t) - ζ    for every historical scenario t
+                      u_t ≥ 0
+                      Σw = 1
+```
+
+`ζ` and `u` have no meaning on their own until solved — at the optimum, `ζ` lands exactly on the
+portfolio's **Value-at-Risk**, and each `u_t` is the slack absorbing how far scenario `t`'s loss
+exceeds it (zero outside the tail). `src/cvar.py :: min_cvar_weights` solves this with
+`scipy.optimize.linprog`.
+
+The part worth noticing: this is the only optimizer in this project that works from the actual
+historical **scenarios** (`T` daily return vectors) instead of reducing them to `(μ, Σ)` first.
+That means two assets with identical mean and variance but different tail shape — one calm and
+Gaussian, one calm-but-occasionally-crashes — are indistinguishable to every other method here,
+and not to this one. `tests/test_cvar.py` proves that directly on synthetic data built exactly
+that way. On this project's own 5-ETF universe, though, it converges to nearly the same portfolio
+as min-variance — see RESULTS.md section 7 for why that's a finding about this dataset, not
+evidence the method doesn't work.
+
 ---
 
 ## Layout
@@ -131,8 +166,9 @@ ERC also needs no expected returns. Same robustness argument as min-variance, ta
 │   ├── returns.py         # returns, annualized mu and Sigma
 │   ├── optimizer.py       # performance, min-variance, max-Sharpe
 │   ├── frontier.py        # efficient frontier sweep
-│   └── risk_parity.py     # shrinkage, inverse-vol, risk contributions, ERC
-└── tests/                 # 20 tests
+│   ├── risk_parity.py     # shrinkage, inverse-vol, risk contributions, ERC
+│   └── cvar.py            # CVaR/VaR, the Rockafellar-Uryasev LP
+└── tests/                 # 36 tests
 ```
 
 ## What the tests check
@@ -149,14 +185,24 @@ Properties with known answers, not smoke tests:
 - ERC produces equal contributions to 1e-3 on a correlated, unequal-vol covariance, and
   **reduces to inverse-vol when assets are uncorrelated** — the one case with a known answer.
 - Annualization: covariance scales by 252, volatility by √252.
+- CVaR ≥ VaR always (the tail average can't be less than its own threshold).
+- `min_cvar_weights` achieves lower-or-equal CVaR than an arbitrary alternative on the same
+  scenarios — the actual claim "this optimizes CVaR" reduces to.
+- The Rockafellar-Uryasev LP's auxiliary ζ is consistent with an independently recomputed VaR.
+- Two assets engineered to share identical mean and variance but different tail shape get
+  **different** weights from `min_cvar_weights` — the one property no variance-based method in
+  this project could possibly satisfy, by construction.
 
 ## Known simplifications
 
 - Sample estimators only. No factor model, no Ledoit-Wolf optimal α, no Black-Litterman.
 - Historical mean as the return forecast, which is the weakest possible choice and part of what
   the walk-forward demonstrates.
-- Variance as the risk measure — symmetric, so upside "risk" is penalized identically. CVaR and
-  semi-variance don't share that flaw.
+- ~~Variance as the risk measure~~ — CVaR optimization is now implemented (`src/cvar.py`,
+  section 7 of RESULTS.md) and provably sees things variance can't (see `tests/test_cvar.py`'s
+  matched-mean-and-variance synthetic test), though on this project's own 5-ETF universe it
+  converges to nearly the same portfolio as min-variance — RESULTS.md explains why. Semi-variance
+  is a related idea still not implemented here.
 - Five liquid ETFs. With 50+ assets the covariance estimation problem gets far worse and
   shrinkage stops being optional.
 - Turnover is measured but not charged. At 16% one-way turnover and realistic ETF costs the drag

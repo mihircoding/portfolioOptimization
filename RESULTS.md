@@ -147,6 +147,57 @@ that isn't stable, so you estimate a stale quantity more accurately.
 
 ---
 
+## 7. CVaR: does targeting tail risk directly change anything here?
+
+Every method above optimizes variance, which treats a surprise gain and a surprise loss of the
+same size identically. `src/cvar.py` adds one that doesn't: `min_cvar_weights()` minimizes
+CVaR (Conditional Value-at-Risk / Expected Shortfall) directly, via the Rockafellar-Uryasev
+linear program - working from the actual historical daily scenarios rather than reducing them
+to (mu, Sigma) first, so it can in principle tell apart two assets with identical mean and
+variance but different tail shape. `tests/test_cvar.py` proves that difference is real on
+synthetic data: a Gaussian asset and a fat-tailed, occasional-crash asset built to share the
+same mean and variance are NOT treated the same by `min_cvar_weights` (it tilts away from the
+crash-prone one), even though a variance-only optimizer is mathematically unable to see any
+difference between them at all.
+
+So does it change anything on this project's actual 5-ETF universe? Almost not at all:
+
+| | In-sample vol | VaR 95% (daily) | CVaR 95% (daily) | Weights |
+|---|---|---|---|---|
+| Min variance | 5.22% | 0.45% | 0.74% | SPY 7 / EFA 0 / AGG 91 / GLD 2 / VNQ 0 |
+| Min CVaR (95%) | 5.22% | 0.45% | 0.74% | SPY 7 / EFA 0 / AGG 90 / GLD 3 / VNQ 0 |
+
+Same volatility to two decimal places, same VaR, same CVaR, a one-point shuffle between AGG and
+GLD. Out of sample the story repeats - walk-forward Sharpe 0.60 for Min CVaR against min-variance's
+0.58 (essentially noise, 15 annual observations), same -13% worst year, and the same ranking
+against equal weight (4th of 6, same corner-solution problem: minimizing tail risk with no
+return target still just finds the calmest asset and piles into it). The lookback-sensitivity
+table tells the same story at every window from 2 to 7 years - Min CVaR and min-variance move
+together throughout.
+
+**Why the synthetic test finds a real difference and this data doesn't.** The test's synthetic
+pair is constructed so mean and variance are IDENTICAL and only the tail shape differs - that's
+the one case a variance-based optimizer is mathematically blind to by construction. AGG (the
+asset both methods pile into here) doesn't need that kind of help to look good: it has both the
+lowest variance AND unremarkable tail behavior for its variance, in this sample. When the
+lowest-variance asset isn't ALSO tail-risky, minimizing variance and minimizing CVaR point the
+same optimizer at the same corner. CVaR optimization would earn its keep on a universe where
+that isn't true — a portfolio that includes something like a short-volatility strategy or a
+emerging-market currency carry trade, where the calm, low-variance days are calm precisely
+because the risk shows up rarely and severely instead of continuously. Five liquid, long-only
+ETFs mostly don't manufacture that pattern.
+
+**What this means for item 5 below.** Implementing CVaR optimization was worth doing - the
+Rockafellar-Uryasev LP is a real, useful piece of machinery, and the synthetic test shows it does
+exactly what it claims when the assets in front of it actually have different tail shapes. What
+this section shows is equally worth stating plainly: on the specific dataset the rest of this
+project uses, it does not produce a materially different portfolio than the min-variance solution
+this project already had. A tool doing nothing new on a specific input is a finding about the
+input, not a bug in the tool - but it's not the input a reader would guess without seeing the
+number.
+
+---
+
 ## Honest caveats
 
 I'd rather state these than have them found.
@@ -193,5 +244,8 @@ which are implemented here.
    a point (turnover -63% for flat Sharpe) and then trades real return for lower turnover past
    that; a proper linear/transaction-cost penalty would need slack variables but is the more
    correct version of the same idea.
-5. **CVaR optimization** — because variance penalizes upside and downside identically, and
-   nobody actually minds the upside.
+5. ~~CVaR optimization~~ — done, see section 7 and `src/cvar.py`. Real and provably different
+   from variance-based optimization in general (the synthetic test in `tests/test_cvar.py`
+   shows it clearly), but converges to essentially the same portfolio as min-variance on this
+   project's actual 5-ETF universe — a finding about this dataset's tail shapes, not evidence
+   the method doesn't work.

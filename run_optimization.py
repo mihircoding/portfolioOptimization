@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from src.cvar import cvar_of_weights, min_cvar_weights, var_of_weights
 from src.frontier import efficient_frontier
 from src.optimizer import (max_sharpe_turnover_penalized, max_sharpe_weights,
                           min_variance_weights, portfolio_performance)
@@ -36,15 +37,26 @@ def section(title: str) -> None:
     print(f"\n{title}\n" + "-" * len(title))
 
 
-def build_portfolios(mu: np.ndarray, cov: np.ndarray) -> dict:
+def build_portfolios(mu: np.ndarray, cov: np.ndarray,
+                     train_returns: np.ndarray | None = None) -> dict:
+    """train_returns (raw daily, not annualized) is optional and enables one
+    more portfolio: Min CVaR. It's the only method here that doesn't reduce
+    the training data to (mu, cov) first - it needs the actual scenarios,
+    tail shape included. Optional because a couple of tests and any future
+    caller working purely from (mu, cov) shouldn't be forced to carry raw
+    returns around just to build the other four portfolios.
+    """
     n = len(mu)
-    return {
+    portfolios = {
         "Equal weight": np.full(n, 1 / n),
         "Inverse vol": inverse_vol_weights(cov),
         "Min variance": min_variance_weights(cov),
         "Max Sharpe": max_sharpe_weights(mu, cov),
         "Equal risk contribution": equal_risk_contribution_weights(cov),
     }
+    if train_returns is not None:
+        portfolios["Min CVaR (95%)"] = min_cvar_weights(train_returns)
+    return portfolios
 
 
 def weight_string(w: np.ndarray) -> str:
@@ -54,16 +66,30 @@ def weight_string(w: np.ndarray) -> str:
 def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
     mu = annualized_mean(prices).values
     cov = annualized_cov(prices).values
+    train_returns = daily_returns(prices).values
 
     section(f"1. In sample, whole history ({prices.index[0].date()} "
             f"-> {prices.index[-1].date()})")
     print(f"{'portfolio':<26} {'ret':>7} {'vol':>7} {'sharpe':>7}   weights")
-    portfolios = build_portfolios(mu, cov)
+    portfolios = build_portfolios(mu, cov, train_returns)
     for name, w in portfolios.items():
         ret, vol, sharpe = portfolio_performance(w, mu, cov)
         print(f"{name:<26} {ret:>7.2%} {vol:>7.2%} {sharpe:>7.2f}   {weight_string(w)}")
     print("\nMax Sharpe wins by construction - it is the in-sample argmax. The only")
     print("question worth asking is whether it repeats out of sample.")
+
+    section("1b. Tail risk: variance doesn't see it, CVaR does")
+    print(f"{'portfolio':<26} {'vol':>7} {'VaR 95%':>9} {'CVaR 95%':>9}  (daily)")
+    for name, w in portfolios.items():
+        _, vol, _ = portfolio_performance(w, mu, cov)
+        v = var_of_weights(w, train_returns, alpha=0.95)
+        c = cvar_of_weights(w, train_returns, alpha=0.95)
+        print(f"{name:<26} {vol:>7.2%} {v:>9.2%} {c:>9.2%}")
+    print("\nVaR 95% is the daily loss exceeded only 1 day in 20; CVaR 95% is the")
+    print("average loss on those worst days specifically. Min CVaR is built to")
+    print("minimize the last column directly - RESULTS.md checks whether the")
+    print("portfolios variance already favors (min variance, ERC) happen to be")
+    print("good at this too, or whether tail risk is a genuinely separate axis.")
 
     section("2. Risk contributions: weights lie, risk doesn't")
     print(f"{'portfolio':<26} " + " ".join(f"{t:>6}" for t in UNIVERSE))
@@ -127,8 +153,9 @@ def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
 
         mu = annualized_mean(train).values
         cov = annualized_cov(train).values
+        train_returns = daily_returns(train).values
         try:
-            portfolios = build_portfolios(mu, cov)
+            portfolios = build_portfolios(mu, cov, train_returns)
         except RuntimeError as e:
             if verbose:
                 print(f"  {year}: optimizer failed ({e}); skipped")
