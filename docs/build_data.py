@@ -1,0 +1,98 @@
+"""Builds docs/data.js for the GitHub Pages site.
+
+Runs the same analysis run_optimization.py prints and dumps it as JSON, so
+the site charts the actual optimizer output instead of numbers copied into
+HTML by hand. Re-run after changing anything in src/ and the site follows:
+
+    python docs/build_data.py
+"""
+
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import yfinance as yf
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from run_optimization import END, LOOKBACK_YEARS, START, UNIVERSE, build_portfolios, walk_forward
+from src.cvar import cvar_of_weights, var_of_weights
+from src.frontier import efficient_frontier
+from src.optimizer import portfolio_performance
+from src.returns import annualized_cov, annualized_mean, daily_returns
+from src.risk_parity import risk_contributions
+
+OUT = Path(__file__).resolve().parent / "data.js"
+
+
+def main():
+    print("downloading prices...")
+    prices = yf.download(UNIVERSE, start=START, end=END, auto_adjust=True,
+                         progress=False)["Close"].dropna()[UNIVERSE]
+
+    mu = annualized_mean(prices).values
+    cov = annualized_cov(prices).values
+    rets = daily_returns(prices).values
+
+    print("in-sample portfolios...")
+    portfolios = build_portfolios(mu, cov, rets)
+
+    in_sample = []
+    for name, w in portfolios.items():
+        ret, vol, sharpe = portfolio_performance(w, mu, cov)
+        in_sample.append({
+            "name": name,
+            "ret": round(ret, 4), "vol": round(vol, 4), "sharpe": round(sharpe, 3),
+            "weights": [round(float(x), 4) for x in w],
+            "rc": [round(float(x), 4) for x in risk_contributions(w, cov)],
+            "var95": round(var_of_weights(w, rets, 0.95), 5),
+            "cvar95": round(cvar_of_weights(w, rets, 0.95), 5),
+        })
+
+    print("efficient frontier...")
+    ef = efficient_frontier(mu, cov, n_points=60)
+    frontier = [[round(float(v), 5), round(float(r), 5)]
+                for v, r in zip(ef["volatility"], ef["target_return"])]
+
+    print("walk-forward at 2/3/5/7y...")
+    lookbacks = {}
+    panel_3y = None
+    for lb in (2, 3, 5, 7):
+        panel, summary = walk_forward(prices, lookback=lb, verbose=False)
+        lookbacks[lb] = [{"name": r["portfolio"], "cagr": round(r["cagr"], 4),
+                          "vol": round(r["vol"], 4), "sharpe": round(r["sharpe"], 3),
+                          "worst": round(r["worst"], 4),
+                          "turnover": round(r["turnover"], 4)}
+                         for _, r in summary.iterrows()]
+        if lb == LOOKBACK_YEARS:
+            wide = panel.pivot(index="year", columns="portfolio", values="ret")
+            cumulative = (1 + wide).cumprod()
+            panel_3y = {
+                "years": [int(y) for y in cumulative.index],
+                "series": {c: [round(float(v), 4) for v in cumulative[c]]
+                           for c in cumulative.columns},
+            }
+
+    data = {
+        "meta": {"universe": UNIVERSE, "start": str(prices.index[0].date()),
+                 "end": str(prices.index[-1].date()), "days": len(prices),
+                 "lookback": LOOKBACK_YEARS},
+        "assets": [{"ticker": t, "ret": round(float(mu[i]), 4),
+                    "vol": round(float(np.sqrt(cov[i, i])), 4)}
+                   for i, t in enumerate(UNIVERSE)],
+        "in_sample": in_sample,
+        "frontier": frontier,
+        "walk_forward": lookbacks,
+        "growth": panel_3y,
+    }
+
+    OUT.write_text("window.DATA = " + json.dumps(data, separators=(",", ":")) + ";\n",
+                   encoding="utf-8")
+    print(f"wrote {OUT} ({OUT.stat().st_size / 1024:.0f} KB)")
+    for row in lookbacks[LOOKBACK_YEARS]:
+        print(f"  {row['name']:<26} OOS sharpe {row['sharpe']:>5.2f}")
+
+
+if __name__ == "__main__":
+    main()

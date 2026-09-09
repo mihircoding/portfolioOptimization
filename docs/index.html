@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portfolio Optimization — Mihir Konda</title>
+<meta name="description" content="Markowitz, shrinkage, risk parity and CVaR, tested out of sample. Max-Sharpe wins in sample at 0.90 and finishes fourth of six walking forward, behind equal weighting.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fbfbfa; --surface:#fff; --line:#e5e4df; --line2:#d0cfc8;
+  --ink:#16161a; --ink2:#55554f; --ink3:#8b8a83;
+  --blue:#2a6fd6; --green:#12946a; --red:#d0413f; --amber:#b3760a;
+  --blue-bg:#eaf2fc; --green-bg:#e6f4ee; --red-bg:#fcecec; --amber-bg:#fdf3e3;
+  --radius:10px; --max:1120px;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#141414;--surface:#1c1c1b;--line:#2e2e2c;--line2:#3d3d3a;
+  --ink:#f2f2ef;--ink2:#b8b7b0;--ink3:#87867f;
+  --blue:#5b9bf0;--green:#3fbf90;--red:#ef6a68;--amber:#dfa03c;
+  --blue-bg:#17263a;--green-bg:#122a22;--red-bg:#331a1a;--amber-bg:#332715;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.88em}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+h1{font-size:38px;line-height:1.15;font-weight:600;letter-spacing:-.02em;margin:0 0 12px}
+h2{font-size:25px;font-weight:600;letter-spacing:-.015em;margin:0 0 6px}
+h3{font-size:17px;font-weight:600;margin:0 0 8px}
+p{margin:0 0 14px;color:var(--ink2)}
+section{padding:46px 0;border-top:1px solid var(--line)}
+.lede{font-size:18px;color:var(--ink2);max-width:70ch}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);margin-bottom:10px}
+header{padding:60px 0 46px}
+.tagline{display:inline-block;font-size:12.5px;font-weight:500;padding:4px 11px;border-radius:99px;
+  background:var(--red-bg);color:var(--red);margin-bottom:18px}
+.links{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:8px;
+  border:1px solid var(--line2);color:var(--ink);font-size:14px;font-weight:500;background:var(--surface)}
+.btn:hover{border-color:var(--ink3);text-decoration:none}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin:26px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:15px 17px}
+.card .k{font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500}
+.card .v{font-size:29px;font-weight:600;letter-spacing:-.02em;line-height:1.05}
+.card .s{font-size:12.5px;color:var(--ink3);margin-top:5px}
+.v.red{color:var(--red)} .v.green{color:var(--green)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+.chart{position:relative;height:210px;margin-top:4px}
+.cap{font-size:13px;color:var(--ink3);line-height:1.6;margin-top:10px}
+.note{border-left:3px solid var(--amber);background:var(--amber-bg);padding:13px 16px;border-radius:0 8px 8px 0;margin:18px 0}
+.note.blue{border-color:var(--blue);background:var(--blue-bg)}
+.note p{margin:0;color:var(--ink);font-size:14.5px}
+.note p+p{margin-top:9px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-weight:600;color:var(--ink2);padding:9px 10px;border-bottom:1px solid var(--line2);
+  white-space:nowrap;font-size:12.5px}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--ink)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);color:var(--ink2)}
+td.n{text-align:right;font-family:"JetBrains Mono",monospace;font-size:12.5px}
+td strong{color:var(--ink);font-weight:600}
+.pos{color:var(--green)} .neg{color:var(--red)}
+.pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--blue-bg);color:var(--blue);font-weight:500}
+.pill.grey{background:var(--line);color:var(--ink3)}
+.ctl{display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin-bottom:16px}
+.ctl label{display:block;font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500}
+select,input[type=search]{padding:7px 10px;border:1px solid var(--line2);border-radius:7px;
+  background:var(--surface);color:var(--ink);font-size:13.5px;font-family:inherit}
+.slider{min-width:150px}
+.slider .row{display:flex;justify-content:space-between;font-size:12px;color:var(--ink3);margin-bottom:4px;font-weight:500}
+.slider .row b{color:var(--ink);font-family:"JetBrains Mono",monospace}
+input[type=range]{width:100%;accent-color:var(--blue)}
+.scroll{overflow-x:auto}
+.pager{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:13px;color:var(--ink3)}
+.pager button{padding:5px 11px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);
+  border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit}
+.pager button:disabled{opacity:.4;cursor:default}
+ul{color:var(--ink2);padding-left:20px;margin:0 0 14px}
+li{margin-bottom:7px}
+footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);font-size:13.5px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}h1{font-size:30px}}
+</style>
+
+</head>
+<body>
+
+<header>
+<div class="wrap">
+  <div class="tagline">The optimizer lost to dividing by five</div>
+  <h1>Portfolio Optimization</h1>
+  <p class="lede">Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, risk parity and CVaR — implemented, then tested the only way that matters: out of sample. <strong style="color:var(--ink)">In sample the max-Sharpe portfolio wins with a Sharpe of 0.90. Walk it forward and it finishes fourth of six, behind equal weighting — which requires no estimation, no optimizer, and no trading at all.</strong></p>
+  <div class="links">
+    <a class="btn primary" href="#oos">The out-of-sample result</a>
+    <a class="btn" href="https://github.com/mihircoding/portfolioOptimization">Source on GitHub</a>
+    <a class="btn" href="https://github.com/mihircoding/portfolioOptimization/blob/main/RESULTS.md">Full write-up</a>
+  </div>
+</div>
+</header>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Setup</div>
+  <h2>The frontier, and the portfolios on it</h2>
+  <p class="lede">Five deliberately heterogeneous ETFs — US equity, international equity, bonds, gold, real estate — over <span id="x-range">—</span>. Every portfolio below is the same <span class="mono">scipy.optimize</span> call with a different objective and a budget constraint.</p>
+
+  <div class="grid2" style="grid-template-columns:1.25fr 1fr;align-items:start">
+    <div class="panel">
+      <h3>Efficient frontier, full sample</h3>
+      <div class="chart" style="height:330px"><canvas id="c-frontier"></canvas></div>
+      <p class="cap">The curve is the set of portfolios you can't improve on: for each target return, the lowest volatility that achieves it. Everything below it is dominated. Grey crosses are the individual ETFs — note that every one of them sits inside the curve, which <em>is</em> diversification, drawn.</p>
+    </div>
+    <div>
+      <h3>Portfolio volatility is not a weighted average</h3>
+      <p>Given weights <span class="mono">w</span>, expected returns <span class="mono">&mu;</span> and covariance <span class="mono">&Sigma;</span>, the portfolio's variance is <span class="mono">w&prime;&Sigma;w</span> — which is <em>lower</em> than the weighted average of the individual volatilities whenever assets are less than perfectly correlated. That gap is the whole idea.</p>
+      <p>Markowitz's contribution was making it quantitative: an asset is not risky or safe on its own, only in the context of what it's held alongside. A volatile asset that zigs when the rest of your book zags <strong style="color:var(--ink)">reduces</strong> portfolio risk.</p>
+      <p>Three portfolios fall out of it. <strong style="color:var(--ink)">Minimum variance</strong> minimizes <span class="mono">w&prime;&Sigma;w</span> — note what's missing: no <span class="mono">&mu;</span>, so it needs no return forecasts at all. <strong style="color:var(--ink)">Maximum Sharpe</strong> maximizes return per unit of risk. The <strong style="color:var(--ink)">frontier</strong> is every risk level in between.</p>
+    </div>
+  </div>
+
+  <div class="scroll" style="margin-top:24px">
+    <table id="t-insample">
+      <thead><tr><th>Portfolio</th><th class="n">Return</th><th class="n">Vol</th><th class="n">Sharpe</th>
+      <th class="n">SPY</th><th class="n">EFA</th><th class="n">AGG</th><th class="n">GLD</th><th class="n">VNQ</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="cap"><strong style="color:var(--ink)">This table proves nothing.</strong> Max-Sharpe is <em>defined</em> as the in-sample argmax — reporting that it won in sample is reporting that the optimizer ran. Two things are worth noticing anyway: both optimized portfolios zero out EFA and VNQ entirely (mean-variance doesn't hedge its bets, it picks), and min-variance puts 91% in a single asset — a portfolio built by a diversification algorithm that is barely diversified, because minimizing variance with no return constraint just finds the calmest thing available.</p>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Risk</div>
+  <h2>Weights lie. Risk contributions don't.</h2>
+  <p class="lede">Asset <span class="mono">i</span>'s share of total portfolio variance is <span class="mono">w&#8202;&middot;&#8202;(&Sigma;w)&#8202;/&#8202;(w&prime;&Sigma;w)</span>. The decomposition is <strong style="color:var(--ink)">exact</strong>, not approximate — portfolio variance is homogeneous of degree 2 in the weights, so Euler's theorem makes the parts sum to the whole with nothing left over.</p>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3>Equal weight: 20% of the capital, 1% of the risk</h3>
+      <div class="chart" style="height:230px"><canvas id="c-rc"></canvas></div>
+      <p class="cap">The portfolio that looks most balanced is, in risk terms, a leveraged bet on real estate and equities with a rounding error in bonds. This is the single most useful number in portfolio reporting, and it's why "asset X is 4% of the book and 38% of the risk" is a sentence risk managers say constantly.</p>
+    </div>
+    <div>
+      <h3>Equal risk contribution closes that gap</h3>
+      <p>ERC solves for the weights where every asset contributes <em>equally</em> to risk. There's no closed form except when all correlations are equal (where it collapses to inverse-vol), so it's solved numerically — started from inverse-vol weights, because the objective isn't convex and a good starting point keeps the solver out of trouble.</p>
+      <p>Like min-variance, <strong style="color:var(--ink)">ERC never sees expected returns.</strong> Same robustness argument, taken one step further: an optimizer cannot be wrecked by an input it never receives.</p>
+      <h3>Why that matters so much here</h3>
+      <p>Mean-variance treats <span class="mono">&mu;</span> and <span class="mono">&Sigma;</span> as known constants. They're noisy estimates, and the optimizer's response to noise is pathological: it loads into whatever asset had the best estimation <em>luck</em>, because from inside the objective function a spuriously high mean is indistinguishable from a real edge. Michaud called it the <strong style="color:var(--ink)">error-maximizing property</strong>, and it's earned.</p>
+      <p>The asymmetry that makes it bite: expected returns are far harder to estimate than covariances. You need decades of data to pin down a mean return; a covariance converges in months. <strong style="color:var(--ink)">The input the optimizer is most sensitive to is the one you know least about.</strong></p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section id="oos">
+<div class="wrap">
+  <div class="eyebrow">The result that matters</div>
+  <h2>Walk it forward and the ranking inverts</h2>
+  <p class="lede">Estimate &mu; and &Sigma; on a trailing window, hold for the next calendar year, roll. Fifteen annual rebalances, fully out of sample — no portfolio ever sees the data it's judged on.</p>
+
+  <div class="grid2" style="grid-template-columns:1.2fr 1fr;align-items:start">
+    <div class="panel">
+      <h3>Growth of $1, out of sample</h3>
+      <div class="chart" style="height:300px"><canvas id="c-growth"></canvas></div>
+    </div>
+    <div>
+      <div class="ctl" style="margin-bottom:10px">
+        <div><label for="sel-lb">Trailing estimation window</label>
+          <select id="sel-lb">
+            <option value="2">2 years</option>
+            <option value="3" selected>3 years</option>
+            <option value="5">5 years</option>
+            <option value="7">7 years</option>
+          </select></div>
+      </div>
+      <div class="scroll">
+        <table id="t-oos">
+          <thead><tr><th>Portfolio</th><th class="n">Ann. return</th><th class="n">Sharpe</th>
+          <th class="n">Worst year</th><th class="n">Turnover</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="cap" id="cap-oos">—</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><strong>The portfolio that required no estimation, no optimizer, no covariance matrix and no trading beat the one that used all four.</strong> This is DeMiguel, Garlappi &amp; Uppal (2009) reproduced on a different universe and a later sample.</p>
+    <p>Turnover is the mechanism made visible: max-Sharpe rewrote 16.2% of the book every year, chasing an optimum that moved because the <em>estimates</em> moved, not because the world did. Note carefully that turnover is <em>not</em> the explanation for the performance gap — at realistic ETF costs, 16% one-way turnover is a couple of basis points a year. The gap is estimation error. The turnover is a symptom of it, not the cause.</p>
+  </div>
+
+  <div class="note blue">
+    <p><strong>Change the estimation window above and the ranking barely moves.</strong> Equal weight wins at 2, 3, 5 and 7 years; max-Sharpe is fourth at three of the four. That stability is what turns one result into a finding — a conclusion that flipped between a 3-year and a 5-year lookback would be a statement about the lookback, not about the methods.</p>
+    <p>And notice that <em>more data made everything worse</em>. Going from 2 to 7 years of estimation degraded every single method. That's the mean-return estimation problem in one row: a longer window buys precision about a parameter that isn't stable, so you estimate a stale quantity more accurately.</p>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Tail risk</div>
+  <h2>Variance is symmetric. Losses aren't.</h2>
+  <p class="lede">Every method above optimizes variance, which penalizes a surprise gain exactly as much as a surprise loss of the same size. CVaR — the average loss in the worst 5% of days — only looks at the side you actually mind.</p>
+
+  <div class="grid2" style="grid-template-columns:1fr 1.1fr;align-items:start">
+    <div class="scroll">
+      <table id="t-cvar">
+        <thead><tr><th>Portfolio</th><th class="n">Vol</th><th class="n">VaR 95%</th><th class="n">CVaR 95%</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="cap">Daily VaR is the loss exceeded one day in twenty; CVaR is the average loss on those days specifically.</p>
+    </div>
+    <div>
+      <p>Minimizing CVaR directly can't be done by sorting scenarios and averaging the tail — sorting isn't differentiable, and <em>which</em> scenarios are the worst changes discontinuously as the weights move. Rockafellar &amp; Uryasev's result is that it's exactly equivalent to a <strong style="color:var(--ink)">linear program</strong> in an expanded variable space, which is what the project implements.</p>
+      <p>It's the only optimizer here that works from the actual historical scenarios rather than reducing them to <span class="mono">(&mu;, &Sigma;)</span> first — so it can tell apart two assets with identical mean and variance but different tail shape, something every other method here is mathematically blind to. The test suite proves that on synthetic data built exactly that way.</p>
+      <p><strong style="color:var(--ink)">And on this dataset it barely changes anything.</strong> Min CVaR converges to almost the same portfolio as min-variance — same weights to a percentage point, same out-of-sample Sharpe within noise. That's a finding about this universe, not a failure of the method: the asset both methods pile into (AGG) has both the lowest variance <em>and</em> unremarkable tail behaviour for its variance. When the calmest asset isn't also the crash-prone one, minimizing variance and minimizing tail risk point at the same corner.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Honesty</div>
+  <h2>Caveats I'd rather state than have found</h2>
+  <div class="grid2">
+    <div>
+      <p><strong style="color:var(--ink)">The sample favours equal weight.</strong> 2010–2024 was a strong equity decade with weak bond returns, and equal weight carries the most equity risk of any method here — it was structurally positioned to win this particular sample. The finding "estimation error degrades optimization out of sample" is robust and well documented; the specific finding "equal weight beats everything" is partly this sample.</p>
+      <p><strong style="color:var(--ink)">Sharpe here is computed on 15 annual returns, not daily.</strong> The standard error on any of these ratios is large, and the gap between 0.82 and 0.75 is not statistically significant on its own. What carries weight is the direction and its consistency across four independent window choices.</p>
+    </div>
+    <div>
+      <p><strong style="color:var(--ink)">Risk-free rate is zero throughout.</strong> Over this period that flatters every portfolio equally, so it doesn't affect the ranking — but the Sharpe levels are overstated.</p>
+      <p><strong style="color:var(--ink)">Turnover is measured, not charged.</strong> Adding realistic costs would widen the gap slightly in equal weight's favour and change nothing material.</p>
+      <p><strong style="color:var(--ink)">Five assets is an easy problem.</strong> A sample covariance over N assets estimates N(N+1)/2 parameters — 15 here, but 1,275 for 50 assets. The estimation pathology gets dramatically worse with more assets, which is exactly where shrinkage, factor models and Black-Litterman earn their keep.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<footer>
+<div class="wrap">
+  <p style="margin-bottom:10px">Built by <a href="https://github.com/mihircoding">Mihir Konda</a> — every number on this page is generated by <span class="mono">docs/build_data.py</span> from the code in <a href="https://github.com/mihircoding/portfolioOptimization">the repository</a>, not typed in by hand.</p>
+  <p style="margin:0;font-size:13px">Quant projects: <a href="https://mihircoding.github.io/backtestingEngine/">Backtesting Engine</a> · <a href="https://mihircoding.github.io/limitOrderBook/">Order Book</a> · <a href="https://mihircoding.github.io/pairsTrading/">Pairs Trading</a> · <a href="https://mihircoding.github.io/options-pricer/">Options Pricer</a> · <strong style="color:var(--ink2)">Portfolio Optimization</strong></p>
+</div>
+</footer>
+
+<script src="data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const D = window.DATA;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = () => ({ink:css('--ink'), ink2:css('--ink2'), ink3:css('--ink3'), line:css('--line'),
+                  blue:css('--blue'), green:css('--green'), red:css('--red'), amber:css('--amber')});
+Chart.defaults.font.family = "Inter, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.animation = false;
+
+const pct = (x, d = 2) => (x * 100).toFixed(d) + '%';
+const U = D.meta.universe;
+const c = C();
+
+document.getElementById('x-range').textContent =
+  `${D.meta.start} to ${D.meta.end} (${D.meta.days.toLocaleString()} trading days)`;
+
+// distinct colour per portfolio, reused across every chart on the page
+const PC = {
+  'Equal weight': c.blue, 'Inverse vol': c.green, 'Min variance': c.amber,
+  'Max Sharpe': c.red, 'Equal risk contribution': '#8b5cf6', 'Min CVaR (95%)': c.ink3
+};
+
+/* ---------------- efficient frontier ---------------- */
+new Chart(document.getElementById('c-frontier'), {
+  type: 'scatter',
+  data: {datasets: [
+    {label: 'Efficient frontier', type: 'line', data: D.frontier.map(p => ({x: p[0], y: p[1]})),
+     borderColor: c.ink3, borderWidth: 1.8, pointRadius: 0, tension: 0, showLine: true},
+    ...D.in_sample.map(p => ({
+      label: p.name, data: [{x: p.vol, y: p.ret, n: p.name, s: p.sharpe}],
+      backgroundColor: PC[p.name] || c.blue, pointRadius: 7, pointHoverRadius: 9})),
+    {label: 'Individual ETFs', data: D.assets.map(a => ({x: a.vol, y: a.ret, n: a.ticker})),
+     backgroundColor: c.ink3, pointStyle: 'crossRot', pointRadius: 6, borderColor: c.ink3, borderWidth: 1.5}
+  ]},
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {labels: {color: c.ink2, usePointStyle: true, boxWidth: 8, padding: 9, font: {size: 10.5}}},
+      tooltip: {callbacks: {label: ctx => {
+        const r = ctx.raw;
+        return `${r.n || ctx.dataset.label}: ${pct(r.y)} return, ${pct(r.x)} vol` +
+               (r.s !== undefined ? `, Sharpe ${r.s.toFixed(2)}` : '');
+      }}}
+    },
+    scales: {
+      x: {title: {display: true, text: 'annualized volatility', color: c.ink3},
+          grid: {color: c.line}, ticks: {color: c.ink3, callback: v => pct(v, 0)}, border: {display: false}},
+      y: {title: {display: true, text: 'annualized return', color: c.ink3},
+          grid: {color: c.line}, ticks: {color: c.ink3, callback: v => pct(v, 0)}, border: {display: false}}
+    }
+  }
+});
+
+/* ---------------- in-sample table ---------------- */
+document.querySelector('#t-insample tbody').innerHTML = D.in_sample.map(p => `
+  <tr><td><strong>${p.name}</strong></td>
+      <td class="n">${pct(p.ret)}</td><td class="n">${pct(p.vol)}</td>
+      <td class="n"><strong>${p.sharpe.toFixed(2)}</strong></td>
+      ${p.weights.map(w => `<td class="n"${w < 0.005 ? ' style="color:var(--ink3)"' : ''}>${(w * 100).toFixed(0)}%</td>`).join('')}
+  </tr>`).join('');
+
+/* ---------------- risk contributions ---------------- */
+const ew = D.in_sample.find(p => p.name === 'Equal weight');
+const erc = D.in_sample.find(p => p.name === 'Equal risk contribution');
+new Chart(document.getElementById('c-rc'), {
+  type: 'bar',
+  data: {labels: U, datasets: [
+    {label: 'Share of capital', data: ew.weights.map(w => w * 100), backgroundColor: c.ink3, borderRadius: 3},
+    {label: 'Share of RISK (equal weight)', data: ew.rc.map(r => r * 100), backgroundColor: c.red, borderRadius: 3},
+    {label: 'Share of risk (ERC)', data: erc.rc.map(r => r * 100), backgroundColor: c.green, borderRadius: 3}
+  ]},
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {legend: {labels: {color: c.ink2, boxWidth: 10, padding: 10, font: {size: 10.5}}},
+              tooltip: {callbacks: {label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`}}},
+    scales: {x: {grid: {display: false}, ticks: {color: c.ink3}},
+             y: {grid: {color: c.line}, ticks: {color: c.ink3, callback: v => v + '%'},
+                 border: {display: false}, title: {display: true, text: 'percent', color: c.ink3}}}
+  }
+});
+
+/* ---------------- growth of $1 ---------------- */
+new Chart(document.getElementById('c-growth'), {
+  type: 'line',
+  data: {labels: D.growth.years, datasets: Object.entries(D.growth.series).map(([name, vals]) => ({
+    label: name, data: vals, borderColor: PC[name] || c.blue, backgroundColor: PC[name] || c.blue,
+    borderWidth: name === 'Equal weight' ? 2.6 : 1.6, pointRadius: 2, tension: 0
+  }))},
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: {mode: 'index', intersect: false},
+    plugins: {legend: {labels: {color: c.ink2, boxWidth: 10, boxHeight: 2, padding: 9, font: {size: 10.5}}},
+              tooltip: {callbacks: {label: ctx => `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`}}},
+    scales: {x: {grid: {display: false}, ticks: {color: c.ink3}},
+             y: {grid: {color: c.line}, ticks: {color: c.ink3, callback: v => '$' + v.toFixed(2)},
+                 border: {display: false}}}
+  }
+});
+
+/* ---------------- walk-forward table, by lookback ---------------- */
+function renderOOS(lb) {
+  const rows = [...D.walk_forward[lb]].sort((a, b) => b.sharpe - a.sharpe);
+  document.querySelector('#t-oos tbody').innerHTML = rows.map((r, i) => `
+    <tr><td><strong style="color:${PC[r.name] || 'var(--ink)'}">${r.name}</strong></td>
+        <td class="n">${pct(r.cagr)}</td>
+        <td class="n"><strong>${r.sharpe.toFixed(2)}</strong></td>
+        <td class="n neg">${pct(r.worst)}</td>
+        <td class="n"${r.turnover > 0.1 ? ' style="color:var(--red)"' : ''}>${pct(r.turnover, 1)}</td></tr>`).join('');
+  const ms = rows.find(r => r.name === 'Max Sharpe');
+  const rank = rows.indexOf(ms) + 1;
+  const ordinal = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth'][rank];
+  document.getElementById('cap-oos').innerHTML =
+    `Sorted by out-of-sample Sharpe. On a ${lb}-year estimation window, max-Sharpe — the in-sample
+     winner at 0.90 — finishes <strong style="color:var(--ink)">${ordinal} of ${rows.length}</strong>,
+     and pays ${pct(ms.turnover, 1)} annual turnover to get there.`;
+}
+document.getElementById('sel-lb').onchange = e => renderOOS(e.target.value);
+renderOOS('3');
+
+/* ---------------- CVaR table ---------------- */
+document.querySelector('#t-cvar tbody').innerHTML = D.in_sample.map(p => `
+  <tr><td><strong>${p.name}</strong></td>
+      <td class="n">${pct(p.vol)}</td>
+      <td class="n">${pct(p.var95)}</td>
+      <td class="n"><strong>${pct(p.cvar95)}</strong></td></tr>`).join('');
+
+</script>
+</body>
+</html>
