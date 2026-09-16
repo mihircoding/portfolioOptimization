@@ -12,11 +12,11 @@ six**, behind equal weighting — which requires no estimation, no optimizer, an
 That result holds at every estimation window tested. [RESULTS.md](RESULTS.md) has the numbers;
 [INTERVIEW.md](INTERVIEW.md) has how to talk about them.
 
-36 tests.
+57 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q            # 36 passed
+python -m pytest -q            # 57 passed
 python run_optimization.py     # full analysis, writes frontier.png
 ```
 
@@ -96,6 +96,37 @@ selling point — the optimizer can't be wrecked by an input it never receives.
 
 **3. Risk-based weighting.** Skip forecasting entirely and allocate by risk.
 
+**4. Get μ from somewhere other than a sample mean.** Black-Litterman runs mean-variance
+backwards. If you assume the market portfolio — what everyone actually holds, in the
+proportions they hold it — is optimal for someone, exactly one vector of expected returns would
+have produced it:
+
+```
+Π = δ · Σ · w_market
+```
+
+That's not a forecast; it's the market's positioning restated in return space, and it contains
+no sample mean at all. You then blend in your own views with an explicit confidence on each,
+and the posterior is a precision-weighted average of the two. The useful part is that a view
+about one asset propagates: say gold does well, and if Σ knows gold moves with bonds, the
+posterior raises bonds too, without anyone writing a view about bonds. Plain max-Sharpe has no
+such mechanism — it only knows what you typed into μ.
+
+On this universe the equilibrium and the sample mean disagree by multiples:
+
+| | Equilibrium Π | 18y sample mean |
+|---|---|---|
+| SPY | 7.78% | 11.79% |
+| EFA | 8.03% | 5.53% |
+| AGG | 0.13% | 2.99% |
+| GLD | 1.44% | 9.03% |
+| VNQ | 9.69% | 9.57% |
+
+Equilibrium says gold and bonds should return little because they carry little of the market's
+risk. The sample says whatever the last eighteen years happened to deliver. RESULTS.md section
+8 asks whether starting from the first column actually helps out of sample, and gives an answer
+less flattering than the walk-forward table alone would suggest.
+
 ### Risk contributions and ERC
 
 Asset `i`'s share of total portfolio variance:
@@ -163,14 +194,15 @@ evidence the method doesn't work.
 
 ```
 ├── run_optimization.py    # driver: in-sample, risk contributions, shrinkage,
-│                          #   walk-forward, lookback sensitivity
+│                          #   walk-forward, Black-Litterman, sensitivities
 ├── src/
 │   ├── returns.py         # returns, annualized mu and Sigma
 │   ├── optimizer.py       # performance, min-variance, max-Sharpe
 │   ├── frontier.py        # efficient frontier sweep
 │   ├── risk_parity.py     # shrinkage, inverse-vol, risk contributions, ERC
-│   └── cvar.py            # CVaR/VaR, the Rockafellar-Uryasev LP
-└── tests/                 # 36 tests
+│   ├── cvar.py            # CVaR/VaR, the Rockafellar-Uryasev LP
+│   └── black_litterman.py # equilibrium returns, view blending
+└── tests/                 # 57 tests
 ```
 
 ## What the tests check

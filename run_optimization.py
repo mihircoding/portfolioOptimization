@@ -17,6 +17,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from src.black_litterman import (black_litterman_weights, equilibrium_returns,
+                                 implied_risk_aversion, relative_view)
 from src.cvar import cvar_of_weights, min_cvar_weights, var_of_weights
 from src.frontier import efficient_frontier
 from src.optimizer import (max_sharpe_turnover_penalized, max_sharpe_weights,
@@ -32,13 +34,77 @@ START, END = "2007-01-01", "2024-12-31"
 LOOKBACK_YEARS = 3
 SHRINKAGE = 0.3
 
+# Black-Litterman needs a "market portfolio" to reverse-optimize. These are the
+# five ETFs' net assets, so the anchor is what investors actually hold in these
+# funds rather than a number picked to make the result look good. Fetched live
+# when yfinance cooperates; these are the fallback, as of 2026-09-10.
+FALLBACK_AUM = {"SPY": 811.9e9, "EFA": 79.3e9, "AGG": 138.3e9,
+                "GLD": 152.9e9, "VNQ": 70.8e9}
+
+# The long-run Sharpe of a diversified market portfolio, used to set Black-
+# Litterman's risk aversion as delta = sharpe / sigma_market. Deliberately an
+# assumption rather than an estimate: computing delta from the sample mean
+# would smuggle the noisy input back in through the one door the whole method
+# exists to close.
+MARKET_SHARPE = 0.40
+
+# Magnitude of the momentum view, annualized. Fixed, not fitted - the question
+# this project asks is whether a view helps at all, and a magnitude tuned on
+# the same data would answer a different and much less interesting question.
+VIEW_SPREAD = 0.02
+
+
+def market_weights(tickers: list[str]) -> np.ndarray:
+    """Market-cap weights from the ETFs' net assets, normalized to sum to 1.
+
+    The honest caveat, stated once here rather than buried: these are today's
+    fund sizes used as the equilibrium anchor for a walk-forward starting in
+    2010. AUM shares move slowly and this is a weighting anchor rather than a
+    return forecast, so it is a mild offense, not a fatal one - but it is
+    information from after the fact, and RESULTS.md says so where the numbers
+    are reported.
+    """
+    aum = {}
+    for t in tickers:
+        try:
+            info = yf.Ticker(t).info
+            aum[t] = float(info.get("totalAssets") or info.get("netAssets")
+                           or FALLBACK_AUM[t])
+        except Exception:
+            aum[t] = FALLBACK_AUM[t]
+    total = sum(aum.values())
+    return np.array([aum[t] / total for t in tickers])
+
+
+def momentum_view(train: pd.DataFrame, spread: float = VIEW_SPREAD) -> tuple:
+    """"The best trailing performer beats the worst by `spread`."
+
+    A view has to come from somewhere, and for a walk-forward it has to come
+    from data available at the rebalance date. Twelve-month price momentum is
+    the most-documented cross-sectional signal there is, it needs nothing but
+    the training window, and it is entirely mechanical - no judgment calls to
+    tune afterwards.
+
+    Returns (P, Q) or (None, None) when the window is too short.
+    """
+    window = train.iloc[-252:] if len(train) >= 252 else train
+    if len(window) < 60:
+        return None, None
+    total = window.iloc[-1] / window.iloc[0] - 1
+    best, worst = int(np.argmax(total.values)), int(np.argmin(total.values))
+    if best == worst:
+        return None, None
+    return relative_view(len(total), best, worst, spread)
+
 
 def section(title: str) -> None:
     print(f"\n{title}\n" + "-" * len(title))
 
 
 def build_portfolios(mu: np.ndarray, cov: np.ndarray,
-                     train_returns: np.ndarray | None = None) -> dict:
+                     train_returns: np.ndarray | None = None,
+                     w_market: np.ndarray | None = None,
+                     view: tuple | None = None) -> dict:
     """train_returns (raw daily, not annualized) is optional and enables one
     more portfolio: Min CVaR. It's the only method here that doesn't reduce
     the training data to (mu, cov) first - it needs the actual scenarios,
@@ -56,6 +122,17 @@ def build_portfolios(mu: np.ndarray, cov: np.ndarray,
     }
     if train_returns is not None:
         portfolios["Min CVaR (95%)"] = min_cvar_weights(train_returns)
+
+    if w_market is not None:
+        # delta from an assumed market Sharpe and the ESTIMATED market vol -
+        # covariance is the input this repo trusts, sample means are not
+        market_vol = float(np.sqrt(w_market @ cov @ w_market))
+        delta = implied_risk_aversion(MARKET_SHARPE * market_vol, market_vol ** 2)
+        portfolios["Black-Litterman (no views)"] = black_litterman_weights(
+            cov, w_market, delta)
+        if view is not None and view[0] is not None:
+            portfolios["Black-Litterman (momentum)"] = black_litterman_weights(
+                cov, w_market, delta, view[0], view[1])
     return portfolios
 
 
@@ -130,7 +207,8 @@ def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
 
 
 def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
-                 verbose: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
+                 verbose: bool = True,
+                 w_market: np.ndarray | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Refit annually on a trailing window, hold for the next year."""
     if verbose:
         section(f"4. Walk-forward, out of sample ({lookback}y trailing estimate, "
@@ -155,7 +233,8 @@ def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
         cov = annualized_cov(train).values
         train_returns = daily_returns(train).values
         try:
-            portfolios = build_portfolios(mu, cov, train_returns)
+            portfolios = build_portfolios(mu, cov, train_returns, w_market,
+                                          momentum_view(train))
         except RuntimeError as e:
             if verbose:
                 print(f"  {year}: optimizer failed ({e}); skipped")
@@ -269,6 +348,82 @@ def turnover_penalized_walk_forward(prices: pd.DataFrame,
     return summary
 
 
+def equilibrium_section(prices: pd.DataFrame, cov: np.ndarray,
+                        w_market: np.ndarray) -> None:
+    """What the market's own positioning implies about expected returns.
+
+    Everything in section 1 that involves mu uses the sample mean, which is
+    the input RESULTS.md spends most of its length being suspicious of.
+    Black-Litterman offers a different one: assume the market portfolio is
+    optimal for somebody, and solve backwards for the returns that would make
+    it so. No sample mean is involved at any point.
+    """
+    section("7. Black-Litterman: what does the market already believe?")
+
+    market_vol = float(np.sqrt(w_market @ cov @ w_market))
+    delta = implied_risk_aversion(MARKET_SHARPE * market_vol, market_vol ** 2)
+    pi = equilibrium_returns(cov, w_market, delta)
+    sample_mu = annualized_mean(prices).values
+
+    print(f"Market portfolio by fund net assets: {weight_string(w_market)}")
+    print(f"Market vol {market_vol:.2%}, assumed Sharpe {MARKET_SHARPE:.2f} "
+          f"-> risk aversion delta = {delta:.2f}\n")
+    print(f"{'asset':<8} {'equilibrium':>12} {'sample mean':>12} {'difference':>12}")
+    for i, t in enumerate(UNIVERSE):
+        print(f"{t:<8} {pi[i]:>12.2%} {sample_mu[i]:>12.2%} "
+              f"{sample_mu[i] - pi[i]:>12.2%}")
+    print("\nThe two columns disagree by multiples, and the sample column is the")
+    print("one with 18 years of noise in it. Equilibrium says gold and bonds")
+    print("should return little because they carry little of the market's risk;")
+    print("the sample says whatever the last 18 years happened to deliver.")
+    print("Max-Sharpe optimizes against the second column. That is the whole")
+    print("complaint this project has been making, restated as two columns.")
+
+
+# Anchors to test Black-Litterman's dependence on the equilibrium it starts
+# from. "AUM" is today's fund sizes; the other two are deliberate alternatives
+# so the result can be checked against a less equity-heavy starting point.
+ALT_ANCHORS = {
+    "Fund AUM (65% SPY)": None,                                  # filled at runtime
+    "Textbook global market": np.array([0.40, 0.15, 0.30, 0.05, 0.10]),
+    "Equal weight anchor": np.full(5, 0.2),
+}
+
+
+def anchor_sensitivity(prices: pd.DataFrame, w_market: np.ndarray) -> None:
+    """How much of Black-Litterman's result is the anchor?
+
+    This matters more here than the usual robustness check, because the AUM
+    anchor is the one genuinely forward-looking input in the whole project:
+    SPY is 65% of these five funds' assets TODAY, and a large part of why is
+    that US equities outperformed over exactly the window being tested. An
+    equilibrium anchor built from the winners is not a fair starting point,
+    and a Black-Litterman result that only survives that anchor is not a
+    result at all.
+
+    So: run it again from two anchors that know nothing about the outcome.
+    """
+    section("8. Is Black-Litterman's edge just a well-chosen anchor?")
+
+    anchors = dict(ALT_ANCHORS)
+    anchors["Fund AUM (65% SPY)"] = w_market
+
+    print(f"{'anchor':<24} {'weights':<44} {'no views':>9} {'momentum':>9}")
+    for label, anchor in anchors.items():
+        _, summary = walk_forward(prices, verbose=False, w_market=anchor)
+        rows = summary.set_index("portfolio")["sharpe"]
+        no_view = rows.get("Black-Litterman (no views)", float("nan"))
+        with_view = rows.get("Black-Litterman (momentum)", float("nan"))
+        print(f"{label:<24} {weight_string(anchor):<44} "
+              f"{no_view:>9.2f} {with_view:>9.2f}")
+
+    _, base = walk_forward(prices, verbose=False)
+    ew = float(base.loc[base["portfolio"] == "Equal weight", "sharpe"].iloc[0])
+    print(f"\nEqual weight, same walk-forward, for comparison: {ew:.2f}")
+    print("If the two outcome-blind anchors also clear that bar, the method is")
+    print("doing work. If only the AUM anchor does, the result was the anchor.")
+
+
 def lookback_sensitivity(prices: pd.DataFrame) -> None:
     """The same test at four estimation windows.
 
@@ -279,7 +434,8 @@ def lookback_sensitivity(prices: pd.DataFrame) -> None:
     section("6. Does the ranking survive a different estimation window?")
     print(f"{'portfolio':<26} " + " ".join(f"{lb}y".rjust(7) for lb in (2, 3, 5, 7)))
 
-    results = {lb: walk_forward(prices, lookback=lb, verbose=False)[1]
+    w_mkt = market_weights(UNIVERSE)
+    results = {lb: walk_forward(prices, lookback=lb, verbose=False, w_market=w_mkt)[1]
                for lb in (2, 3, 5, 7)}
     names = results[3]["portfolio"].tolist()
     for name in names:
@@ -299,9 +455,13 @@ def main() -> None:
     print(f"Data: {prices.index[0].date()} -> {prices.index[-1].date()}, "
           f"{len(prices):,} trading days")
 
+    w_mkt = market_weights(UNIVERSE)
+
     mu, cov, portfolios = in_sample(prices)
-    panel, _ = walk_forward(prices)
+    panel, _ = walk_forward(prices, w_market=w_mkt)
     turnover_penalized_walk_forward(prices)
+    equilibrium_section(prices, cov, w_mkt)
+    anchor_sensitivity(prices, w_mkt)
     lookback_sensitivity(prices)
 
     ef = efficient_frontier(mu, cov, n_points=60)

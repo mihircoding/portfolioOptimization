@@ -70,11 +70,18 @@ rebalances, 2010–2024. Fully out of sample.
 
 | Portfolio | Ann. return | Ann. vol | Sharpe | Worst year | Turnover |
 |---|---|---|---|---|---|
-| **Equal weight** | **7.80%** | 9.46% | **0.82** | −14.21% | **0.0%** |
+| Black-Litterman (momentum view) | 8.75% | 8.65% | **1.01** | −12.53% | **21.8%** |
+| Black-Litterman (no views) | **10.78%** | 10.86% | 0.99 | −15.21% | 0.3% |
+| **Equal weight** | 7.80% | 9.46% | 0.82 | −14.21% | **0.0%** |
 | Inverse vol | 5.79% | 7.32% | 0.79 | −12.67% | 3.5% |
 | Equal risk contribution | 5.42% | 7.08% | 0.77 | −12.09% | 4.2% |
-| Max Sharpe | 6.65% | 8.89% | 0.75 | −11.70% | **16.2%** |
+| Max Sharpe | 6.65% | 8.89% | 0.75 | −11.70% | 16.2% |
 | Min variance | 3.32% | 5.74% | 0.58 | −13.04% | 2.3% |
+
+The two Black-Litterman rows are new and they top the table. **Do not believe them yet** —
+section 8 takes them apart, and most of that margin turns out to belong to the starting point
+rather than to the method. The rest of this section is about the five rows below them, whose
+ranking is unchanged.
 
 **Max Sharpe went from 1st in sample (0.90) to 4th out of sample (0.75). Equal weight went from
 5th (0.55) to 1st (0.82).**
@@ -146,6 +153,77 @@ the mean-return estimation problem in one row: a longer window buys precision ab
 that isn't stable, so you estimate a stale quantity more accurately.
 
 ---
+
+## 8. Black-Litterman, and how much of it is the anchor
+
+Section 4 has Black-Litterman first and second by out-of-sample Sharpe, ahead of equal weight,
+at every estimation window tested:
+
+| Portfolio | 2y | 3y | 5y | 7y |
+|---|---|---|---|---|
+| Black-Litterman (momentum) | 1.09 | 1.01 | 0.95 | 0.83 |
+| Black-Litterman (no views) | 1.05 | 0.99 | 0.95 | 0.82 |
+| Equal weight | 0.87 | 0.82 | 0.75 | 0.69 |
+| Max Sharpe | 0.79 | 0.75 | 0.55 | 0.62 |
+
+That looks like the answer to this whole document. It mostly isn't, for a reason worth being
+blunt about.
+
+**The anchor is contaminated.** Black-Litterman needs a market portfolio to reverse-optimize,
+and the one used here is the five ETFs' net assets — SPY is 65% of the total. But SPY is 65%
+*today*, and a large part of why is that US equities beat the other four over exactly the
+2010–2024 window being tested. The equilibrium anchor was built, in part, out of the answer.
+That is not a rounding error in a walk-forward; it is information from after the fact sitting
+in the most important input.
+
+So run it again from anchors that know nothing about the outcome:
+
+| Anchor | Weights | BL, no views | BL, momentum |
+|---|---|---|---|
+| Fund AUM (today's) | 65/6/11/12/6 | 0.99 | 1.01 |
+| Textbook global market | 40/15/30/5/10 | 0.90 | 0.92 |
+| Equal weight anchor | 20/20/20/20/20 | 0.83 | 0.79 |
+
+Equal weight over the same walk-forward is 0.82.
+
+Three things fall out of that table.
+
+**Most of the edge was the anchor.** Going from today's fund sizes to a plausible outcome-blind
+global market allocation costs 0.09 of Sharpe. Going all the way to an equal anchor costs 0.16
+and lands on top of equal weight — which is what should happen, since Black-Litterman with an
+equal anchor and no views is equal weight with a covariance-shaped nudge. The method does not
+manufacture an edge; it inherits whatever the anchor had.
+
+**Some of it isn't.** The textbook-global anchor is an honest, publicly-stated allocation that
+nobody chose with hindsight, and it still clears equal weight 0.90 to 0.82. That gap is small
+and, on 15 annual observations, not significant on its own — but it points the same direction
+as the rest of this document. Getting μ from the covariance matrix and observable holdings
+instead of from an 18-year sample mean is the same move as dropping μ entirely (min variance),
+except it keeps the return forecast instead of throwing it away, and it does better than both
+max-Sharpe and min-variance at every window.
+
+**The views did essentially nothing.** The momentum view adds 0.02 of Sharpe at the AUM anchor,
+0.02 at the global anchor, and *subtracts* 0.04 at the equal anchor. It also costs 21.8%
+one-way turnover a year — the highest number in section 4's table, more than max-Sharpe's 16.2%
+— because the trailing-momentum leader changes and the book chases it. Paying the most
+turnover in the study to buy 0.02 of Sharpe that flips sign under a different anchor is not a
+strategy; it is noise with a transaction cost.
+
+The honest summary is that Black-Litterman's contribution here is a better *prior*, not a
+better *forecast*. Which is roughly what Black and Litterman said it was.
+
+Two implementation notes, since both are places to get it wrong:
+
+- **Risk aversion δ comes from an assumption, not the data.** δ = 0.40 / σ_market, i.e. a
+  long-run market Sharpe of 0.4 divided by the trailing estimate of market volatility.
+  Computing δ from the sample mean instead would smuggle the noisy input back in through the
+  one door the method exists to close.
+- **The posterior covariance is Σ + M, not Σ.** M is the uncertainty in μ_BL itself. Including
+  it is the honest choice and it costs the textbook identity: with no views, the unconstrained
+  answer becomes w_market / (1+τ) rather than w_market, and under a fully-invested constraint
+  that missing 5% gets re-invested along the minimum-variance direction. `tests/
+  test_black_litterman.py` pins down both versions so the difference is deliberate rather than
+  discovered later.
 
 ## 7. CVaR: does targeting tail risk directly change anything here?
 
@@ -220,8 +298,13 @@ doesn't affect the ranking, but the Sharpe levels are overstated.
 equal weight's favor and change nothing material.
 
 **Five assets is an easy problem.** The estimation pathology gets dramatically worse with more
-assets, which is where shrinkage, factor models, and Black-Litterman earn their keep — none of
-which are implemented here.
+assets, which is where shrinkage, factor models and Black-Litterman earn their keep. Shrinkage
+and Black-Litterman are implemented here; with only five assets, neither gets to show what it
+can really do.
+
+**The Black-Litterman anchor uses today's fund sizes.** Stated in section 8 as well, because it
+is the one genuinely forward-looking input anywhere in this project and it should not be
+possible to read the walk-forward table without meeting it.
 
 ## What I'd build next
 
@@ -236,8 +319,11 @@ which are implemented here.
    is closer to what the formula would recommend on a much shorter window
    (a few hundred observations, or many more assets) — worth keeping in mind
    before copying 0.3 into a problem with a different N and T.
-2. **Black-Litterman** — start from market-implied equilibrium returns and tilt with explicit
-   views and confidences, instead of feeding raw historical means into an optimizer.
+2. ~~Black-Litterman~~ — done, `src/black_litterman.py`, results in section 8. The short
+   version: it beats everything in the walk-forward table, and roughly two thirds of that
+   margin traces to an equilibrium anchor built from today's fund sizes rather than to the
+   method. The momentum view attached to it buys 0.02 of Sharpe for the highest turnover in the
+   study. Worth having; not worth believing at face value.
 3. **Factor-model covariance** — estimate `Σ = BΩBᵀ + D` from a handful of factors instead of
    `N(N+1)/2` free parameters.
 4. ~~Turnover penalty in the objective~~ — done, see section 5. A quadratic penalty helps up to

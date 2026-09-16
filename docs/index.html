@@ -229,6 +229,44 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 
 <section>
 <div class="wrap">
+  <div class="eyebrow">Black-Litterman</div>
+  <h2>A better prior, not a better forecast</h2>
+  <p class="lede">Every complaint on this page comes back to &mu;. Black-Litterman runs mean-variance backwards to get one without a sample mean: assume the market portfolio is optimal for somebody, and exactly one return vector <span class="mono">&Pi; = &delta;&Sigma;w<sub>mkt</sub></span> would have produced it. Then blend in your views, weighted by how sure you are of each.</p>
+
+  <div class="grid2" style="grid-template-columns:1fr 1.15fr;align-items:start">
+    <div class="scroll">
+      <table id="t-bl"><thead><tr><th>Asset</th><th class="n">Equilibrium &Pi;</th><th class="n">18y sample mean</th><th class="n">Gap</th></tr></thead><tbody></tbody></table>
+      <p class="cap">The left column comes from the covariance matrix and observable fund sizes. The right column is eighteen years of whatever happened. Max-Sharpe optimizes against the right one.</p>
+    </div>
+    <div>
+      <p>Equilibrium says gold and bonds should return almost nothing, because they carry almost none of the market's risk. The sample says gold returned 9% a year. Both statements are true about different questions, and only one of them is an input you can estimate reliably.</p>
+      <p>The other thing the construction buys is coherence: a view about one asset propagates through &Sigma; to everything correlated with it. Say gold does well and the posterior raises bonds too, without anyone writing a view about bonds. Plain max-Sharpe has no such mechanism — it only knows what you typed in.</p>
+      <p>In the walk-forward table above, Black-Litterman finishes first and second at every estimation window. <strong style="color:var(--ink)">That result is worth less than it looks</strong>, for the reason below.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><strong>The anchor is contaminated, so here is the same test from anchors that don't know the answer.</strong> SPY is 65% of these five funds' assets <em>today</em>, and a large part of why is that US equities beat the other four over exactly the window being tested. The equilibrium was built partly out of the outcome.</p>
+  </div>
+
+  <div class="scroll" style="margin-top:16px">
+    <table id="t-anchor"><thead><tr><th>Anchor</th><th>Weights</th><th class="n">BL, no views</th><th class="n">BL, momentum view</th></tr></thead><tbody></tbody></table>
+  </div>
+  <p class="cap">Out-of-sample Sharpe, 3-year window, 15 annual rebalances. Equal weight over the same walk-forward: <strong style="color:var(--ink)" id="x-ew">&mdash;</strong>.</p>
+
+  <div class="grid2" style="margin-top:22px">
+    <div>
+      <p><strong style="color:var(--ink)">Most of the edge was the anchor.</strong> Swapping today's fund sizes for a plausible outcome-blind global allocation costs 0.09 of Sharpe. Going all the way to an equal anchor lands right on top of equal weight — which is exactly what should happen, since Black-Litterman with an equal anchor and no views <em>is</em> equal weight with a covariance-shaped nudge. The method inherits whatever the anchor had; it doesn't manufacture an edge.</p>
+    </div>
+    <div>
+      <p><strong style="color:var(--ink)">The views did essentially nothing.</strong> The momentum view adds 0.02 of Sharpe at two anchors and subtracts 0.04 at the third, while costing the highest turnover of anything in this study — more than max-Sharpe. Paying the most turnover on the page to buy 0.02 of Sharpe that flips sign under a different starting point is noise with a transaction cost, not a strategy.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
   <div class="eyebrow">Limitations</div>
   <h2>Limitations</h2>
   <div class="grid2">
@@ -379,6 +417,24 @@ document.querySelector('#t-cvar tbody').innerHTML = D.in_sample.map(p => `
       <td class="n">${pct(p.vol)}</td>
       <td class="n">${pct(p.var95)}</td>
       <td class="n"><strong>${pct(p.cvar95)}</strong></td></tr>`).join('');
+
+/* ---------------- Black-Litterman ---------------- */
+const BL = D.bl;
+document.querySelector('#t-bl tbody').innerHTML = D.meta.universe.map((t, i) => `
+  <tr><td><strong>${t}</strong></td>
+      <td class="n">${pct(BL.equilibrium[i])}</td>
+      <td class="n">${pct(BL.sample_mean[i])}</td>
+      <td class="n">${(BL.sample_mean[i] - BL.equilibrium[i] >= 0 ? '+' : '') +
+                      pct(BL.sample_mean[i] - BL.equilibrium[i])}</td></tr>`).join('');
+
+document.querySelector('#t-anchor tbody').innerHTML = BL.anchors.map(a => `
+  <tr><td><strong>${a.label}</strong></td>
+      <td class="mono">${a.weights.map(w => Math.round(w * 100)).join(' / ')}</td>
+      <td class="n">${a.no_views.toFixed(2)}</td>
+      <td class="n">${a.momentum.toFixed(2)}</td></tr>`).join('');
+
+const ewRow = D.walk_forward[D.meta.lookback].find(r => r.name === 'Equal weight');
+document.getElementById('x-ew').textContent = ewRow ? ewRow.sharpe.toFixed(2) : '\u2014';
 
 </script>
 </body>

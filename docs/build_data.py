@@ -16,7 +16,9 @@ import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from run_optimization import END, LOOKBACK_YEARS, START, UNIVERSE, build_portfolios, walk_forward
+from run_optimization import (ALT_ANCHORS, END, LOOKBACK_YEARS, MARKET_SHARPE, START,
+                              UNIVERSE, build_portfolios, market_weights, walk_forward)
+from src.black_litterman import equilibrium_returns, implied_risk_aversion
 from src.cvar import cvar_of_weights, var_of_weights
 from src.frontier import efficient_frontier
 from src.optimizer import portfolio_performance
@@ -35,8 +37,13 @@ def main():
     cov = annualized_cov(prices).values
     rets = daily_returns(prices).values
 
+    w_market = market_weights(UNIVERSE)
+    market_vol = float(np.sqrt(w_market @ cov @ w_market))
+    delta = implied_risk_aversion(MARKET_SHARPE * market_vol, market_vol ** 2)
+    pi = equilibrium_returns(cov, w_market, delta)
+
     print("in-sample portfolios...")
-    portfolios = build_portfolios(mu, cov, rets)
+    portfolios = build_portfolios(mu, cov, rets, w_market)
 
     in_sample = []
     for name, w in portfolios.items():
@@ -59,7 +66,8 @@ def main():
     lookbacks = {}
     panel_3y = None
     for lb in (2, 3, 5, 7):
-        panel, summary = walk_forward(prices, lookback=lb, verbose=False)
+        panel, summary = walk_forward(prices, lookback=lb, verbose=False,
+                                      w_market=w_market)
         lookbacks[lb] = [{"name": r["portfolio"], "cagr": round(r["cagr"], 4),
                           "vol": round(r["vol"], 4), "sharpe": round(r["sharpe"], 3),
                           "worst": round(r["worst"], 4),
@@ -74,6 +82,20 @@ def main():
                            for c in cumulative.columns},
             }
 
+    print("anchor sensitivity...")
+    anchors = dict(ALT_ANCHORS)
+    anchors["Fund AUM (65% SPY)"] = w_market
+    anchor_rows = []
+    for label, anchor in anchors.items():
+        _, summary = walk_forward(prices, verbose=False, w_market=anchor)
+        by_name = summary.set_index("portfolio")["sharpe"]
+        anchor_rows.append({
+            "label": label,
+            "weights": [round(float(x), 4) for x in anchor],
+            "no_views": round(float(by_name.get("Black-Litterman (no views)", float("nan"))), 3),
+            "momentum": round(float(by_name.get("Black-Litterman (momentum)", float("nan"))), 3),
+        })
+
     data = {
         "meta": {"universe": UNIVERSE, "start": str(prices.index[0].date()),
                  "end": str(prices.index[-1].date()), "days": len(prices),
@@ -85,6 +107,14 @@ def main():
         "frontier": frontier,
         "walk_forward": lookbacks,
         "growth": panel_3y,
+        "bl": {
+            "market_weights": [round(float(x), 4) for x in w_market],
+            "delta": round(delta, 3),
+            "market_vol": round(market_vol, 4),
+            "equilibrium": [round(float(x), 4) for x in pi],
+            "sample_mean": [round(float(x), 4) for x in mu],
+            "anchors": anchor_rows,
+        },
     }
 
     OUT.write_text("window.DATA = " + json.dumps(data, separators=(",", ":")) + ";\n",

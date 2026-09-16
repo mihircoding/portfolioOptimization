@@ -78,6 +78,31 @@ def max_sharpe_weights(mu: np.ndarray, cov: np.ndarray, rf: float = 0.0,
     return result.x
 
 
+def max_utility_weights(mu: np.ndarray, cov: np.ndarray, risk_aversion: float,
+                        long_only: bool = True) -> np.ndarray:
+    """Maximize mean-variance utility:  w'mu - (delta/2) w'Sigma w.
+
+    The other objectives here optimize a ratio (Sharpe) or a pure risk number
+    (variance, CVaR). This one optimizes the quantity Markowitz actually wrote
+    down: return minus a penalty on variance, with `risk_aversion` (delta)
+    setting the exchange rate between the two.
+
+    It exists because Black-Litterman needs it. BL's whole construction runs
+    through delta - the posterior returns come from reverse-optimizing the
+    market portfolio at a given risk aversion, so the forward step has to
+    invert the same objective or the round trip won't close. Unconstrained,
+    the answer is the closed form w = (delta*Sigma)^-1 mu; this is that same
+    problem with a budget constraint and optional no-shorting, which is what
+    the rest of this repo assumes.
+    """
+    n = len(mu)
+    result = minimize(lambda w: -(w @ mu) + 0.5 * risk_aversion * (w @ cov @ w),
+                      x0=np.full(n, 1 / n), **_setup(n, long_only))
+    if not result.success:
+        raise RuntimeError(f"max-utility optimization failed: {result.message}")
+    return result.x
+
+
 def max_sharpe_turnover_penalized(mu: np.ndarray, cov: np.ndarray, w_prev: np.ndarray,
                                   penalty: float, rf: float = 0.0,
                                   long_only: bool = True) -> np.ndarray:
