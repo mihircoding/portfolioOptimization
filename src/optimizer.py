@@ -57,6 +57,33 @@ def min_variance_weights(cov: np.ndarray, long_only: bool = True) -> np.ndarray:
         raise RuntimeError(f"min-variance optimization failed: {result.message}")
     return result.x
 
+def min_variance_weights_analytic(cov: np.ndarray) -> np.ndarray:
+    """The unconstrained global minimum-variance portfolio, in closed form:
+
+        w = Sigma^-1 1 / (1' Sigma^-1 1)
+
+    Same objective as `min_variance_weights(long_only=False)`, solved by linear
+    algebra instead of by SLSQP. Two reasons it exists as its own function.
+
+    Speed: the studies in `factor_study.py` re-solve this a few hundred times
+    across several covariance estimators, and a 50-asset SLSQP solve with no
+    bounds to guide it is both slow and prone to returning `success=False`.
+
+    Honesty: the closed form makes it obvious where the damage comes from. The
+    weights are an inverse covariance applied to a vector of ones, so any
+    direction the estimate claims has near-zero variance gets a near-infinite
+    weight. That is the whole estimation-error story in one line, and a
+    numerical optimizer hides it behind an iteration count.
+
+    Uses `solve` rather than forming the inverse - the inverse of a badly
+    conditioned matrix is exactly the object you least want to compute
+    explicitly.
+    """
+    n = len(cov)
+    ones = np.ones(n)
+    z = np.linalg.solve(cov, ones)
+    return z / z.sum()
+
 
 def max_sharpe_weights(mu: np.ndarray, cov: np.ndarray, rf: float = 0.0,
                        long_only: bool = True) -> np.ndarray:

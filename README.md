@@ -3,8 +3,8 @@
 **[Live site &rarr;](https://mihircoding.github.io/portfolioOptimization/)** — the efficient frontier, the risk-contribution gap and the walk-forward result, charted from this repo's own output.
 
 Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, risk
-parity, and CVaR (tail-risk) optimization — implemented, then tested the only way that matters:
-out of sample.
+parity, CVaR (tail-risk) optimization and a statistical factor risk model — implemented, then
+tested the only way that matters: out of sample.
 
 In sample, the max-Sharpe portfolio wins with a Sharpe of 0.90. It has to; it's defined as the
 in-sample argmax. Walk it forward on a trailing estimation window and it finishes **fourth of
@@ -12,12 +12,18 @@ six**, behind equal weighting — which requires no estimation, no optimizer, an
 That result holds at every estimation window tested. [RESULTS.md](RESULTS.md) has the numbers;
 [INTERVIEW.md](INTERVIEW.md) has how to talk about them.
 
-57 tests.
+Five ETFs is a forgiving problem, so `factor_study.py` re-runs the risk machinery on 50 US large
+caps, where a covariance matrix has 1,275 parameters and a year of data to fit them with. There
+the sample covariance promises 9.2% risk and delivers 15.5%. Section 9 of RESULTS.md is what does
+and does not fix that — and the answer turns out to be a constraint rather than an estimator.
+
+73 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q            # 57 passed
+python -m pytest -q            # 73 passed
 python run_optimization.py     # full analysis, writes frontier.png
+python factor_study.py         # the 50-asset risk-model study (section 9)
 ```
 
 ![Efficient frontier and out-of-sample growth](frontier.png)
@@ -195,14 +201,16 @@ evidence the method doesn't work.
 ```
 ├── run_optimization.py    # driver: in-sample, risk contributions, shrinkage,
 │                          #   walk-forward, Black-Litterman, sensitivities
+├── factor_study.py        # driver: the 50-asset risk-model study
 ├── src/
 │   ├── returns.py         # returns, annualized mu and Sigma
 │   ├── optimizer.py       # performance, min-variance, max-Sharpe
 │   ├── frontier.py        # efficient frontier sweep
 │   ├── risk_parity.py     # shrinkage, inverse-vol, risk contributions, ERC
 │   ├── cvar.py            # CVaR/VaR, the Rockafellar-Uryasev LP
+│   ├── factor_model.py    # Sigma = B Omega B' + D, Marchenko-Pastur factor count
 │   └── black_litterman.py # equilibrium returns, view blending
-└── tests/                 # 57 tests
+└── tests/                 # 73 tests
 ```
 
 ## What the tests check
@@ -226,10 +234,17 @@ Properties with known answers, not smoke tests:
 - Two assets engineered to share identical mean and variance but different tail shape get
   **different** weights from `min_cvar_weights` — the one property no variance-based method in
   this project could possibly satisfy, by construction.
+- The factor covariance **reproduces the sample covariance exactly at k = N** and its diagonal
+  at every k — asset variances are the one thing a sample estimate gets right, so the model must
+  restructure correlations without touching them.
+- It stays **positive definite from 10 observations of 30 assets**, where the sample covariance
+  has 21 eigenvalues at zero. That singularity is what produces absurd optimizer output, so the
+  test asserts the resulting gross exposure too.
+- 40 **independent** series produce **zero** significant factors under the Marchenko-Pastur
+  cutoff — a factor count that fires on noise is worse than no factor count.
 
 ## Known simplifications
 
-- Sample estimators only. No factor model, no Ledoit-Wolf optimal α, no Black-Litterman.
 - Historical mean as the return forecast, which is the weakest possible choice and part of what
   the walk-forward demonstrates.
 - ~~Variance as the risk measure~~ — CVaR optimization is now implemented (`src/cvar.py`,
@@ -237,8 +252,10 @@ Properties with known answers, not smoke tests:
   matched-mean-and-variance synthetic test), though on this project's own 5-ETF universe it
   converges to nearly the same portfolio as min-variance — RESULTS.md explains why. Semi-variance
   is a related idea still not implemented here.
-- Five liquid ETFs. With 50+ assets the covariance estimation problem gets far worse and
-  shrinkage stops being optional.
+- ~~Five liquid ETFs~~ — `factor_study.py` runs the same tests on 50 US large caps, and the
+  covariance problem does get far worse: 2.3x understatement of realized risk against 1.3x here.
+  The five-ETF results in RESULTS.md sections 1-8 are still five ETFs, though, and should be read
+  as the easy end of the problem.
 - Turnover is measured but not charged. At 16% one-way turnover and realistic ETF costs the drag
   is a couple of basis points a year — real, but not what explains the results here.
 - Annual rebalancing on calendar years. No tax, no drift bands, no rebalancing-cost optimization.
@@ -246,6 +263,10 @@ Properties with known answers, not smoke tests:
 ## Reading
 
 - Markowitz (1952), *Portfolio Selection* — seven pages, still worth reading.
+- Jagannathan & Ma (2003), *Risk Reduction in Large Portfolios: Why Imposing the Wrong
+  Constraints Helps* — the result section 9 reproduces.
+- Laloux, Cizeau, Bouchaud & Potters (1999), *Noise Dressing of Financial Correlation Matrices*
+  — where random matrix theory got pointed at covariance estimation.
 - DeMiguel, Garlappi & Uppal (2009), *Optimal Versus Naive Diversification* — the paper this
   project's walk-forward result reproduces.
 - Ledoit & Wolf (2004), *Honey, I Shrunk the Sample Covariance Matrix*.

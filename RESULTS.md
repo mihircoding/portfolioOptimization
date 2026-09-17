@@ -1,6 +1,7 @@
 # Results
 
-All 24 tests pass (`python -m pytest -q`). Numbers below are `python run_optimization.py`.
+All 73 tests pass (`python -m pytest -q`). Numbers below are `python run_optimization.py`,
+except section 9, which is `python factor_study.py`.
 
 Universe: SPY (US equity), EFA (intl equity), AGG (bonds), GLD (gold), VNQ (REITs).
 Data: 2007-01-03 → 2024-12-30, 4,529 trading days. Risk-free rate assumed 0 throughout.
@@ -276,6 +277,139 @@ number.
 
 ---
 
+## 9. Fifty assets: where a covariance matrix starts to matter
+
+Every number above this line comes from five ETFs, and the caveats section says plainly that five
+assets is an easy problem. This section is the hard one: 50 US large caps, 2006-2024, quarterly
+rebalance, everything out of sample. `python factor_study.py`.
+
+The question is not which portfolio earned more. Returns over any one sample are mostly luck. The
+question is whether the risk number each estimator printed at the rebalance turned out to be true,
+which is measurable every quarter and is the number a risk manager is actually paid to get right.
+
+### The counting problem
+
+| Window | Observations per parameter | Noise edge λ₊ | Eigenvalues above it | Their share of variance |
+|---|---|---|---|---|
+| 126d | 4.9 | 2.66 | 3 | 43% |
+| 252d | 9.9 | 2.09 | 3 | 36% |
+| 504d | 19.8 | 1.73 | 4 | 43% |
+| 1008d | 39.5 | 1.50 | 5 | 52% |
+
+A 50×50 covariance matrix has 1,275 free parameters. λ₊ = (1 + √(N/T))² is the Marchenko-Pastur
+edge: the largest eigenvalue a correlation matrix of this shape produces when the underlying data
+has *no structure at all*. At a 126-day window it sits at 2.66, so an eigenvalue of 2 there means
+nothing; at 1008 days the edge is 1.50 and the same eigenvalue is a real factor. Identical number,
+opposite verdict, purely from how much data went into the matrix.
+
+Three to five directions clear the band. The other 45-47 are noise, and a min-variance optimizer
+is a machine for finding the smallest eigenvalue and betting on it.
+
+### What each estimate promised, and what it delivered
+
+Unconstrained minimum variance, quarterly, four estimation windows. `predicted` is the volatility
+the estimate claimed at the rebalance; `realized` is what the portfolio then did.
+
+The first row is the control and it is the reason the rest of the table can be read at all. It
+holds 1/N every quarter and optimizes nothing, so its ratio is not estimation error — it is
+volatility clustering, the fact that the quarter after a calm window is often not calm. Every
+other row has to clear **1.12** before any of its miss can be blamed on the matrix.
+
+| 252-day window | predicted | realized | ratio | turnover | gross short |
+|---|---|---|---|---|---|
+| Equal weight (control) | 16.79% | 18.87% | **1.12** | 0% | 0% |
+| Sample | 9.22% | 15.48% | 1.68 | 94% | 104% |
+| Shrunk (Ledoit-Wolf) | 9.40% | 15.02% | **1.60** | 76% | 83% |
+| Factor (k from MP) | 8.27% | 16.25% | 1.97 | 54% | 68% |
+| Diagonal only | 3.29% | 16.67% | 5.07 | 5% | 0% |
+
+| Sample covariance, by window | predicted | realized | ratio | control ratio |
+|---|---|---|---|---|
+| 126d | 7.41% | 17.08% | 2.30 | 1.16 |
+| 252d | 9.22% | 15.48% | 1.68 | 1.12 |
+| 504d | 10.61% | 15.17% | 1.43 | 1.07 |
+| 1008d | 11.50% | 13.74% | 1.20 | 0.89 |
+
+**Two separate things are true and they point in opposite directions.** Minimum variance works:
+15.5% realized against 18.9% for holding all fifty equally, a fifth less risk, exactly as
+advertised. And the risk *number* is a fantasy: on a 126-day window the optimizer promised 7.4%
+and delivered 17.1%. The portfolio was fine. The report was off by a factor of 2.3, and shrinking
+the window — the obvious way to be "more responsive to current conditions" — is what makes it
+worse.
+
+The diagonal row is the reductio. Assume every correlation is zero and you predict 3.3% risk for a
+portfolio that runs at 16.7%: a 5× understatement from an assumption that sounds merely
+conservative.
+
+### How many factors? The bias-variance tradeoff, measured
+
+Same test, only k changes. k = 50 reproduces the sample covariance exactly, so this is a continuum
+rather than a list of alternatives.
+
+| k (1008-day window) | predicted | realized | ratio | turnover |
+|---|---|---|---|---|
+| 1 | 7.43% | 16.00% | 2.15 | 9% |
+| 2 | 9.28% | 16.89% | 1.82 | 17% |
+| 3 | 10.33% | 15.40% | 1.49 | 22% |
+| 5 | 10.81% | 15.31% | 1.42 | 23% |
+| 10 | 11.12% | **14.78%** | 1.33 | 29% |
+| 20 | 10.96% | 14.98% | 1.37 | 40% |
+| 50 (= sample) | 11.50% | **13.74%** | **1.20** | 25% |
+
+Realized risk falls as k rises to 10, worsens at 20, and is lowest at 50 — the sample covariance
+this section was supposed to improve on. **The factor model loses here, and the reason is in the
+first table.** Marchenko-Pastur says keep 5 factors at this window; realized risk is minimized
+around 10 and keeps improving to 50. The cutoff answers "which eigenvalues are distinguishable
+from noise," and that is not the same question as "which eigenvalues are worth keeping." A
+direction can be statistically indistinguishable from noise and still be a better estimate of the
+truth than zero.
+
+The other half of the answer: a factor model asserts that residual correlations are exactly zero.
+Among 50 mega-caps, residuals within a sector are not zero — two money-center banks co-move for
+reasons no small set of principal components captures — and setting those to zero tells the
+optimizer that a pairs-like position in JPM and BAC is better diversified than it is. With 4,700
+days of history on 50 liquid names, that lie costs more than the noise it removes. Reverse the
+ratio — 500 names on a one-year window — and the arithmetic flips, which is why the industry's
+risk models are factor models. This universe simply is not starved enough.
+
+What the factor model does buy is honesty about leverage: at k = 5 it runs 86% gross short against
+the sample's 80% for a fifth less turnover, and at short windows it roughly halves both. That is a
+real result and it is not the one it was built for.
+
+### The constraint beats all of it (Jagannathan-Ma)
+
+Same test, same windows, shorting forbidden.
+
+| 252-day window, long-only | predicted | realized | ratio | turnover |
+|---|---|---|---|---|
+| Equal weight (control) | 16.79% | 18.87% | 1.12 | 0% |
+| Sample | 11.49% | 14.94% | 1.30 | 27% |
+| Shrunk (Ledoit-Wolf) | 11.30% | 14.85% | 1.31 | 26% |
+| Factor (k from MP) | 10.94% | 14.75% | 1.35 | 24% |
+
+Forbidding shorts takes the sample covariance from 1.68 to 1.30 and its turnover from 94% to 27%,
+and it lands realized risk *below* anything the unconstrained version achieved with any estimator.
+Then all four estimators collapse into a 0.2 percentage point range: **once shorting is off the
+table, the choice of covariance matrix stops mattering.**
+
+This is Jagannathan and Ma (2003) and it is not a coincidence. A no-short constraint is
+algebraically equivalent to subtracting the constraint's Lagrange multipliers from the covariance
+matrix, and those multipliers bind precisely on the assets whose estimated covariances are most
+extreme. The constraint *is* a shrinkage estimator. It is free, it needs no parameters, and on
+this data it does more than any of the three estimators that were designed for the job.
+
+The ordering to remember, worst first: no constraint and a bad matrix (2.30), no constraint and a
+good matrix (1.60), a constraint and any matrix (1.30), no optimization at all (1.12).
+
+### The control
+
+The same code on this project's five ETFs, 252-day window: sample 1.29, shrunk 1.25, factor 1.33,
+diagonal 1.41 — everything inside the sampling noise, with the control at 1.14. Fifteen
+parameters from 252 observations leaves nothing for a better estimator to fix, which is the
+caveat this project has been carrying since the first commit, now with a number attached.
+
+---
+
 ## Honest caveats
 
 I'd rather state these than have them found.
@@ -298,9 +432,10 @@ doesn't affect the ranking, but the Sharpe levels are overstated.
 equal weight's favor and change nothing material.
 
 **Five assets is an easy problem.** The estimation pathology gets dramatically worse with more
-assets, which is where shrinkage, factor models and Black-Litterman earn their keep. Shrinkage
-and Black-Litterman are implemented here; with only five assets, neither gets to show what it
-can really do.
+assets, which is where shrinkage, factor models and Black-Litterman earn their keep. Section 9
+runs the same machinery on 50 stocks for exactly this reason, and the gap is not subtle: the
+sample covariance understates realized risk by 2.3x there against 1.3x here. Everything in
+sections 1-8 should be read as the well-behaved end of the problem.
 
 **The Black-Litterman anchor uses today's fund sizes.** Stated in section 8 as well, because it
 is the one genuinely forward-looking input anywhere in this project and it should not be
@@ -324,8 +459,13 @@ possible to read the walk-forward table without meeting it.
    margin traces to an equilibrium anchor built from today's fund sizes rather than to the
    method. The momentum view attached to it buys 0.02 of Sharpe for the highest turnover in the
    study. Worth having; not worth believing at face value.
-3. **Factor-model covariance** — estimate `Σ = BΩBᵀ + D` from a handful of factors instead of
-   `N(N+1)/2` free parameters.
+3. ~~Factor-model covariance~~ — done, `src/factor_model.py`, results in section 9. It works
+   as designed — positive definite by construction, a third of the turnover, half the shorting —
+   and it still does not beat the sample covariance on realized risk for this universe, because
+   50 liquid mega-caps with 18 years of history are not parameter-starved enough for the
+   tradeoff to pay. The finding that outranks it: forbidding short sales does more for realized
+   risk than any of the three covariance estimators, and once you do, which matrix you used
+   stops mattering.
 4. ~~Turnover penalty in the objective~~ — done, see section 5. A quadratic penalty helps up to
    a point (turnover -63% for flat Sharpe) and then trades real return for lower turnover past
    that; a proper linear/transaction-cost penalty would need slack variables but is the more
