@@ -16,12 +16,15 @@ import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import factor_study
+from factor_study import k_sweep_estimators
 from run_optimization import (ALT_ANCHORS, END, LOOKBACK_YEARS, MARKET_SHARPE, START,
                               UNIVERSE, build_portfolios, market_weights, walk_forward)
 from src.black_litterman import equilibrium_returns, implied_risk_aversion
 from src.cvar import cvar_of_weights, var_of_weights
 from src.frontier import efficient_frontier
 from src.optimizer import portfolio_performance
+from src.factor_model import marchenko_pastur_edge, num_significant_factors
 from src.returns import annualized_cov, annualized_mean, daily_returns
 from src.risk_parity import risk_contributions
 
@@ -96,6 +99,31 @@ def main():
             "momentum": round(float(by_name.get("Black-Litterman (momentum)", float("nan"))), 3),
         })
 
+    print("50-asset risk-model study (slow)...")
+    large = factor_study.load(factor_study.UNIVERSE)
+    large_rets = daily_returns(large).values
+    n_large = large.shape[1]
+
+    def table_rows(table):
+        return [{"name": r["estimator"],
+                 "predicted": round(r["predicted vol"], 4),
+                 "realized": round(r["realized vol"], 4),
+                 "ratio": round(r["ratio"], 3),
+                 "turnover": round(r["turnover"], 3),
+                 "short": round(r["short"], 3)}
+                for _, r in table.iterrows()]
+
+    windows = {}
+    for w in factor_study.WINDOWS:
+        windows[w] = {
+            "rows": table_rows(factor_study.backtest(large, w)),
+            "edge": round(marchenko_pastur_edge(n_large, w), 3),
+            "k": num_significant_factors(large_rets[-w:]),
+        }
+    k_sweep = table_rows(factor_study.backtest(
+        large, 1008, build=k_sweep_estimators([1, 2, 3, 5, 10, 20, 50])))
+    long_only = table_rows(factor_study.backtest(large, 252, long_only=True))
+
     data = {
         "meta": {"universe": UNIVERSE, "start": str(prices.index[0].date()),
                  "end": str(prices.index[-1].date()), "days": len(prices),
@@ -107,6 +135,14 @@ def main():
         "frontier": frontier,
         "walk_forward": lookbacks,
         "growth": panel_3y,
+        "factor": {
+            "n_assets": n_large, "tickers": factor_study.UNIVERSE,
+            "parameters": n_large * (n_large + 1) // 2,
+            "hold_days": factor_study.HOLD_DAYS,
+            "windows": {str(k): v for k, v in windows.items()},
+            "k_sweep": k_sweep,
+            "long_only": long_only,
+        },
         "bl": {
             "market_weights": [round(float(x), 4) for x in w_market],
             "delta": round(delta, 3),
