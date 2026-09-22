@@ -19,6 +19,7 @@ import yfinance as yf
 
 from src.black_litterman import (black_litterman_weights, equilibrium_returns,
                                  implied_risk_aversion, relative_view)
+from src.costs import COST_LEVELS_BPS, DEFAULT_COST_BPS, hold, net_returns
 from src.cvar import cvar_of_weights, min_cvar_weights, var_of_weights
 from src.frontier import efficient_frontier
 from src.optimizer import (max_sharpe_turnover_penalized, max_sharpe_weights,
@@ -52,6 +53,11 @@ MARKET_SHARPE = 0.40
 # this project asks is whether a view helps at all, and a magnitude tuned on
 # the same data would answer a different and much less interesting question.
 VIEW_SPREAD = 0.02
+
+# No-trade band for the cost section: leave an ETF alone until it is more than
+# 5 percentage points from target. That is the common rule of thumb for a
+# five-fund allocation, picked before running anything, not tuned.
+ETF_BAND = 0.05
 
 
 def market_weights(tickers: list[str]) -> np.ndarray:
@@ -206,21 +212,17 @@ def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
     return mu, cov, portfolios
 
 
-def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
-                 verbose: bool = True,
-                 w_market: np.ndarray | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Refit annually on a trailing window, hold for the next year."""
-    if verbose:
-        section(f"4. Walk-forward, out of sample ({lookback}y trailing estimate, "
-                "annual rebalance)")
+def rebalances(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
+               w_market: np.ndarray | None = None, verbose: bool = False):
+    """Yield (year, that year's daily returns, portfolios fitted on the
+    trailing `lookback` years) for every test year of the walk-forward.
 
+    Shared by walk_forward() and the transaction-cost section, so the two are
+    guaranteed to be scoring the same target weights.
+    """
     rets = daily_returns(prices)
     years = sorted(rets.index.year.unique())
     test_years = [y for y in years if y - lookback >= years[0]]
-
-    records = []
-    prev_weights: dict[str, np.ndarray] = {}
-    turnover: dict[str, list] = {}
 
     for year in test_years:
         train = prices[(prices.index.year >= year - lookback)
@@ -239,9 +241,30 @@ def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
             if verbose:
                 print(f"  {year}: optimizer failed ({e}); skipped")
             continue
+        yield year, test, portfolios
 
+
+def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
+                 verbose: bool = True,
+                 w_market: np.ndarray | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Refit annually on a trailing window, hold for the next year."""
+    if verbose:
+        section(f"4. Walk-forward, out of sample ({lookback}y trailing estimate, "
+                "annual rebalance)")
+
+    rets = daily_returns(prices)
+    years = sorted(rets.index.year.unique())
+    test_years = [y for y in years if y - lookback >= years[0]]
+
+    records = []
+    prev_weights: dict[str, np.ndarray] = {}
+    turnover: dict[str, list] = {}
+
+    for year, test, portfolios in rebalances(prices, lookback, w_market, verbose):
         for name, w in portfolios.items():
-            # buy-and-hold within the year, so drift is realistic
+            # Fixed weights every day of the year: in effect rebalanced back to
+            # target daily, at no cost, and turnover measured target to target.
+            # Section 9 (cost_section) redoes this with drift and real trades.
             realized = (test.values @ w)
             records.append({"year": year, "portfolio": name,
                             "ret": float(np.prod(1 + realized) - 1),
@@ -447,6 +470,71 @@ def lookback_sensitivity(prices: pd.DataFrame) -> None:
     print("\n(out-of-sample Sharpe of annual returns, by trailing estimation window)")
 
 
+def annual_sharpe(daily: np.ndarray, years: np.ndarray) -> tuple[float, float]:
+    """(CAGR, Sharpe) from daily returns, scored on calendar-year returns the
+    same way walk_forward() scores them, so the two tables are comparable."""
+    yearly = pd.Series(1 + daily).groupby(years).prod() - 1
+    cagr = float(np.prod(1 + yearly) ** (1 / len(yearly)) - 1)
+    vol = float(yearly.std(ddof=1))
+    return cagr, cagr / vol if vol > 0 else 0.0
+
+
+def cost_section(prices: pd.DataFrame, w_market: np.ndarray | None = None,
+                 lookback: int = LOOKBACK_YEARS, band: float = ETF_BAND,
+                 verbose: bool = True) -> list[dict]:
+    """Section 4's walk-forward with drift, real trades, and costs charged.
+
+    Two differences from section 4, both deliberate. Holdings drift through
+    the year instead of being reset to target every day, so returns are
+    buy-and-hold and each rebalance pays to undo a year of drift. And
+    turnover is measured from the drifted book, which is why equal weight,
+    which "never trades" in section 4, trades here.
+
+    Each portfolio is also run with a no-trade band of `band` around its
+    target (src/costs.py :: band_rebalance).
+    """
+    targets: dict[str, list] = {}
+    for year, test, portfolios in rebalances(prices, lookback, w_market):
+        for name, w in portfolios.items():
+            targets.setdefault(name, []).append((w, test.values, test.index.year.values))
+
+    rows = []
+    for name, periods in targets.items():
+        years = np.concatenate([y for _, _, y in periods])
+        blocks = [(w, r) for w, r, _ in periods]
+        for b in (0.0, band):
+            gross, traded, starts = hold(blocks, band=b)
+            cagr, sharpe = annual_sharpe(gross, years)
+            row = {"portfolio": name, "band": b, "turnover": float(traded.mean() / 2),
+                   "gross cagr": cagr, "gross sharpe": sharpe}
+            for c in COST_LEVELS_BPS:
+                net_cagr, net_sharpe = annual_sharpe(
+                    net_returns(gross, traded, starts, c), years)
+                row[f"net sharpe {c}"] = net_sharpe
+                row[f"drag {c}"] = cagr - net_cagr
+            rows.append(row)
+
+    if verbose:
+        section("9. Charging for the trades")
+        print("Section 4 again, but holdings drift through the year, each rebalance")
+        print("trades from the drifted book, and every dollar traded pays a cost.")
+        print(f"'band' rows only trade an ETF more than {band * 100:g} points from target,")
+        print("and only back to the band edge. Turnover is one-way, per rebalance.\n")
+        head = (f"{'portfolio':<38} {'turnover':>9} {'gross':>6} "
+                + " ".join(f"{f'@{c}bp':>6}" for c in COST_LEVELS_BPS)
+                + f" {f'drag@{DEFAULT_COST_BPS:g}bp':>11}")
+        print(head)
+        for r in rows:
+            label = r["portfolio"] + (f" ({r['band'] * 100:g}pt band)" if r["band"] else "")
+            print(f"{label:<38} {r['turnover']:>9.1%} {r['gross sharpe']:>6.2f} "
+                  + " ".join(f"{r[f'net sharpe {c}']:>6.2f}" for c in COST_LEVELS_BPS)
+                  + f" {r[f'drag {DEFAULT_COST_BPS:g}'] * 1e4:>9.1f}bp")
+        print("\nSharpe on calendar-year returns, as in section 4, so 'gross' differs from")
+        print("section 4 only by drift. Drag is gross minus net annual return. The")
+        print("initial purchase is not charged.")
+    return rows
+
+
 def main() -> None:
     prices = yf.download(UNIVERSE, start=START, end=END, auto_adjust=True,
                          progress=False)["Close"].dropna()
@@ -463,6 +551,7 @@ def main() -> None:
     equilibrium_section(prices, cov, w_mkt)
     anchor_sensitivity(prices, w_mkt)
     lookback_sensitivity(prices)
+    cost_section(prices, w_mkt)
 
     ef = efficient_frontier(mu, cov, n_points=60)
     fig, axes = plt.subplots(2, 1, figsize=(10, 11))

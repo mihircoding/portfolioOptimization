@@ -220,6 +220,8 @@ interval on it — which most reported Sharpe ratios badly need.
   sample) is robust and well documented; "equal weight beats everything" is partly this sample.
 - Five liquid ETFs is an easy estimation problem. The pathology gets much worse with 50+ assets,
   which is where the techniques I *didn't* implement start mattering.
-- Turnover measured but not charged. It wouldn't change the conclusion — 16% one-way turnover
-  costs a couple of basis points — and it's worth being clear that turnover is a *symptom* of
-  estimation error here, not the cause of the underperformance.
+- Costs are a flat rate per dollar traded. They're charged now (RESULTS.md section 10), and on
+  the five ETFs they change nothing: max-Sharpe's drag is 3 bps a year at 10 bps a side, so
+  turnover there is a *symptom* of estimation error, not the cause of the underperformance. On
+  50 stocks it's different — unconstrained min-variance loses 0.82% a year to costs — and a
+  5-point no-trade band gets most of that back. No impact model, no borrow fee, no tax.

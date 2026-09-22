@@ -1,7 +1,7 @@
 # Results
 
-All 73 tests pass (`python -m pytest -q`). Numbers below are `python run_optimization.py`,
-except section 9, which is `python factor_study.py`.
+All 94 tests pass (`python -m pytest -q`). Numbers below are `python run_optimization.py`,
+except section 9, which is `python factor_study.py`. Section 10 uses both.
 
 Universe: SPY (US equity), EFA (intl equity), AGG (bonds), GLD (gold), VNQ (REITs).
 Data: 2007-01-03 → 2024-12-30, 4,529 trading days. Risk-free rate assumed 0 throughout.
@@ -410,6 +410,147 @@ caveat this project has been carrying since the first commit, now with a number 
 
 ---
 
+## 10. Charging for the trades
+
+Every backtest above scores a portfolio by multiplying each day's returns by a fixed weight
+vector. That is a book reset to target every day, for free, and it measures turnover from one
+target to the next as if the holdings had not moved in between. Nothing was ever charged. The
+README said that was fine because 16% one-way turnover on ETFs costs a couple of basis points.
+That was a claim, not a measurement, and it said nothing about the 50-stock study, where
+turnover runs near 100% a quarter.
+
+`src/costs.py` does the bookkeeping properly. Between rebalances the holdings drift with prices.
+At a rebalance the trade is from the drifted weights to the new target, and every dollar bought
+or sold pays `cost_bps`: a flat all-in rate per side covering half-spread, commission and a
+guess at impact. The default, `DEFAULT_COST_BPS = 10`, is about right for a small book in liquid
+large caps. Liquid ETFs cost less and anything with size costs more, so every table is shown at
+5, 10 and 25 bps. The first purchase is not charged; every strategy pays it once and it says
+nothing about rebalancing.
+
+The turnover-aware alternative is a **no-trade band** (`band_rebalance()`). A position within
+`band` weight points of its target is left alone. One outside it is traded back to the edge of
+the band, not all the way to the target. Doing that asset by asset would leave the book not
+fully invested, so all the targets get one common shift that makes the trades net to zero. The
+result is exactly the solution of
+
+```
+minimize   ½‖w − target‖²  +  band · ‖w − current‖₁      subject to  Σw = 1
+```
+
+That makes it the L1 turnover penalty that section 5's quadratic version was standing in for,
+with the band width as the penalty's weight. At band 0 it is the plain rebalance, and a wide
+enough band never trades. Both limits are tested, along with a check that it matches an
+independent SLSQP solve of the problem above. A useful property falls out of the construction:
+no weight ever moves past its target, so a long-only book stays long-only.
+
+### Fifty stocks, where the turnover is
+
+Minimum variance, 252-day window, quarterly rebalance, same targets as section 9. Turnover is
+one-way per quarter, measured from the drifted book. Sharpe is from daily returns with rf = 0.
+Drag is gross minus net annual return.
+
+| Min variance on | Rebalance | Turnover | Realized vol | Gross Sharpe | Net @5bp | Net @10bp | Net @25bp | Drag @10bp | Drag @25bp |
+|---|---|---|---|---|---|---|---|---|---|
+| Equal weight (control) | to target | 3.7% | 18.61% | 0.74 | 0.74 | 0.74 | 0.74 | 3 bp | 8 bp |
+| | 5pt band | 0.1% | 18.17% | 0.77 | 0.77 | 0.77 | 0.77 | 0 bp | 0 bp |
+| **Sample** | to target | **96.2%** | 15.48% | 0.59 | 0.57 | 0.54 | **0.47** | **82 bp** | **204 bp** |
+| | 1pt band | 74.9% | 15.36% | 0.58 | 0.57 | 0.55 | 0.49 | 64 bp | 159 bp |
+| | 5pt band | 34.2% | 15.18% | 0.58 | 0.57 | 0.56 | 0.54 | 29 bp | 73 bp |
+| Shrunk (Ledoit-Wolf) | to target | 76.7% | 15.00% | 0.64 | 0.62 | 0.60 | 0.54 | 66 bp | 164 bp |
+| | 1pt band | 56.7% | 14.88% | 0.63 | 0.62 | 0.60 | 0.56 | 49 bp | 121 bp |
+| | 5pt band | 22.7% | 14.80% | 0.62 | 0.62 | 0.61 | 0.59 | 19 bp | 48 bp |
+| Sample, long-only | to target | 26.6% | 14.82% | 0.63 | 0.62 | 0.61 | 0.59 | 23 bp | 57 bp |
+| | 1pt band | 19.3% | 14.91% | 0.64 | 0.64 | 0.63 | 0.62 | 17 bp | 41 bp |
+| | 5pt band | **7.9%** | 14.99% | **0.67** | 0.67 | 0.67 | **0.66** | **7 bp** | 17 bp |
+| Sample, 5 ETFs | to target | 7.7% | 5.28% | 0.74 | 0.73 | 0.73 | 0.71 | 6 bp | 16 bp |
+| | 5pt band | 3.3% | 5.26% | 0.79 | 0.79 | 0.79 | 0.78 | 3 bp | 7 bp |
+
+(The equal-weight and 5-ETF 1pt-band rows are in `python factor_study.py`, section 6. Neither
+adds anything to the table.)
+
+**The unconstrained optimizer pays for its noise twice.** Section 9 showed it understating its
+own risk by 1.7x. It also replaces 96% of the book every quarter, and at 10 bps that is 0.82% of
+return a year. At 25 bps it is two full points, which takes its Sharpe from 0.59 to 0.47.
+Shrinkage cuts the bill by a fifth. Neither number appeared anywhere in this document before,
+because nothing was charged.
+
+**The 1-point band barely helps.** Half the average 1/N weight was the obvious first guess, and
+it only takes turnover from 96% to 75%. This optimizer's trading is not small drift
+corrections. Between consecutive quarters, 97% of the change in its target weights comes from
+positions moving by more than 1 point, and 58% from positions moving by more than 5. A band
+narrower than those moves still trades through most of them.
+
+**The 5-point band works**: turnover 96% → 34%, drag 82 → 29 bp at 10 bps and 204 → 73 bp at
+25, for a gross Sharpe 0.01 lower and realized volatility 0.3 points *lower*. It isn't strange
+that trading less lowers risk for this estimator. The band effectively averages successive noisy
+targets, and an average of noisy minimum-variance portfolios is less noisy than any one of them.
+
+The sweep shows where the band stops being free:
+
+| Band (sample, unconstrained) | Turnover | Realized vol | Gross Sharpe | Net @10bp | Drag @10bp |
+|---|---|---|---|---|---|
+| 0 (to target) | 96.2% | 15.48% | 0.59 | 0.54 | 82 bp |
+| 0.5pt | 84.5% | 15.41% | 0.59 | 0.55 | 72 bp |
+| 1pt | 74.9% | 15.36% | 0.58 | 0.55 | 64 bp |
+| 2pt | 60.1% | 15.24% | 0.58 | 0.55 | 51 bp |
+| 5pt | 34.2% | 15.18% | 0.58 | 0.56 | 29 bp |
+| 10pt | 14.0% | 15.19% | 0.51 | 0.50 | 12 bp |
+| 20pt | 3.8% | 16.96% | 0.37 | 0.37 | 3 bp |
+
+Up to 5 points the band is mostly skipping noise. Past that it starts ignoring the optimizer:
+gross Sharpe falls faster than cost does, and at 20 points realized risk is most of the way back
+to equal weight. The 5-point width was set before the sweep ran, as "about the size of a
+typical position", and the sweep is shown so that choice doesn't have to be taken on trust. It
+lands near the best net result here. On a different sample it might not.
+
+**The constraint beats the band again.** Forbidding short sales alone gets turnover to 27% and
+drag to 23 bp, better than any band that doesn't cost gross performance. Constraint and band
+together get to 7.9% and 7 bp, the best net Sharpe of any minimum-variance row at every cost
+level. That extends section 9's conclusion to trading: the no-short constraint is the cheapest
+regularizer available, for risk and now for cost too.
+
+**How much of this to believe.** The drag column follows directly from the trades, so the same
+turnover would give the same drag on any sample. The gross columns are a different matter.
+About 18 years of daily returns puts the standard error on each Sharpe near 0.24, so 0.58
+against 0.59, or even 0.67 against 0.63, is inside the noise. What the table shows with
+confidence is the cost side: the unconstrained optimizer's trading is expensive, and a band or
+a constraint removes most of the expense without a measurable loss.
+
+### Five ETFs: the couple of basis points, measured
+
+Section 4's walk-forward with the same targets, 3-year window and annual rebalance. Sharpe is
+on calendar-year returns, so it reads directly against section 4, and turnover is one-way per
+annual rebalance. The band is 5 points, the usual rule of thumb for a five-fund allocation,
+set before anything ran.
+
+| Portfolio | Turnover | Gross Sharpe | Net @10bp | Net @25bp | Drag @10bp | Drag @25bp | Turnover, 5pt band |
+|---|---|---|---|---|---|---|---|
+| Black-Litterman (momentum) | **20.3%** | 0.98 | 0.98 | 0.97 | 4.1 bp | 10.3 bp | 10.2% |
+| Black-Litterman (no views) | 2.8% | 0.96 | 0.96 | 0.96 | 0.6 bp | 1.4 bp | 1.2% |
+| Equal weight | 3.7% | 0.80 | 0.80 | 0.80 | 0.7 bp | 1.9 bp | 1.0% |
+| Inverse vol | 3.7% | 0.77 | 0.76 | 0.76 | 0.7 bp | 1.8 bp | 1.2% |
+| Equal risk contribution | 4.3% | 0.74 | 0.74 | 0.74 | 0.9 bp | 2.1 bp | 1.4% |
+| Max Sharpe | **15.9%** | 0.73 | 0.73 | 0.73 | 3.2 bp | 7.9 bp | 11.6% |
+| Min CVaR (95%) | 3.6% | 0.59 | 0.59 | 0.59 | 0.7 bp | 1.7 bp | 1.3% |
+| Min variance | 2.7% | 0.57 | 0.57 | 0.57 | 0.5 bp | 1.3 bp | 1.0% |
+
+The claim held. Max-Sharpe loses 3 bp a year at 10 bps and 8 bp at 25. The most anything
+loses is the momentum view's 10 bp at 25 bps, and the ranking doesn't move at any cost level.
+Five ETFs rebalanced once a year don't trade enough for costs to matter. Section 4's conclusion,
+that the gap is estimation error and not trading, stands.
+
+Two smaller results. **Equal weight does trade**: 3.7% of the book a year, all of it undoing
+drift. Section 4 shows 0.0% because it never lets the book drift. And every gross Sharpe here is
+0.01-0.03 below section 4's, which is the difference between holding through the year and being
+reset to target every day. Neither changes a ranking.
+
+The band is not worth having on this universe. It saves max-Sharpe under a basis point a year
+at 10 bps. In exchange, max-Sharpe's gross Sharpe falls from 0.73 to 0.70 and equal weight's
+from 0.80 to 0.78, because a year of unchecked drift is a real change of position. At costs
+this small, correcting the drift is worth paying for.
+
+---
+
 ## Honest caveats
 
 I'd rather state these than have them found.
@@ -428,8 +569,12 @@ independent window choices, not any single comparison.
 **Risk-free rate is 0 throughout.** Over 2010–2024 that flatters every portfolio equally, so it
 doesn't affect the ranking, but the Sharpe levels are overstated.
 
-**Turnover is measured, not charged.** Adding realistic costs would widen the gap slightly in
-equal weight's favor and change nothing material.
+**Costs are a flat rate per dollar traded.** Section 10 charges them. On the five ETFs they
+change nothing material, as this caveat used to predict. On 50 stocks they cost the
+unconstrained optimizer 0.82% a year at 10 bps. There is still no impact term that grows with
+trade size, no tax, and no borrow fee on the short side. The unconstrained 50-stock books run
+around 100% gross short, so borrow would be a second drag of the same kind. Rebalance dates are
+still fixed. The band decides how much to trade on those dates, not when to trade.
 
 **Five assets is an easy problem.** The estimation pathology gets dramatically worse with more
 assets, which is where shrinkage, factor models and Black-Litterman earn their keep. Section 9
@@ -468,10 +613,15 @@ possible to read the walk-forward table without meeting it.
    stops mattering.
 4. ~~Turnover penalty in the objective~~ — done, see section 5. A quadratic penalty helps up to
    a point (turnover -63% for flat Sharpe) and then trades real return for lower turnover past
-   that; a proper linear/transaction-cost penalty would need slack variables but is the more
-   correct version of the same idea.
+   that. The linear version is the no-trade band in section 10: an L1 penalty, solved in closed
+   form up to one bisection, with no slack variables needed.
 5. ~~CVaR optimization~~ — done, see section 7 and `src/cvar.py`. Real and provably different
    from variance-based optimization in general (the synthetic test in `tests/test_cvar.py`
    shows it clearly), but converges to essentially the same portfolio as min-variance on this
    project's actual 5-ETF universe — a finding about this dataset's tail shapes, not evidence
    the method doesn't work.
+6. ~~Transaction costs~~ — done, `src/costs.py`, section 10. Holdings drift between rebalances,
+   trades are charged at 5/10/25 bps a side, and a no-trade band is the turnover-aware
+   rebalance. Nothing changes on the five ETFs. On 50 stocks the unconstrained optimizer loses
+   0.82% a year to trading at 10 bps. A 5-point band gets that to 0.29%, and the long-only
+   constraint plus the band gets it to 0.07%.

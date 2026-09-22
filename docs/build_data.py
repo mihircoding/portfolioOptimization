@@ -18,9 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import factor_study
 from factor_study import k_sweep_estimators
-from run_optimization import (ALT_ANCHORS, END, LOOKBACK_YEARS, MARKET_SHARPE, START,
-                              UNIVERSE, build_portfolios, market_weights, walk_forward)
+from run_optimization import (ALT_ANCHORS, END, ETF_BAND, LOOKBACK_YEARS, MARKET_SHARPE,
+                              START, UNIVERSE, build_portfolios, cost_section,
+                              market_weights, walk_forward)
 from src.black_litterman import equilibrium_returns, implied_risk_aversion
+from src.costs import COST_LEVELS_BPS, DEFAULT_COST_BPS
 from src.cvar import cvar_of_weights, var_of_weights
 from src.frontier import efficient_frontier
 from src.optimizer import portfolio_performance
@@ -113,16 +115,42 @@ def main():
                  "short": round(r["short"], 3)}
                 for _, r in table.iterrows()]
 
-    windows = {}
+    windows, tables = {}, {}
     for w in factor_study.WINDOWS:
+        tables[w] = factor_study.backtest(large, w)
         windows[w] = {
-            "rows": table_rows(factor_study.backtest(large, w)),
+            "rows": table_rows(tables[w]),
             "edge": round(marchenko_pastur_edge(n_large, w), 3),
             "k": num_significant_factors(large_rets[-w:]),
         }
     k_sweep = table_rows(factor_study.backtest(
         large, 1008, build=k_sweep_estimators([1, 2, 3, 5, 10, 20, 50])))
-    long_only = table_rows(factor_study.backtest(large, 252, long_only=True))
+    long_only_table = factor_study.backtest(large, 252, long_only=True)
+    long_only = table_rows(long_only_table)
+
+    print("transaction costs and no-trade bands...")
+    levels = (0,) + tuple(COST_LEVELS_BPS)
+
+    def cost_rows(table):
+        return [{"name": r["estimator"], "band": r["band"],
+                 "turnover": round(r["turnover"], 4),
+                 "vol": round(r["realized vol"], 4),
+                 "sharpe": {str(c): round(r[f"sharpe {c}"], 3) for c in levels},
+                 "drag": {str(c): round(r[f"drag {c}"], 5) for c in COST_LEVELS_BPS}}
+                for _, r in table.iterrows()]
+
+    small = factor_study.load(factor_study.SMALL_UNIVERSE)
+    cost_large = cost_rows(factor_study.cost_tables(
+        large, tables[252], long_only_table, small, factor_study.backtest(small, 252)))
+    cost_sweep = cost_rows(factor_study.cost_study(
+        large, tables[252], bands=factor_study.BAND_SWEEP, names=["Sample"]))
+    cost_etf = [{"name": r["portfolio"], "band": r["band"],
+                 "turnover": round(r["turnover"], 4),
+                 "sharpe": {"0": round(r["gross sharpe"], 3),
+                            **{str(c): round(r[f"net sharpe {c}"], 3)
+                               for c in COST_LEVELS_BPS}},
+                 "drag": {str(c): round(r[f"drag {c}"], 6) for c in COST_LEVELS_BPS}}
+                for r in cost_section(prices, w_market, verbose=False)]
 
     data = {
         "meta": {"universe": UNIVERSE, "start": str(prices.index[0].date()),
@@ -142,6 +170,11 @@ def main():
             "windows": {str(k): v for k, v in windows.items()},
             "k_sweep": k_sweep,
             "long_only": long_only,
+        },
+        "costs": {
+            "levels": list(COST_LEVELS_BPS), "default": DEFAULT_COST_BPS,
+            "bands": factor_study.BANDS, "etf_band": ETF_BAND,
+            "large": cost_large, "sweep": cost_sweep, "etf": cost_etf,
         },
         "bl": {
             "market_weights": [round(float(x), 4) for x in w_market],

@@ -8,7 +8,7 @@ tested the only way that matters: out of sample.
 
 In sample, the max-Sharpe portfolio wins with a Sharpe of 0.90. It has to; it's defined as the
 in-sample argmax. Walk it forward on a trailing estimation window and it finishes **fourth of
-six**, behind equal weighting — which requires no estimation, no optimizer, and no turnover.
+six**, behind equal weighting — which requires no estimation, no optimizer, and almost no turnover.
 That result holds at every estimation window tested. [RESULTS.md](RESULTS.md) has the numbers;
 [INTERVIEW.md](INTERVIEW.md) has how to talk about them.
 
@@ -17,11 +17,15 @@ caps, where a covariance matrix has 1,275 parameters and a year of data to fit t
 the sample covariance promises 9.2% risk and delivers 15.5%. Section 9 of RESULTS.md is what does
 and does not fix that — and the answer turns out to be a constraint rather than an estimator.
 
-73 tests.
+The 50-stock optimizer also trades far more: unconstrained min-variance replaces 96% of the book
+every quarter, which at 10 bps a side costs 0.82% of return a year. Section 10 charges every
+portfolio for its trades and tries a no-trade band against it.
+
+94 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q            # 73 passed
+python -m pytest -q            # 94 passed
 python run_optimization.py     # full analysis, writes frontier.png
 python factor_study.py         # the 50-asset risk-model study (section 9)
 ```
@@ -209,8 +213,9 @@ evidence the method doesn't work.
 │   ├── risk_parity.py     # shrinkage, inverse-vol, risk contributions, ERC
 │   ├── cvar.py            # CVaR/VaR, the Rockafellar-Uryasev LP
 │   ├── factor_model.py    # Sigma = B Omega B' + D, Marchenko-Pastur factor count
-│   └── black_litterman.py # equilibrium returns, view blending
-└── tests/                 # 73 tests
+│   ├── black_litterman.py # equilibrium returns, view blending
+│   └── costs.py           # drift, linear trading costs, the no-trade band
+└── tests/                 # 94 tests
 ```
 
 ## What the tests check
@@ -242,6 +247,13 @@ Properties with known answers, not smoke tests:
   test asserts the resulting gross exposure too.
 - 40 **independent** series produce **zero** significant factors under the Marchenko-Pastur
   cutoff — a factor count that fires on noise is worse than no factor count.
+- **Zero cost gives net returns identical to gross**, and net growth is exactly gross growth
+  times `(1 − cost × traded)` at each rebalance. Cost is linear in trade size and in the rate.
+- A **band of 0 is the plain rebalance**, trade for trade, and a band wider than any weight
+  never trades after the first purchase — the result is then plain buy-and-hold.
+- The band rebalance matches an independent SLSQP solve of the problem its docstring says it
+  solves (distance to target plus an L1 penalty on trading), keeps the book fully invested,
+  and never moves a weight past its target, so a long-only book stays long-only.
 
 ## Known simplifications
 
@@ -256,9 +268,18 @@ Properties with known answers, not smoke tests:
   covariance problem does get far worse: 2.3x understatement of realized risk against 1.3x here.
   The five-ETF results in RESULTS.md sections 1-8 are still five ETFs, though, and should be read
   as the easy end of the problem.
-- Turnover is measured but not charged. At 16% one-way turnover and realistic ETF costs the drag
-  is a couple of basis points a year — real, but not what explains the results here.
-- Annual rebalancing on calendar years. No tax, no drift bands, no rebalancing-cost optimization.
+- ~~Turnover is measured but not charged~~ — `src/costs.py` lets holdings drift between
+  rebalances and charges a linear cost on every dollar traded (`DEFAULT_COST_BPS = 10` a side;
+  5, 10 and 25 reported). On the five ETFs the old claim held: max-Sharpe's drag is 3 bps a year
+  at 10 bps. On 50 stocks it doesn't: unconstrained min-variance replaces 96% of the book every
+  quarter and loses 0.82% a year to costs, 2.0% at 25 bps. RESULTS.md section 10. Costs are
+  still a flat rate — no impact that grows with size, no borrow fee on the short side.
+- ~~No drift bands, no rebalancing-cost optimization~~ — `band_rebalance()` leaves positions
+  within a band of target alone and trades the rest back to the band edge, which is an L1
+  turnover penalty around the current holding. A 5-point band cuts the 50-stock drag from 0.82%
+  to 0.29% for a gross Sharpe 0.01 lower; on the five ETFs it saves about a basis point and
+  isn't worth having. Rebalance dates are still fixed (annual for the ETFs, quarterly for the
+  stocks), and there is still no tax.
 
 ## Reading
 

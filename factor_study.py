@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from src.costs import COST_LEVELS_BPS, DEFAULT_COST_BPS, hold, net_returns
 from src.factor_model import (factor_variance_share, marchenko_pastur_edge,
                               num_significant_factors, pca_factor_covariance)
 from src.optimizer import min_variance_weights, min_variance_weights_analytic
@@ -46,6 +47,13 @@ START, END = "2006-01-01", "2024-12-31"
 HOLD_DAYS = 63            # one quarter
 WINDOWS = [126, 252, 504, 1008]
 CONTROL = "Equal weight"
+
+# No-trade bands for section 6, in weight points. 1pt is half the average 1/N
+# weight, the obvious first guess; 5pt is about the size of a typical
+# unconstrained min-variance position. BAND_SWEEP shows everything in between
+# and past it, so neither choice has to be taken on trust.
+BANDS = [0.0, 0.01, 0.05]
+BAND_SWEEP = [0.0, 0.005, 0.01, 0.02, 0.05, 0.10, 0.20]
 
 
 def section(title: str) -> None:
@@ -106,6 +114,7 @@ def backtest(prices: pd.DataFrame, window: int, build=standard_estimators,
     predicted: dict[str, list] = {}
     turnover: dict[str, list] = {}
     shorts: dict[str, list] = {}
+    weights: dict[str, list] = {}       # (start index, w) per rebalance
     prev: dict[str, np.ndarray] = {}
     k_chosen: list[int] = []
 
@@ -132,6 +141,7 @@ def backtest(prices: pd.DataFrame, window: int, build=standard_estimators,
             predicted.setdefault(name, []).append(float(np.sqrt(w @ cov @ w)))
             realized.setdefault(name, []).extend((test @ w).tolist())
             shorts.setdefault(name, []).append(float(-np.minimum(w, 0).sum()))
+            weights.setdefault(name, []).append((start, w))
             if name in prev:
                 turnover.setdefault(name, []).append(
                     float(np.abs(w - prev[name]).sum() / 2))
@@ -154,7 +164,79 @@ def backtest(prices: pd.DataFrame, window: int, build=standard_estimators,
     out.attrs["control ratio"] = float(control.iloc[0]) if len(control) else None
     out.attrs["k"] = k_chosen
     out.attrs["rebalances"] = len(k_chosen)
+    out.attrs["weights"] = weights
     return out
+
+
+def cost_study(prices: pd.DataFrame, table: pd.DataFrame, bands=BANDS,
+               names=None, suffix: str = "") -> pd.DataFrame:
+    """Re-run backtest()'s target weights with drift, real trades and costs.
+
+    backtest() multiplies each day's returns by the target weights, which is a
+    book reset to target every day for free, and measures turnover target to
+    target. Here the book drifts through the quarter, each rebalance trades
+    from where it drifted to, and the cost of that trade is charged at
+    each of COST_LEVELS_BPS. Each target is also run through a no-trade band
+    (src/costs.py :: band_rebalance) at every width in `bands`.
+
+    Sharpe is annualized from daily returns, risk-free rate zero. Drag is gross
+    minus net annual return. Turnover is one-way, per quarterly rebalance, so
+    it reads against backtest()'s column.
+    """
+    values = daily_returns(prices).values
+    rows = []
+    for name, schedule in table.attrs["weights"].items():
+        if names is not None and name not in names:
+            continue
+        periods = [(w, values[s:s + HOLD_DAYS]) for s, w in schedule]
+        for band in bands:
+            gross, traded, starts = hold(periods, band=band)
+            row = {"estimator": name + suffix, "band": band,
+                   "turnover": float(traded.mean() / 2)}
+            for c in (0,) + tuple(COST_LEVELS_BPS):
+                r = net_returns(gross, traded, starts, c) if c else gross
+                vol = float(r.std(ddof=1) * np.sqrt(TRADING_DAYS))
+                ann = float((1 + r).prod() ** (TRADING_DAYS / len(r)) - 1)
+                row[f"sharpe {c}"] = float(r.mean() * TRADING_DAYS / vol)
+                row[f"ann return {c}"] = ann
+                if c == 0:
+                    row["realized vol"] = vol
+                else:
+                    row[f"drag {c}"] = row["ann return 0"] - ann
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def cost_tables(prices, unconstrained, long_only, small=None, small_table=None):
+    """Section 6's main table: the rows worth charging for, at each of BANDS.
+
+    Arguments are the 252-day backtest() tables section 2, 4 and 5 already
+    computed, so nothing is re-optimized here.
+    """
+    parts = [
+        cost_study(prices, unconstrained,
+                   names=["Equal weight (control)", "Sample", "Shrunk (Ledoit-Wolf)"]),
+        cost_study(prices, long_only, names=["Sample"], suffix=", long-only"),
+    ]
+    if small is not None:
+        parts.append(cost_study(small, small_table, names=["Sample"],
+                                suffix=", 5 ETFs"))
+    return pd.concat(parts, ignore_index=True)
+
+
+def band_label(band: float) -> str:
+    return "to target" if band == 0 else f"{band * 100:g}pt band"
+
+
+def show_costs(table: pd.DataFrame) -> None:
+    print(f"{'estimator':<24} {'rebalance':<16} {'turnover':>9} {'real vol':>9} "
+          f"{'gross':>6} " + " ".join(f"{f'@{c}bp':>6}" for c in COST_LEVELS_BPS)
+          + f" {'drag@' + f'{DEFAULT_COST_BPS:g}' + 'bp':>11}")
+    for _, r in table.iterrows():
+        print(f"{r['estimator']:<24} {band_label(r['band']):<16} "
+              f"{r['turnover']:>9.1%} {r['realized vol']:>9.2%} {r['sharpe 0']:>6.2f} "
+              + " ".join(f"{r[f'sharpe {c}']:>6.2f}" for c in COST_LEVELS_BPS)
+              + f" {r[f'drag {DEFAULT_COST_BPS:g}'] * 1e4:>9.0f}bp")
 
 
 def show(table: pd.DataFrame) -> None:
@@ -194,8 +276,9 @@ def main() -> None:
     print("The first row never optimizes - it is the same 1/N portfolio every quarter,")
     print("priced with the sample covariance - so its ratio is the part of the miss")
     print("that has nothing to do with the matrix.\n")
+    tables = {}
     for w in WINDOWS:
-        table = backtest(prices, w)
+        table = tables[w] = backtest(prices, w)
         print(f"window = {w} days ({table.attrs['rebalances']} rebalances, "
               f"MP chose k = {min(table.attrs['k'])}-{max(table.attrs['k'])})")
         show(table)
@@ -217,21 +300,34 @@ def main() -> None:
     print("is algebraically equivalent to shrinking the largest covariance entries -")
     print("so the constraint is itself a risk model, and a crude one applied to a bad")
     print("matrix often beats a good matrix used without it.\n")
-    for w in (252,):
-        table = backtest(prices, w, long_only=True)
-        print(f"window = {w} days")
-        show(table)
-        print()
+    long_only = backtest(prices, 252, long_only=True)
+    print("window = 252 days")
+    show(long_only)
+    print()
 
     section("5. The same five ETFs this repo uses everywhere else")
     print("Five assets means 15 parameters, which 126 days estimates comfortably, so")
     print("there should be nothing here for any of this to fix.\n")
     small = load(SMALL_UNIVERSE)
+    small_tables = {}
     for w in (126, 252):
-        table = backtest(small, w)
+        table = small_tables[w] = backtest(small, w)
         print(f"window = {w} days")
         show(table)
         print()
+
+    section("6. What the turnover costs, and a no-trade band")
+    print("Sections 2-5 hold the target weights fixed for the whole quarter, which is")
+    print("a book reset to target every day at no cost. Here the book drifts through")
+    print("each quarter, each rebalance trades from the drifted weights, and every")
+    print("dollar traded pays the cost shown. A band leaves any position within that")
+    print("many weight points of its target alone and trades the rest only back to")
+    print("the band edge. 252-day window throughout.\n")
+    show_costs(cost_tables(prices, tables[252], long_only, small, small_tables[252]))
+    print("\nturnover is one-way per quarter; Sharpe from daily returns, rf = 0;")
+    print(f"drag is gross minus net annual return at {DEFAULT_COST_BPS:g} bps.\n")
+    print("Band width, sample covariance, unconstrained, 50 stocks:")
+    show_costs(cost_study(prices, tables[252], bands=BAND_SWEEP, names=["Sample"]))
 
 
 if __name__ == "__main__":

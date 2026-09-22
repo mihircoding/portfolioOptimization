@@ -52,6 +52,7 @@ header{padding:60px 0 46px}
 .card .s{font-size:12.5px;color:var(--ink3);margin-top:5px}
 .v.red{color:var(--red)} .v.green{color:var(--green)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.grid2>*{min-width:0}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
 .chart{position:relative;height:210px;margin-top:4px}
 .cap{font-size:13px;color:var(--ink3);line-height:1.6;margin-top:10px}
@@ -86,7 +87,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 ul{color:var(--ink2);padding-left:20px;margin:0 0 14px}
 li{margin-bottom:7px}
 footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);font-size:13.5px}
-@media(max-width:860px){.grid2{grid-template-columns:1fr}h1{font-size:30px}}
+@media(max-width:860px){.grid2{grid-template-columns:1fr!important}h1{font-size:30px}}
 </style>
 
 </head>
@@ -96,7 +97,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 <div class="wrap">
   <div class="tagline">The optimizer lost to dividing by five</div>
   <h1>Portfolio Optimization</h1>
-  <p class="lede">Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, risk parity and CVaR — implemented, then tested the only way that matters: out of sample. <strong style="color:var(--ink)">In sample the max-Sharpe portfolio wins with a Sharpe of 0.90. Walk it forward and it finishes fourth of six, behind equal weighting — which requires no estimation, no optimizer, and no trading at all.</strong></p>
+  <p class="lede">Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, risk parity and CVaR — implemented, then tested the only way that matters: out of sample. <strong style="color:var(--ink)">In sample the max-Sharpe portfolio wins with a Sharpe of 0.90. Walk it forward and it finishes fourth of six, behind equal weighting — which requires no estimation, no optimizer, and almost no trading.</strong></p>
   <div class="links">
     <a class="btn primary" href="#oos">The out-of-sample result</a>
     <a class="btn" href="https://github.com/mihircoding/portfolioOptimization">Source on GitHub</a>
@@ -194,7 +195,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 
   <div class="note">
     <p><strong>The portfolio that required no estimation, no optimizer, no covariance matrix and no trading beat the one that used all four.</strong> This is DeMiguel, Garlappi &amp; Uppal (2009) reproduced on a different universe and a later sample.</p>
-    <p>Turnover is the mechanism made visible: max-Sharpe rewrote 16.2% of the book every year, chasing an optimum that moved because the <em>estimates</em> moved, not because the world did. Note carefully that turnover is <em>not</em> the explanation for the performance gap — at realistic ETF costs, 16% one-way turnover is a couple of basis points a year. The gap is estimation error. The turnover is a symptom of it, not the cause.</p>
+    <p>Turnover is the mechanism made visible: max-Sharpe rewrote 16.2% of the book every year, chasing an optimum that moved because the <em>estimates</em> moved, not because the world did. Note carefully that turnover is <em>not</em> the explanation for the performance gap — at realistic ETF costs, 16% one-way turnover is a couple of basis points a year (<a href="#costs">measured below</a>: about 3 bps at 10 bps a side). The gap is estimation error. The turnover is a symptom of it, not the cause.</p>
   </div>
 
   <div class="note blue">
@@ -318,6 +319,52 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 </div>
 </section>
 
+<section id="costs">
+<div class="wrap">
+  <div class="eyebrow">Transaction costs</div>
+  <h2>Charging for the trades</h2>
+  <p class="lede">Every table above holds the target weights fixed for the whole holding period, which is quietly a book reset to target every day, for free. Here the holdings drift with prices, each rebalance trades from wherever the book drifted to, and every dollar bought or sold pays a flat cost. The default is <span id="k-default">10</span> bps a side, about right for a small book in liquid large caps; the selector shows the cheap and the expensive case.</p>
+
+  <div class="cards" id="k-cards"></div>
+
+  <div class="scroll">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <label class="cap" style="margin:0" for="sel-cost">Cost per dollar traded</label>
+        <select id="sel-cost"></select>
+      </div>
+      <table id="t-costs"><thead><tr><th>Minimum variance on</th><th>Rebalance</th><th class="n">Turnover</th><th class="n">Realized vol</th><th class="n">Gross Sharpe</th><th class="n">Net Sharpe</th><th class="n">Cost drag</th></tr></thead><tbody></tbody></table>
+      <p class="cap">50 stocks unless marked, 252-day window, quarterly rebalance. Turnover is one-way per quarter, measured from the drifted book. Drag is gross minus net annual return. Sharpe from daily returns, risk-free rate zero.</p>
+  </div>
+
+  <div class="grid2" style="align-items:start;margin-top:22px">
+    <div>
+      <p><strong style="color:var(--ink)">The unconstrained optimizer replaces almost the whole book every quarter</strong>, and at 10 bps that costs <span class="mono" id="k-drag-sample">&mdash;</span> a year. At 25 bps it is two full points of return, enough to take its Sharpe from <span class="mono" id="k-s-gross">&mdash;</span> to <span class="mono" id="k-s-25">&mdash;</span>. None of that shows up in the section above, because none of it was charged.</p>
+    </div>
+    <div>
+      <p><strong style="color:var(--ink)">A no-trade band skips the small trades.</strong> Any position within the band of its target is left alone; any outside it is traded back to the band&rsquo;s edge, not to the target. One common shift keeps the book fully invested, and the result is exactly the portfolio that minimizes distance to the target plus an L1 penalty on trading away from the current holding. The band width is that penalty&rsquo;s weight: at zero it is the plain rebalance, and wide enough it never trades.</p>
+      <p>A 5-point band cuts the sample portfolio&rsquo;s turnover by about two thirds and its cost drag with it, for a gross Sharpe one hundredth lower and realized risk slightly <em>lower</em>. The long-only constraint does more than the band on its own, and the two together bring the drag down to single basis points.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><strong>The saving is arithmetic. What it costs you is not.</strong> The band&rsquo;s saving in cost follows directly from the trades it skips and would come out the same on any sample. The price is holding something other than the optimizer&rsquo;s latest answer, and that price is a return and risk effect, measured here on about 18 years of daily data &mdash; a Sharpe standard error of roughly 0.24. Differences of a few hundredths in the Sharpe columns are noise; the turnover and drag columns are not.</p>
+  </div>
+
+  <div class="grid2" style="align-items:start;margin-top:22px">
+    <div class="scroll">
+      <h3>How wide a band? Free up to about 5 points, then not.</h3>
+      <table id="t-band"><thead><tr><th>Band</th><th class="n">Turnover</th><th class="n">Realized vol</th><th class="n">Gross</th><th class="n">Net</th><th class="n">Drag</th></tr></thead><tbody></tbody></table>
+      <p class="cap">Sample covariance, unconstrained, 50 stocks. Past 5 points the band stops skipping noise and starts ignoring the optimizer, and gross Sharpe falls faster than cost does. At 20 points realized risk is most of the way back to equal weight.</p>
+    </div>
+    <div class="scroll">
+      <h3>Five ETFs: the couple of basis points, measured</h3>
+      <table id="t-etf-costs"><thead><tr><th>Portfolio</th><th class="n">Turnover</th><th class="n">Gross Sharpe</th><th class="n">Net Sharpe</th><th class="n">Cost drag</th></tr></thead><tbody></tbody></table>
+      <p class="cap" id="cap-etf-costs">&mdash;</p>
+    </div>
+  </div>
+</div>
+</section>
+
 <section>
 <div class="wrap">
   <div class="eyebrow">Limitations</div>
@@ -329,7 +376,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
     </div>
     <div>
       <p><strong style="color:var(--ink)">Risk-free rate is zero throughout.</strong> Over this period that flatters every portfolio equally, so it doesn't affect the ranking — but the Sharpe levels are overstated.</p>
-      <p><strong style="color:var(--ink)">Turnover is measured, not charged.</strong> Adding realistic costs would widen the gap slightly in equal weight's favour and change nothing material.</p>
+      <p><strong style="color:var(--ink)">Costs are a flat rate per dollar traded.</strong> The <a href="#costs">cost section</a> charges 5 to 25 bps a side, with no market impact that grows with trade size, no taxes, and no borrow fee on the short side &mdash; which for the unconstrained 50-stock books, around 100% gross short, would be a second drag of the same kind. Rebalance dates are still fixed; the band decides how much to trade on them, not when.</p>
       <p><strong style="color:var(--ink)">Five assets is an easy problem.</strong> A sample covariance over N assets estimates N(N+1)/2 parameters — 15 here, but 1,275 for 50 assets. The <a href="#factor">50-asset section above</a> runs the same machinery where that bites: the sample covariance understates realized risk by 2.3&times; there against 1.3&times; here. Everything in the sections before it should be read as the well-behaved end of the problem.</p>
     </div>
   </div>
@@ -541,6 +588,74 @@ document.querySelector('#t-longonly tbody').innerHTML = F.long_only.map(r => `
       <td class="n">${pct(r.realized)}</td>
       ${fRatio(r)}
       <td class="n">${pct(r.turnover, 0)}</td></tr>`).join('');
+
+/* ---------------- transaction costs ---------------- */
+const K = D.costs;
+const bp = x => (x * 1e4).toFixed(0) + ' bp';
+const bandLabel = b => b === 0 ? 'To target' : `${+(b * 100).toFixed(1)}pt band`;
+const kRow = (name, band) => K.large.find(r => r.name === name && r.band === band);
+const lvl = String(K.default);
+document.getElementById('k-default').textContent = K.default;
+
+const kPlain = kRow('Sample', 0), kBand = kRow('Sample', 0.05);
+const msEtf = K.etf.find(r => r.name === 'Max Sharpe' && r.band === 0);
+document.getElementById('k-cards').innerHTML = `
+  <div class="card"><div class="k">Turnover, 50-stock min variance</div>
+    <div class="v">${pct(kPlain.turnover, 0)}</div>
+    <div class="s">of the book replaced every quarter</div></div>
+  <div class="card"><div class="k">What that costs at ${K.default} bps</div>
+    <div class="v red">${pct(kPlain.drag[lvl], 2)}</div>
+    <div class="s">of return, every year</div></div>
+  <div class="card"><div class="k">With a 5-point no-trade band</div>
+    <div class="v green">${pct(kBand.drag[lvl], 2)}</div>
+    <div class="s">turnover ${pct(kBand.turnover, 0)}, realized vol ${pct(kBand.vol, 1)}</div></div>
+  <div class="card"><div class="k">Five ETFs, max-Sharpe</div>
+    <div class="v">${pct(msEtf.drag[lvl], 2)}</div>
+    <div class="s">a year, at ${pct(msEtf.turnover, 1)} turnover</div></div>`;
+document.getElementById('k-drag-sample').textContent = pct(kPlain.drag[lvl], 2);
+document.getElementById('k-s-gross').textContent = kPlain.sharpe['0'].toFixed(2);
+document.getElementById('k-s-25').textContent = kPlain.sharpe['25'].toFixed(2);
+
+function renderCosts(c) {
+  let last = null;
+  document.querySelector('#t-costs tbody').innerHTML = K.large.map(r => {
+    const first = r.name !== last; last = r.name;
+    const grey = r.name.indexOf('Equal weight') === 0 ? ' style="color:var(--ink3)"' : '';
+    return `<tr${first ? ' style="border-top:1px solid var(--line2)"' : ''}>
+      <td>${first ? `<strong${grey}>${r.name}</strong>` : ''}</td>
+      <td>${bandLabel(r.band)}</td>
+      <td class="n">${pct(r.turnover, 1)}</td>
+      <td class="n">${pct(r.vol)}</td>
+      <td class="n">${r.sharpe['0'].toFixed(2)}</td>
+      <td class="n"><strong>${r.sharpe[c].toFixed(2)}</strong></td>
+      <td class="n"${r.drag[c] >= 0.005 ? ' style="color:var(--red)"' : ''}>${bp(r.drag[c])}</td></tr>`;
+  }).join('');
+
+  document.querySelector('#t-band tbody').innerHTML = K.sweep.map(r => `
+    <tr><td><strong>${bandLabel(r.band)}</strong></td>
+        <td class="n">${pct(r.turnover, 0)}</td>
+        <td class="n">${pct(r.vol)}</td>
+        <td class="n">${r.sharpe['0'].toFixed(2)}</td>
+        <td class="n"><strong>${r.sharpe[c].toFixed(2)}</strong></td>
+        <td class="n"${r.drag[c] >= 0.005 ? ' style="color:var(--red)"' : ''}>${bp(r.drag[c])}</td></tr>`).join('');
+
+  const plain = K.etf.filter(r => r.band === 0);
+  document.querySelector('#t-etf-costs tbody').innerHTML = plain.map(r => `
+    <tr><td><strong style="color:${PC[r.name] || 'var(--ink)'}">${r.name}</strong></td>
+        <td class="n">${pct(r.turnover, 1)}</td>
+        <td class="n">${r.sharpe['0'].toFixed(2)}</td>
+        <td class="n"><strong>${r.sharpe[c].toFixed(2)}</strong></td>
+        <td class="n">${(r.drag[c] * 1e4).toFixed(1)} bp</td></tr>`).join('');
+  const msBand = K.etf.find(r => r.name === 'Max Sharpe' && r.band > 0);
+  const ew0 = plain.find(r => r.name === 'Equal weight');
+  document.getElementById('cap-etf-costs').innerHTML =
+    `Section 4&rsquo;s walk-forward with drift and costs, 3-year window, annual rebalance, Sharpe on annual returns. At ${c} bps no portfolio loses more than ${bp(Math.max(...plain.map(r => r.drag[c])))} a year and the ranking does not move. Equal weight trades ${pct(ew0.turnover, 1)} a year once drift is counted, not zero. A ${+(K.etf_band * 100).toFixed(1)}-point band cuts max-Sharpe&rsquo;s turnover from ${pct(msEtf.turnover, 1)} to ${pct(msBand.turnover, 1)} and saves ${((msEtf.drag[c] - msBand.drag[c]) * 1e4).toFixed(1)} bp, which is not worth having here.`;
+}
+const costSelect = document.getElementById('sel-cost');
+costSelect.innerHTML = K.levels.map(l =>
+  `<option value="${l}"${l === K.default ? ' selected' : ''}>${l} bps</option>`).join('');
+costSelect.onchange = e => renderCosts(e.target.value);
+renderCosts(lvl);
 
 const ewRow = D.walk_forward[D.meta.lookback].find(r => r.name === 'Equal weight');
 document.getElementById('x-ew').textContent = ewRow ? ewRow.sharpe.toFixed(2) : '\u2014';
