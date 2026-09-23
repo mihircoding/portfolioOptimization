@@ -185,7 +185,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
       <div class="scroll">
         <table id="t-oos">
           <thead><tr><th>Portfolio</th><th class="n">Ann. return</th><th class="n">Sharpe</th>
-          <th class="n">Worst year</th><th class="n">Turnover</th></tr></thead>
+          <th class="n">Worst year</th><th class="n">Turnover</th><th class="n">Years</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -196,6 +196,11 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <div class="note">
     <p><strong>The portfolio that required no estimation, no optimizer, no covariance matrix and no trading beat the one that used all four.</strong> This is DeMiguel, Garlappi &amp; Uppal (2009) reproduced on a different universe and a later sample.</p>
     <p>Turnover is the mechanism made visible: max-Sharpe rewrote 16.2% of the book every year, chasing an optimum that moved because the <em>estimates</em> moved, not because the world did. Note carefully that turnover is <em>not</em> the explanation for the performance gap — at realistic ETF costs, 16% one-way turnover is a couple of basis points a year (<a href="#costs">measured below</a>: about 3 bps at 10 bps a side). The gap is estimation error. The turnover is a symptom of it, not the cause.</p>
+  </div>
+
+  <div class="note">
+    <p><strong>Why there is a "years" column.</strong> Max-Sharpe and min-CVaR are numerical solves, and either can fail to converge on an awkward estimation window. When one does, it loses <em>that method's</em> row for <em>that year</em> and nothing else, and the table is then scored on the years every method covers — so a column is always a like-for-like comparison. This used to throw the whole year out for every method, including the ones that solved perfectly well, which quietly changed what the table was measured over without changing anything it printed. On these five ETFs nothing fails and the numbers are unaffected; on a 50-stock universe a single failed solve in 2016 was taking 2016 out of every row.</p>
+    <p style="margin-top:8px;color:var(--ink3);font-size:13.5px">A table that silently measures its rows over different periods is the kind of bug that never announces itself — it produces a plausible number, not an error. The column is there so the page can't do it quietly.</p>
   </div>
 
   <div class="note blue">
@@ -499,14 +504,16 @@ function renderOOS(lb) {
         <td class="n">${pct(r.cagr)}</td>
         <td class="n"><strong>${r.sharpe.toFixed(2)}</strong></td>
         <td class="n neg">${pct(r.worst)}</td>
-        <td class="n"${r.turnover > 0.1 ? ' style="color:var(--red)"' : ''}>${pct(r.turnover, 1)}</td></tr>`).join('');
+        <td class="n"${r.turnover > 0.1 ? ' style="color:var(--red)"' : ''}>${pct(r.turnover, 1)}</td>
+        <td class="n">${r.years}</td></tr>`).join('');
   const ms = rows.find(r => r.name === 'Max Sharpe');
   const rank = rows.indexOf(ms) + 1;
   const ordinal = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth'][rank];
   document.getElementById('cap-oos').innerHTML =
     `Sorted by out-of-sample Sharpe. On a ${lb}-year estimation window, max-Sharpe — the in-sample
      winner at 0.90 — finishes <strong style="color:var(--ink)">${ordinal} of ${rows.length}</strong>,
-     and pays ${pct(ms.turnover, 1)} annual turnover to get there.`;
+     and pays ${pct(ms.turnover, 1)} annual turnover to get there.
+     Every row covers the same ${ms.years} years — see the note below.`;
 }
 document.getElementById('sel-lb').onchange = e => renderOOS(e.target.value);
 renderOOS('3');

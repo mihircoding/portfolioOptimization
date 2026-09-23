@@ -68,15 +68,17 @@ def main():
                 for v, r in zip(ef["volatility"], ef["target_return"])]
 
     print("walk-forward at 2/3/5/7y...")
+    print(f"  anchor {np.round(w_market, 4)}")
     lookbacks = {}
     panel_3y = None
     for lb in (2, 3, 5, 7):
-        panel, summary = walk_forward(prices, lookback=lb, verbose=False,
+        panel, summary = walk_forward(prices, lookback=lb, verbose=True,
                                       w_market=w_market)
         lookbacks[lb] = [{"name": r["portfolio"], "cagr": round(r["cagr"], 4),
                           "vol": round(r["vol"], 4), "sharpe": round(r["sharpe"], 3),
                           "worst": round(r["worst"], 4),
-                          "turnover": round(r["turnover"], 4)}
+                          "turnover": round(r["turnover"], 4),
+                          "years": int(r["years"])}
                          for _, r in summary.iterrows()]
         if lb == LOOKBACK_YEARS:
             wide = panel.pivot(index="year", columns="portfolio", values="ret")

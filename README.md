@@ -159,8 +159,18 @@ the run:
 Equal weight puts a fifth of the *capital* in bonds and gets 1% of its *risk* from them. It
 looks balanced and isn't. **Equal risk contribution** solves for the weights where every asset
 contributes equally — no closed form except when all correlations are equal (where it reduces to
-inverse-vol), so it's solved numerically, started from inverse-vol weights because the objective
-isn't convex.
+inverse-vol), so it's solved numerically.
+
+Which formulation you pick matters more than it looks. Minimizing the dispersion of risk
+contributions under a budget constraint is the obvious statement of the problem and is *not*
+convex; a general-purpose solver on it hit its iteration limit on the 2013–2015 window often
+enough to drop 2016 out of the walk-forward, and whether it did came down to the fourth decimal
+of a price download. The equivalent convex formulation (Spinu 2013) minimizes
+`½wᵀΣw − (1/n)Σ log wᵢ` over positive weights and then rescales; its gradient condition
+`(Σw)ᵢwᵢ = 1/n` *is* the equal-risk condition. Solved by cyclical coordinate descent — each
+weight is the positive root of a quadratic, not a search — it converges in tens of sweeps from
+any positive start, matches the risk contributions to 1e-9 on a 50-asset covariance, and has no
+tolerance to tune that decides whether a year makes it into a table.
 
 ERC also needs no expected returns. Same robustness argument as min-variance, taken further.
 

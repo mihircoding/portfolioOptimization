@@ -10,7 +10,6 @@ inputs less noisy (shrinkage), or stop using the noisiest input at all
 """
 
 import numpy as np
-from scipy.optimize import minimize
 
 
 def shrink_covariance(sample_cov: np.ndarray, alpha: float) -> np.ndarray:
@@ -115,35 +114,66 @@ def risk_contributions(w: np.ndarray, cov: np.ndarray) -> np.ndarray:
     return w * (cov @ w) / variance
 
 
-def equal_risk_contribution_weights(cov: np.ndarray) -> np.ndarray:
+def equal_risk_contribution_weights(cov: np.ndarray, tol: float = 1e-12,
+                                    max_sweeps: int = 500) -> np.ndarray:
     """Weights where every asset contributes equally to risk: rc_i = 1/n.
 
     Diversifies RISK rather than capital. Equal weighting looks balanced and
-    isn't — a 20%-vol asset at 10% of the book carries far more risk than a
-    5%-vol asset at the same weight.
+    isn't - a 20%-vol asset at 10% of the book carries far more risk than a
+    5%-vol asset at the same weight. ERC needs no expected returns, which is
+    the same robustness argument as min-variance, one step further.
 
-    No closed form except when all correlations are equal (then it reduces to
-    inverse-vol). Solved numerically by minimizing the dispersion of risk
-    contributions. Starting from inverse-vol weights matters: the objective is
-    non-convex, and a good start keeps SLSQP out of trouble.
+    There is no closed form except when all correlations are equal (then it
+    reduces to inverse-vol), so it is solved numerically. The obvious
+    formulation - minimize the dispersion of risk contributions under a budget
+    constraint - is NOT convex, and a general-purpose solver on it turned out
+    to be exactly as reliable as that sounds: on this project's own data it hit
+    its iteration limit on the 2013-2015 window often enough to drop 2016 out
+    of the walk-forward, and whether it did came down to the fourth decimal of
+    a price download.
 
-    Also note ERC needs no expected returns — the same robustness argument as
-    min-variance, one step further.
+    So use the formulation that is convex (Spinu 2013). The solution is the
+    minimizer of
+
+        f(w) = 0.5 w'Sigma w  -  (1/n) sum log w_i,      w > 0
+
+    rescaled to sum to one. The log barrier makes it strictly convex with a
+    unique interior solution, and setting its gradient to zero gives
+    (Sigma w)_i * w_i = 1/n for every i - which IS the equal-risk condition.
+
+    Solved by cyclical coordinate descent (Griveau-Billion, Richard & Roncalli
+    2013): holding the others fixed, the best w_i is the positive root of
+
+        Sigma_ii w_i^2 + (sum_{j != i} Sigma_ij w_j) w_i - 1/n = 0
+
+    a quadratic, not a search. Each sweep is O(n^2), it converges in tens of
+    sweeps from any positive start, and there is no tolerance to tune that
+    decides whether a year makes it into the table.
     """
+    cov = np.asarray(cov, dtype=float)
     n = len(cov)
+    if n == 1:
+        return np.ones(1)
 
-    def dispersion(w: np.ndarray) -> float:
-        rc = risk_contributions(w, cov)
-        return float(((rc[:, None] - rc[None, :]) ** 2).sum())
+    target = 1.0 / n
+    w = inverse_vol_weights(cov).astype(float)   # already close; halves the sweeps
+    sigma_w = cov @ w
 
-    result = minimize(
-        dispersion,
-        x0=inverse_vol_weights(cov),
-        method="SLSQP",
-        bounds=[(1e-8, 1.0)] * n,  # strictly positive: rc_i = 1/n needs w_i > 0
-        constraints=[{"type": "eq", "fun": lambda w: w.sum() - 1.0}],
-        options={"maxiter": 2000, "ftol": 1e-16},
-    )
-    if not result.success:
-        raise RuntimeError(f"ERC optimization failed: {result.message}")
-    return result.x
+    for _ in range(max_sweeps):
+        previous = w.copy()
+        for i in range(n):
+            a = cov[i, i]
+            if a <= 0:
+                raise RuntimeError(f"asset {i} has non-positive variance")
+            b = sigma_w[i] - a * w[i]        # what the other assets contribute
+            root = (-b + np.sqrt(b * b + 4 * a * target)) / (2 * a)
+            if not np.isfinite(root) or root <= 0:
+                raise RuntimeError(f"ERC coordinate update failed on asset {i}")
+            sigma_w += cov[:, i] * (root - w[i])
+            w[i] = root
+        if np.abs(w - previous).max() < tol:
+            break
+    else:
+        raise RuntimeError(f"ERC did not converge in {max_sweeps} sweeps")
+
+    return w / w.sum()

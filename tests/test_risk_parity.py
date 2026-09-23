@@ -55,6 +55,46 @@ class TestERC:
         w = equal_risk_contribution_weights(cov)
         np.testing.assert_allclose(w, inverse_vol_weights(cov), atol=1e-3)
 
+    def test_equal_correlations_also_reduce_to_inverse_vol(self):
+        """The one case with a closed form: equal pairwise correlation."""
+        s = np.array([0.08, 0.14, 0.22, 0.31])
+        cov = np.outer(s, s) * (np.full((4, 4), 0.45) + np.eye(4) * 0.55)
+        np.testing.assert_allclose(equal_risk_contribution_weights(cov),
+                                   inverse_vol_weights(cov), atol=1e-6)
+
+    def test_solves_a_fifty_asset_covariance_exactly(self):
+        """The case the old dispersion-minimizing solver used to give up on.
+
+        Fifty correlated assets from a factor structure - the same shape as
+        the walk-forward's awkward windows. The convex formulation's optimum
+        satisfies (Sigma w)_i * w_i = 1/n exactly, so the risk contributions
+        should be equal to numerical precision, not to a solver tolerance.
+        """
+        rng = np.random.default_rng(0)
+        n = 50
+        loadings = rng.normal(0, 1, size=(n, 3))
+        specific = np.diag(rng.uniform(0.02, 0.25, n) ** 2)
+        cov = loadings @ loadings.T * 0.01 + specific
+
+        w = equal_risk_contribution_weights(cov)
+        rc = risk_contributions(w, cov)
+        np.testing.assert_allclose(rc, np.full(n, 1 / n), atol=1e-9)
+        assert w.sum() == pytest.approx(1.0)
+        assert (w > 0).all()
+
+    def test_the_answer_does_not_depend_on_the_scale_of_the_covariance(self):
+        """Weights are scale-free; risk contributions are shares, not sizes."""
+        s = np.array([0.10, 0.18, 0.25])
+        rho = np.array([[1.0, 0.4, 0.2], [0.4, 1.0, 0.5], [0.2, 0.5, 1.0]])
+        cov = np.outer(s, s) * rho
+        np.testing.assert_allclose(equal_risk_contribution_weights(cov),
+                                   equal_risk_contribution_weights(cov * 10_000),
+                                   atol=1e-10)
+
+    def test_a_single_asset_holds_all_of_it(self):
+        np.testing.assert_allclose(
+            equal_risk_contribution_weights(np.array([[0.04]])), [1.0])
+
 
 class TestLedoitWolfAlpha:
     def _correlated_returns(self, rng, T, N=5):
