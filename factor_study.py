@@ -115,6 +115,7 @@ def backtest(prices: pd.DataFrame, window: int, build=standard_estimators,
     turnover: dict[str, list] = {}
     shorts: dict[str, list] = {}
     weights: dict[str, list] = {}       # (start index, w) per rebalance
+    skipped: dict[str, int] = {}        # rebalances an estimator could not solve
     prev: dict[str, np.ndarray] = {}
     k_chosen: list[int] = []
 
@@ -137,6 +138,10 @@ def backtest(prices: pd.DataFrame, window: int, build=standard_estimators,
                     w = (min_variance_weights(cov, long_only=True) if long_only
                          else min_variance_weights_analytic(cov))
                 except (np.linalg.LinAlgError, RuntimeError):
+                    # That estimator sits out this quarter. Counted, because a
+                    # row built from fewer quarters than its neighbours is not
+                    # comparable to them and the table should say so.
+                    skipped[name] = skipped.get(name, 0) + 1
                     continue
             predicted.setdefault(name, []).append(float(np.sqrt(w @ cov @ w)))
             realized.setdefault(name, []).extend((test @ w).tolist())
@@ -157,6 +162,7 @@ def backtest(prices: pd.DataFrame, window: int, build=standard_estimators,
             "ann return": float((1 + r).prod() ** (TRADING_DAYS / len(r)) - 1),
             "turnover": float(np.mean(turnover.get(name, [0.0]))),
             "short": float(np.mean(shorts[name])),
+            "skipped": skipped.get(name, 0),
         })
     out = pd.DataFrame(rows)
     out["ratio"] = out["realized vol"] / out["predicted vol"]
@@ -164,6 +170,7 @@ def backtest(prices: pd.DataFrame, window: int, build=standard_estimators,
     out.attrs["control ratio"] = float(control.iloc[0]) if len(control) else None
     out.attrs["k"] = k_chosen
     out.attrs["rebalances"] = len(k_chosen)
+    out.attrs["skipped"] = skipped
     out.attrs["weights"] = weights
     return out
 
@@ -246,6 +253,11 @@ def show(table: pd.DataFrame) -> None:
         print(f"{r['estimator']:<22} {r['predicted vol']:>10.2%} "
               f"{r['realized vol']:>9.2%} {r['ratio']:>7.2f} "
               f"{r['ann return']:>8.2%} {r['turnover']:>9.1%} {r['short']:>7.0%}")
+    missed = table[table.get("skipped", 0) > 0] if "skipped" in table else table.iloc[:0]
+    for _, r in missed.iterrows():
+        total = table.attrs.get("rebalances")
+        print(f"  note: {r['estimator']} failed to solve {r['skipped']} of "
+              f"{total} rebalances, so its row covers a shorter history")
 
 
 def main() -> None:

@@ -79,6 +79,13 @@ rebalances, 2010–2024. Fully out of sample.
 | Max Sharpe | 6.65% | 8.89% | 0.75 | −11.70% | 16.2% |
 | Min variance | 3.32% | 5.74% | 0.58 | −13.04% | 2.3% |
 
+Every row covers the same 15 years. Max-Sharpe and Min-CVaR are numerical solves and either can
+fail on an awkward window; when one does, only that method loses that year, and the table is then
+scored on the years all of them have, with the dropped cells printed underneath. It used to throw
+the year out for every method, which silently changed what the whole table was measured over —
+a single failed solve in 2016 on the 50-stock universe took 2016 out of rows that had solved
+perfectly well. Nothing above changes: on these five ETFs nothing fails.
+
 The two Black-Litterman rows are new and they top the table. **Do not believe them yet** —
 section 8 takes them apart, and most of that margin turns out to belong to the starting point
 rather than to the method. The rest of this section is about the five rows below them, whose

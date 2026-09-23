@@ -110,35 +110,51 @@ def section(title: str) -> None:
 def build_portfolios(mu: np.ndarray, cov: np.ndarray,
                      train_returns: np.ndarray | None = None,
                      w_market: np.ndarray | None = None,
-                     view: tuple | None = None) -> dict:
+                     view: tuple | None = None,
+                     failures: list | None = None) -> dict:
     """train_returns (raw daily, not annualized) is optional and enables one
     more portfolio: Min CVaR. It's the only method here that doesn't reduce
     the training data to (mu, cov) first - it needs the actual scenarios,
     tail shape included. Optional because a couple of tests and any future
     caller working purely from (mu, cov) shouldn't be forced to carry raw
     returns around just to build the other four portfolios.
+
+    Pass a list as `failures` and a method that blows up costs only itself:
+    its name and error go in the list, the rest are still returned. With
+    failures=None a bad solve raises, which is what the in-sample table
+    wants - there a failure is a bug, not a data point.
     """
     n = len(mu)
-    portfolios = {
-        "Equal weight": np.full(n, 1 / n),
-        "Inverse vol": inverse_vol_weights(cov),
-        "Min variance": min_variance_weights(cov),
-        "Max Sharpe": max_sharpe_weights(mu, cov),
-        "Equal risk contribution": equal_risk_contribution_weights(cov),
-    }
+    recipes = [
+        ("Equal weight", lambda: np.full(n, 1 / n)),
+        ("Inverse vol", lambda: inverse_vol_weights(cov)),
+        ("Min variance", lambda: min_variance_weights(cov)),
+        ("Max Sharpe", lambda: max_sharpe_weights(mu, cov)),
+        ("Equal risk contribution", lambda: equal_risk_contribution_weights(cov)),
+    ]
     if train_returns is not None:
-        portfolios["Min CVaR (95%)"] = min_cvar_weights(train_returns)
+        recipes.append(("Min CVaR (95%)", lambda: min_cvar_weights(train_returns)))
 
     if w_market is not None:
         # delta from an assumed market Sharpe and the ESTIMATED market vol -
         # covariance is the input this repo trusts, sample means are not
         market_vol = float(np.sqrt(w_market @ cov @ w_market))
         delta = implied_risk_aversion(MARKET_SHARPE * market_vol, market_vol ** 2)
-        portfolios["Black-Litterman (no views)"] = black_litterman_weights(
-            cov, w_market, delta)
+        recipes.append(("Black-Litterman (no views)",
+                        lambda: black_litterman_weights(cov, w_market, delta)))
         if view is not None and view[0] is not None:
-            portfolios["Black-Litterman (momentum)"] = black_litterman_weights(
-                cov, w_market, delta, view[0], view[1])
+            recipes.append(("Black-Litterman (momentum)",
+                            lambda: black_litterman_weights(cov, w_market, delta,
+                                                            view[0], view[1])))
+
+    portfolios = {}
+    for name, solve in recipes:
+        try:
+            portfolios[name] = solve()
+        except (RuntimeError, ValueError, np.linalg.LinAlgError) as e:
+            if failures is None:
+                raise
+            failures.append((name, f"{type(e).__name__}: {e}"))
     return portfolios
 
 
@@ -213,12 +229,19 @@ def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
 
 
 def rebalances(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
-               w_market: np.ndarray | None = None, verbose: bool = False):
+               w_market: np.ndarray | None = None, verbose: bool = False,
+               failures: list | None = None):
     """Yield (year, that year's daily returns, portfolios fitted on the
     trailing `lookback` years) for every test year of the walk-forward.
 
     Shared by walk_forward() and the transaction-cost section, so the two are
     guaranteed to be scoring the same target weights.
+
+    A method that fails to solve loses that year and nothing else. This used
+    to drop the year for every method, which quietly moved the goalposts for
+    the whole table: on the 50-stock universe one failed solve in 2016 took
+    2016 out of every row, including the rows that solved fine. Pass a list
+    as `failures` to collect (year, method, error) for whatever did fail.
     """
     rets = daily_returns(prices)
     years = sorted(rets.index.year.unique())
@@ -234,12 +257,15 @@ def rebalances(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
         mu = annualized_mean(train).values
         cov = annualized_cov(train).values
         train_returns = daily_returns(train).values
-        try:
-            portfolios = build_portfolios(mu, cov, train_returns, w_market,
-                                          momentum_view(train))
-        except RuntimeError as e:
+        failed: list = []
+        portfolios = build_portfolios(mu, cov, train_returns, w_market,
+                                      momentum_view(train), failures=failed)
+        for name, err in failed:
+            if failures is not None:
+                failures.append((year, name, err))
             if verbose:
-                print(f"  {year}: optimizer failed ({e}); skipped")
+                print(f"  {year}: {name} did not solve ({err}); dropped for {year}")
+        if not portfolios:
             continue
         yield year, test, portfolios
 
@@ -259,8 +285,10 @@ def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
     records = []
     prev_weights: dict[str, np.ndarray] = {}
     turnover: dict[str, list] = {}
+    failures: list = []
 
-    for year, test, portfolios in rebalances(prices, lookback, w_market, verbose):
+    for year, test, portfolios in rebalances(prices, lookback, w_market, verbose,
+                                             failures=failures):
         for name, w in portfolios.items():
             # Fixed weights every day of the year: in effect rebalanced back to
             # target daily, at no cost, and turnover measured target to target.
@@ -276,15 +304,24 @@ def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
 
     panel = pd.DataFrame(records)
 
+    # A column is only a comparison if every row is measured over the same
+    # years, so the table is scored on the years every method has. Normally
+    # that is all of them and this changes nothing; when it isn't, the
+    # alternative is ranking one method's 17 years against another's 18.
+    covered = {name: set(g["year"]) for name, g in panel.groupby("portfolio")}
+    common = set.intersection(*covered.values()) if covered else set()
+    scored = panel[panel["year"].isin(common)]
+
     summary = []
     for name in panel["portfolio"].unique():
-        g = panel[panel["portfolio"] == name]
+        g = scored[scored["portfolio"] == name]
         cagr = float(np.prod(1 + g["ret"]) ** (1 / len(g)) - 1)
         vol = float(g["ret"].std(ddof=1))
         summary.append({"portfolio": name, "cagr": cagr, "vol": vol,
                         "sharpe": cagr / vol if vol > 0 else 0.0,
                         "worst": float(g["ret"].min()),
-                        "turnover": float(np.mean(turnover.get(name, [0.0])))})
+                        "turnover": float(np.mean(turnover.get(name, [0.0]))),
+                        "years": len(g)})
     summary = pd.DataFrame(summary)
 
     if verbose:
@@ -298,6 +335,11 @@ def walk_forward(prices: pd.DataFrame, lookback: int = LOOKBACK_YEARS,
         print("\nSharpe here uses annual return dispersion, not daily - it measures how")
         print("reliably each method delivered year to year. Turnover is the average")
         print("one-way weight change per rebalance: what you pay to hold the view.")
+        if failures:
+            print(f"\n{len(failures)} solve(s) failed and were dropped; the table above is")
+            print(f"scored on the {len(common)} years every method covers:")
+            for year, name, err in failures:
+                print(f"  {year}  {name}: {err}")
 
     return panel, summary
 
@@ -571,7 +613,9 @@ def main() -> None:
     axes[0].legend(fontsize=8)
 
     wide = panel.pivot(index="year", columns="portfolio", values="ret")
-    cumulative = (1 + wide).cumprod()
+    # A year a method could not be fitted for is drawn flat rather than
+    # breaking the line - with this universe there are none.
+    cumulative = (1 + wide.fillna(0.0)).cumprod()
     for col in cumulative.columns:
         axes[1].plot(cumulative.index, cumulative[col], marker="o", ms=3, label=col)
     axes[1].axhline(1.0, c="gray", lw=0.6)
