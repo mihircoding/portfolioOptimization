@@ -68,10 +68,11 @@ def main():
                 for v, r in zip(ef["volatility"], ef["target_return"])]
 
     print("walk-forward at 2/3/5/7y...")
-    print(f"  anchor {np.round(w_market, 4)}")
     lookbacks = {}
     panel_3y = None
     for lb in (2, 3, 5, 7):
+        # verbose so a failed solve is named in the build log rather than
+        # silently shortening a column of the published table
         panel, summary = walk_forward(prices, lookback=lb, verbose=True,
                                       w_market=w_market)
         lookbacks[lb] = [{"name": r["portfolio"], "cagr": round(r["cagr"], 4),
