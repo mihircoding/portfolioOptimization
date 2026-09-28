@@ -22,6 +22,7 @@ from src.black_litterman import (black_litterman_weights, equilibrium_returns,
 from src.costs import COST_LEVELS_BPS, DEFAULT_COST_BPS, hold, net_returns
 from src.cvar import cvar_of_weights, min_cvar_weights, var_of_weights
 from src.frontier import efficient_frontier
+from src.hrp import hrp_weights
 from src.optimizer import (max_sharpe_turnover_penalized, max_sharpe_weights,
                           min_variance_weights, portfolio_performance)
 from src.returns import TRADING_DAYS, annualized_cov, annualized_mean, daily_returns
@@ -131,6 +132,7 @@ def build_portfolios(mu: np.ndarray, cov: np.ndarray,
         ("Min variance", lambda: min_variance_weights(cov)),
         ("Max Sharpe", lambda: max_sharpe_weights(mu, cov)),
         ("Equal risk contribution", lambda: equal_risk_contribution_weights(cov)),
+        ("Hierarchical risk parity", lambda: hrp_weights(cov)),
     ]
     if train_returns is not None:
         recipes.append(("Min CVaR (95%)", lambda: min_cvar_weights(train_returns)))

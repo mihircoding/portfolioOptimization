@@ -77,6 +77,7 @@ rebalances, 2010–2024. Fully out of sample.
 | Inverse vol | 5.79% | 7.32% | 0.79 | −12.67% | 3.5% |
 | Equal risk contribution | 5.42% | 7.08% | 0.77 | −12.09% | 4.2% |
 | Max Sharpe | 6.65% | 8.89% | 0.75 | −11.70% | 16.2% |
+| Hierarchical risk parity | 3.60% | 5.95% | 0.61 | −12.17% | 4.0% |
 | Min variance | 3.32% | 5.74% | 0.58 | −13.04% | 2.3% |
 
 Every row covers the same 15 years. Max-Sharpe and Min-CVaR are numerical solves and either can
@@ -558,6 +559,82 @@ this small, correcting the drift is worth paying for.
 
 ---
 
+## 11. Hierarchical risk parity: the same answer without the inverse
+
+Section 9 ends on an explanation rather than a result. Three covariance estimators barely
+separated on 50 stocks, and forbidding short sales did more for realized risk than any of them,
+and the reason given was that the damage is done by the **inversion**, not by the matrix — the
+smallest eigenvalues are the worst estimated, inverting divides by them, and the optimizer puts
+its largest bets exactly there. A constraint helps because it stops the optimizer acting on the
+inverse's worst directions.
+
+That explanation makes a testable prediction: a method that never inverts the covariance at all
+should land near the long-only optimizers on realized risk **without being told to**. Hierarchical
+risk parity (López de Prado, 2016) is that method. `src/hrp.py` implements it — correlation
+distance, single-linkage clustering, quasi-diagonalization, recursive bisection — and there is
+no Σ⁻¹ anywhere in the calculation. The linkage is written out rather than imported from
+`scipy.cluster.hierarchy`, because the clustering is where the method's behaviour comes from;
+`tests/test_hrp.py` checks it agrees with scipy's on random inputs.
+
+`hrp_study.py` runs it against the optimizers on the 50-stock universe from section 9. Trailing
+3-year estimate, held a quarter, rolled, 63 rebalances, everything out of sample.
+
+```
+method                           pred   real  ratio     ret  sharpe   turn   maxw  short
+Equal weight                    18.5%  17.1%   0.93  16.39%    0.96   0.0%   2.0%   0.0%
+Inverse vol                     17.3%  16.2%   0.93  15.58%    0.96   1.0%   3.1%   0.0%
+Equal risk contribution         17.0%  16.0%   0.94  15.79%    0.99   1.2%   3.6%   0.0%
+Hierarchical risk parity        16.0%  15.2%   0.95  14.86%    0.98  10.8%   5.3%   0.0%
+Min variance (long only)        13.2%  13.9%   1.06  10.25%    0.74  10.9%  23.3%   0.0%
+Min variance (unconstrained)    11.4%  14.0%   1.23   9.00%    0.64  32.1%  24.2%  81.2%
+```
+
+**The prediction holds.** `ratio` is realized volatility over the volatility the method predicted
+at the time — the risk manager's question, and the one section 9 is built on. HRP comes in at
+**0.95**, in the group that under-promises, while unconstrained min-variance predicts 11.4% and
+delivers 14.0% (**1.23**). Nobody told HRP not to short and nobody capped a weight; it simply
+never inverted anything, and that alone was enough to stop the risk forecast from being
+systematically optimistic.
+
+The concentration column says the same thing from a different angle. Effective number of
+positions, 1 / Σw², out of 50:
+
+```
+Equal weight                     50.0
+Inverse vol                      47.4
+Equal risk contribution          46.3
+Hierarchical risk parity         38.1
+Min variance (long only)          7.9
+Min variance (unconstrained)      4.3
+```
+
+**Min-variance holds a four-stock book wearing a fifty-stock costume.** That is not a bug in the
+solver — it is the correct answer to the question it was asked, given a covariance matrix that
+claims two names nearly cancel. HRP keeps 38 of the 50 effective, because a tree split can only
+ever move money between branches, never concentrate it into whichever pair the matrix currently
+believes in.
+
+**And now the part that stops this being a sales pitch.** HRP turns over 10.8% a quarter for a
+0.98 Sharpe. Equal risk contribution turns over **1.2%** for **0.99**. On this universe HRP is
+paying nine times the trading for an outcome that is, within noise, the same one a much simpler
+method produced. The honest summary is that HRP is a good **argument** — it isolates the
+inversion as the culprit cleanly, which is worth something — and not, here, a better portfolio.
+
+On the five ETFs of the main table it does worse still: Sharpe 0.61, sixth of eight, with 81% in
+AGG. With five assets there is barely a tree to build, the first bisection is 2-against-3, and
+the method reduces to a clumsy inverse-variance weighting. HRP wants a universe with structure in
+it; that is the regime it was designed for and the regime where it is worth reaching for.
+
+### A limitation in the published algorithm, not in this implementation
+
+The recursive bisection splits the **ordered list** by count, not the dendrogram at its cluster
+boundary. Three near-copies of one bet and one independent bet get cut 2-2 rather than 3-1, so
+one copy is weighed against the independent asset instead of against its own siblings. Measured
+in `tests/test_hrp.py`: the duplicate cluster keeps about **two thirds** of the book, where
+inverse-variance weighting gives it three quarters and "one bet is one bet" would give it a half.
+HRP discounts redundancy; it does not remove it, and most write-ups of the method imply
+otherwise.
+
 ## Honest caveats
 
 I'd rather state these than have them found.
@@ -627,6 +704,12 @@ possible to read the walk-forward table without meeting it.
    shows it clearly), but converges to essentially the same portfolio as min-variance on this
    project's actual 5-ETF universe — a finding about this dataset's tail shapes, not evidence
    the method doesn't work.
+7. ~~Hierarchical risk parity~~ — done, `src/hrp.py`, section 11. It confirms the diagnosis
+   section 9 offered: never inverting the covariance gets you an honest risk forecast on 50
+   stocks without needing a long-only constraint to enforce it. It also turns over nine times
+   what equal risk contribution does for the same Sharpe, so the finding is about *why* the
+   optimizers fail, not about a better portfolio.
+
 6. ~~Transaction costs~~ — done, `src/costs.py`, section 10. Holdings drift between rebalances,
    trades are charged at 5/10/25 bps a side, and a no-trade band is the turnover-aware
    rebalance. Nothing changes on the five ETFs. On 50 stocks the unconstrained optimizer loses
