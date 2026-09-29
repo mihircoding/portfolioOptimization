@@ -635,6 +635,98 @@ inverse-variance weighting gives it three quarters and "one bet is one bet" woul
 HRP discounts redundancy; it does not remove it, and most write-ups of the method imply
 otherwise.
 
+## 12. Fixing that limitation, and finding out it was load-bearing
+
+`hrp_split_study.py`. The fix writes itself: `tree_bisection()` descends the dendrogram and splits
+at each of its actual joins instead of at the ordered list's midpoint. `hrp_weights(cov,
+split="tree")`.
+
+On the case section 11 complained about, it is simply correct:
+
+```
+linkage   split    three duplicates   lone asset
+single    list               66.7%       33.3%
+single    tree               50.2%       49.8%
+average   list               66.7%       33.3%
+average   tree               50.2%       49.8%
+```
+
+Two thirds becomes 0.502. Whatever is wrong with the fix on real data is not this.
+
+### On real data it is much worse, and the tree is the reason
+
+```
+book                     linkage     root split  1-asset joins  balance
+50 large caps            single          1 v 49      37/49         0.14
+50 large caps            average         1 v 49      36/49         0.27
+20 multi-asset ETFs      single          1 v 19      16/19         0.21
+20 multi-asset ETFs      average         1 v 19      13/19         0.39
+synthetic, 8 real blocks single          24 v 8      24/31         0.54
+synthetic, 8 real blocks average         8 v 24      22/31         0.66
+```
+
+A correlation dendrogram of financial assets is not a tree, it is a **ladder**. Both books split
+one asset against all the rest at the root and attach a single asset at three quarters of their
+joins. `balance` is the smaller-over-larger branch ratio averaged over every join and weighted by
+cluster size, because a lopsided cut at the root decides where the money goes and a lopsided cut
+between two leaves decides nothing; 1.0 is a balanced binary tree and a ladder tends to 2/n.
+
+Switching to **average linkage** — the textbook cure for chaining — barely moves it. That is the
+clue: the cause is not the update rule, it is that a correlation matrix dominated by one common
+factor has no block structure to find, so every asset is roughly equidistant from every other and
+greedy agglomeration snowballs whichever way it is told to measure distance. The synthetic row is
+the control, from the other side: build a covariance that really does have eight blocks in it and
+the same code returns a balanced tree.
+
+Descending a ladder means the first split is one asset against forty-nine, and that asset collects
+a large share of the book before anything else is considered:
+
+```
+50 large caps  (47 quarterly rebalances)
+                               pred   real  ratio     ret  sharpe   turn  eff n
+average linkage, list split   14.1%  14.7%   1.04  14.22%    0.97  10.8%   38.5
+single linkage, list split    14.1%  14.8%   1.05  14.08%    0.95  10.8%   39.2
+average linkage, tree split   13.9%  15.2%   1.10  14.74%    0.97  19.8%   11.8
+single linkage, tree split    14.9%  16.4%   1.10  17.87%    1.09  21.1%    7.2
+```
+
+Effective positions fall from 39 to 7. The tree split does earn a higher return and a higher
+Sharpe — and it earns them the way concentration always does, which the rest of the row says out
+loud: its realized volatility overshoots its own forecast by 10% instead of 5%, and it turns over
+twice as much to get there. That is section 9's failure mode reappearing in a method built to
+avoid it.
+
+So the midpoint cut is protected from all of this by being balanced whatever the tree looks like —
+which is not a property anybody claimed for it, and is apparently most of what the method is.
+
+### Which raises the obvious question about the other three steps
+
+If the balance is doing the work rather than the clustering, then throwing the clustering away
+entirely — bisecting a **random** order, same midpoint cut — should barely hurt.
+
+```
+book                      clustered     random      sd    gain  sigmas
+50 large caps                14.12%     14.31%   0.09%   0.19%     2.1
+20 multi-asset ETFs           3.83%      3.88%   0.20%   0.05%     0.2
+```
+
+Predicted portfolio volatility averaged over the rebalances, 200 random orders per date. The
+clustering is worth 0.19 points on the stock book — two standard deviations of the random-order
+distribution, and 1.3% of the volatility it is predicting — and 0.05 points, a fifth of a standard
+deviation, on the multi-asset book.
+
+That second row is the opposite of where the blocks are most obviously real, and it deserves a
+guess rather than silence. The split's decision comes from `cluster_variance()`, which scores each
+side as an inverse-variance sub-portfolio; on a book holding Treasuries at 4% vol beside equities
+at 18%, those variances differ by enough that they, not which assets sit together, decide where
+the money goes. Twenty assets is also only nineteen splits. That is a conjecture; the two numbers
+are the measurement.
+
+**Either way: three of HRP's four steps are worth about a percent of predicted volatility here,
+and the step usually written up as the wart is carrying the rest.** That is a more useful thing to
+know about a method than one more Sharpe, and it is the sort of thing you only find by writing the
+obvious fix and watching it fail.
+
 ## Honest caveats
 
 I'd rather state these than have them found.
@@ -704,11 +796,13 @@ possible to read the walk-forward table without meeting it.
    shows it clearly), but converges to essentially the same portfolio as min-variance on this
    project's actual 5-ETF universe — a finding about this dataset's tail shapes, not evidence
    the method doesn't work.
-7. ~~Hierarchical risk parity~~ — done, `src/hrp.py`, section 11. It confirms the diagnosis
-   section 9 offered: never inverting the covariance gets you an honest risk forecast on 50
-   stocks without needing a long-only constraint to enforce it. It also turns over nine times
-   what equal risk contribution does for the same Sharpe, so the finding is about *why* the
-   optimizers fail, not about a better portfolio.
+7. ~~Hierarchical risk parity~~ — done, `src/hrp.py`, sections 11 and 12. It confirms the
+   diagnosis section 9 offered: never inverting the covariance gets you an honest risk forecast
+   on 50 stocks without needing a long-only constraint to enforce it. It also turns over nine
+   times what equal risk contribution does for the same Sharpe, so the finding is about *why*
+   the optimizers fail, not about a better portfolio. Section 12 then fixes the published
+   algorithm's list-midpoint split, finds the fix much worse on real data because correlation
+   dendrograms are ladders, and traces most of what the method delivers to the step being fixed.
 
 6. ~~Transaction costs~~ — done, `src/costs.py`, section 10. Holdings drift between rebalances,
    trades are charged at 5/10/25 bps a side, and a no-trade band is the turnover-aware
