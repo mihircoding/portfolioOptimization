@@ -100,6 +100,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <p class="lede">Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, risk parity and CVaR — implemented, then tested the only way that matters: out of sample. <strong style="color:var(--ink)">In sample the max-Sharpe portfolio wins with a Sharpe of 0.90. Walk it forward and it finishes fourth of six, behind equal weighting — which requires no estimation, no optimizer, and almost no trading.</strong></p>
   <div class="links">
     <a class="btn primary" href="#oos">The out-of-sample result</a>
+    <a class="btn" href="#hrp">Without the inverse</a>
     <a class="btn" href="https://github.com/mihircoding/portfolioOptimization">Source on GitHub</a>
     <a class="btn" href="https://github.com/mihircoding/portfolioOptimization/blob/main/RESULTS.md">Full write-up</a>
   </div>
@@ -320,6 +321,56 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
       <p><strong style="color:var(--ink)">What does work costs nothing.</strong> Forbidding short sales takes the sample covariance from 1.68 to 1.30 and its turnover from 94% to 27%, and lands realized risk below anything the unconstrained version managed with any estimator. Then all four estimates collapse into a 0.2-point range: once shorting is off the table, which covariance matrix you used stops mattering.</p>
       <p>This is Jagannathan &amp; Ma (2003), and it is not a coincidence. A no-short constraint is algebraically equivalent to subtracting the constraint&rsquo;s multipliers from the covariance matrix, and those bind precisely on the assets whose estimated covariances are most extreme. The constraint <em>is</em> a shrinkage estimator. Worst first: no constraint and a bad matrix (2.30), no constraint and a good matrix (1.60), a constraint and any matrix (1.30), no optimization at all (1.12).</p>
     </div>
+  </div>
+</div>
+</section>
+
+<section id="hrp">
+<div class="wrap">
+  <div class="eyebrow">Never invert it</div>
+  <h2>The same answer without the matrix inverse</h2>
+  <p class="lede">The fifty-asset section ends on an explanation rather than a result: the damage is done by the <em>inversion</em>, not by the matrix. The smallest eigenvalues are the worst estimated, inverting divides by them, and the optimizer puts its largest bets exactly there. A long-only constraint helps because it stops the optimizer acting on those directions.</p>
+
+  <p>That is a testable claim. It predicts that a method which never inverts the covariance at all should land near the constrained optimizers on realized risk <strong style="color:var(--ink)">without being told to</strong>. <span class="mono">src/hrp.py</span> is that method &mdash; Lopez de Prado's hierarchical risk parity. Turn the correlations into a distance, cluster the assets into a tree, reorder so correlated names sit together, then split the money down the tree, less to the riskier branch at every fork. No &Sigma;<sup>&minus;1</sup> anywhere.</p>
+
+  <div class="cards">
+    <div class="card"><div class="k">HRP risk forecast</div><div class="v" id="h-ratio">&mdash;</div><div class="s">realized / predicted, 1.00 is honest</div></div>
+    <div class="card"><div class="k">Min variance, unconstrained</div><div class="v red" id="h-ratio-mv">&mdash;</div><div class="s">promised less risk than it took</div></div>
+    <div class="card"><div class="k">HRP effective positions</div><div class="v" id="h-eff">&mdash;</div><div class="s" id="h-eff-s">&mdash;</div></div>
+    <div class="card"><div class="k">The catch: turnover</div><div class="v amber" id="h-turn">&mdash;</div><div class="s" id="h-turn-s">&mdash;</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:26px;align-items:start">
+    <div class="panel">
+      <h3>Did the risk number turn out to be true?</h3>
+      <div class="chart"><canvas id="c-hrp-ratio"></canvas></div>
+      <p class="cap">Realized volatility divided by the volatility each method predicted at the rebalance, averaged over <span id="h-rebal">&mdash;</span> quarterly rebalances on <span id="h-n">&mdash;</span> stocks. Below 1 means the method under-promised. Above 1 means it took more risk than it admitted to.</p>
+    </div>
+    <div class="panel">
+      <h3>How many names are really being held</h3>
+      <div class="chart"><canvas id="c-hrp-eff"></canvas></div>
+      <p class="cap">Effective number of positions, 1 / &Sigma;w&sup2;, out of 50. The honest version of &ldquo;diversified&rdquo;: a fifty-stock book with most of its weight in three names is a three-stock book wearing a costume.</p>
+    </div>
+  </div>
+
+  <div class="note blue">
+    <p><strong>The prediction holds.</strong> HRP lands in the group that under-promises its risk, while unconstrained minimum variance predicts <span class="mono" id="h-mv-pred">&mdash;</span> and delivers <span class="mono" id="h-mv-real">&mdash;</span>. Nobody told HRP not to short and nobody capped a weight. It simply never inverted anything, and that alone was enough to stop the risk forecast being systematically optimistic. A tree split can only move money <em>between</em> branches, so it can never concentrate into whichever pair of names the matrix currently believes cancel each other out.</p>
+  </div>
+
+  <div class="scroll" style="margin-top:26px">
+    <table id="t-hrp"><thead><tr><th>Method</th><th class="n">Predicted vol</th><th class="n">Realized vol</th><th class="n">Ratio</th><th class="n">Return</th><th class="n">Sharpe</th><th class="n">Turnover</th><th class="n">Largest weight</th><th class="n">Gross short</th></tr></thead><tbody></tbody></table>
+    <p class="cap">Trailing three-year estimate, held a quarter, rolled. Sample covariance, out of sample throughout.</p>
+  </div>
+
+  <div class="note" style="margin-top:22px">
+    <p><strong>And now the part that stops this being a sales pitch.</strong> HRP turns over <span class="mono" id="h-turn2">&mdash;</span> of the book a quarter for a Sharpe of <span class="mono" id="h-sharpe">&mdash;</span>. Equal risk contribution &mdash; already in the table above, and far simpler &mdash; turns over <span class="mono" id="h-erc-turn">&mdash;</span> for <span class="mono" id="h-erc-sharpe">&mdash;</span>. That is roughly nine times the trading for an outcome that is, within noise, the same one a much plainer method produced.</p>
+    <p style="margin-top:10px">So the honest summary is that HRP is a good <em>argument</em> here rather than a better portfolio. It isolates the inversion as the culprit cleanly, which is worth something on its own. On the five ETFs of the main table it does worse still &mdash; Sharpe 0.61, with 81% in AGG &mdash; because with five assets there is barely a tree to build and the method degenerates into a clumsy inverse-variance weighting. HRP wants a universe with structure in it.</p>
+  </div>
+
+  <div class="panel" style="margin-top:26px">
+    <h3>A limitation in the published algorithm, not in this implementation</h3>
+    <p>The recursive bisection splits the <strong style="color:var(--ink)">ordered list</strong> by count, not the dendrogram at its cluster boundary. Three near-copies of one bet plus one independent bet get cut 2&ndash;2 rather than 3&ndash;1, so one copy is weighed against the independent asset instead of against its own siblings. Measured in <span class="mono">tests/test_hrp.py</span>: the duplicate cluster keeps about <strong style="color:var(--ink)">two thirds</strong> of the book, where inverse-variance weighting gives it three quarters and &ldquo;one bet is one bet&rdquo; would give it a half.</p>
+    <p style="margin-bottom:0">HRP discounts redundancy. It does not remove it, and most write-ups of the method imply otherwise. Splitting on the tree instead of the midpoint is the obvious fix and is not what the published algorithm does.</p>
   </div>
 </div>
 </section>
@@ -666,6 +717,82 @@ renderCosts(lvl);
 
 const ewRow = D.walk_forward[D.meta.lookback].find(r => r.name === 'Equal weight');
 document.getElementById('x-ew').textContent = ewRow ? ewRow.sharpe.toFixed(2) : '\u2014';
+
+
+/* ---------- hierarchical risk parity (src/hrp.py, hrp_study.py) ---------- */
+(function () {
+  const H = D.hrp;
+  if (!H) return;
+  const el = id => document.getElementById(id);
+  const c = C();
+  const pct = v => (v * 100).toFixed(1) + '%';
+  const byName = n => H.large.find(r => r.method === n);
+  const hrp = byName('Hierarchical risk parity');
+  const mv = byName('Min variance (unconstrained)');
+  const erc = byName('Equal risk contribution');
+  const effHrp = H.effective.find(r => r.method === 'Hierarchical risk parity');
+
+  el('h-ratio').textContent = hrp.ratio.toFixed(2);
+  el('h-ratio-mv').textContent = mv.ratio.toFixed(2);
+  el('h-eff').textContent = effHrp.positions.toFixed(0);
+  el('h-eff-s').textContent = 'of ' + H.n_large + ', against ' +
+    H.effective.find(r => r.method === 'Min variance (unconstrained)').positions.toFixed(1) +
+    ' for min variance';
+  el('h-turn').textContent = pct(hrp.turnover);
+  el('h-turn-s').textContent = 'a quarter, vs ' + pct(erc.turnover) + ' for equal risk contribution';
+  el('h-rebal').textContent = H.rebalances;
+  el('h-n').textContent = H.n_large;
+  el('h-mv-pred').textContent = pct(mv['predicted vol']);
+  el('h-mv-real').textContent = pct(mv['realized vol']);
+  el('h-turn2').textContent = pct(hrp.turnover);
+  el('h-sharpe').textContent = hrp.sharpe.toFixed(2);
+  el('h-erc-turn').textContent = pct(erc.turnover);
+  el('h-erc-sharpe').textContent = erc.sharpe.toFixed(2);
+
+  const colour = r => r.method.startsWith('Hierarchical') ? c.blue
+                    : (r.ratio > 1 ? c.red : c.ink3);
+
+  new Chart(document.getElementById('c-hrp-ratio'), {type:'bar', data:{
+    labels: H.large.map(r => r.method),
+    datasets:[{data: H.large.map(r => r.ratio),
+               backgroundColor: H.large.map(colour), borderRadius:2}]},
+    options:{indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:i =>
+          'predicted ' + pct(H.large[i.dataIndex]['predicted vol']) +
+          ', realized ' + pct(H.large[i.dataIndex]['realized vol']) +
+          '  (ratio ' + i.parsed.x.toFixed(2) + ')'}}},
+      scales:{x:{title:{display:true, text:'realized vol / predicted vol'},
+                 grid:{color:c.line}, suggestedMin:0.8, suggestedMax:1.3},
+              y:{grid:{display:false}, ticks:{font:{size:10}}}}}});
+
+  new Chart(document.getElementById('c-hrp-eff'), {type:'bar', data:{
+    labels: H.effective.map(r => r.method),
+    datasets:[{data: H.effective.map(r => r.positions),
+               backgroundColor: H.effective.map(r =>
+                 r.method.startsWith('Hierarchical') ? c.blue
+                 : (r.positions < 10 ? c.red : c.ink3)),
+               borderRadius:2}]},
+    options:{indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:i => i.parsed.x.toFixed(1) + ' effective positions'}}},
+      scales:{x:{title:{display:true, text:'effective positions (1 / sum w squared)'},
+                 grid:{color:c.line}},
+              y:{grid:{display:false}, ticks:{font:{size:10}}}}}});
+
+  document.querySelector('#t-hrp tbody').innerHTML = H.large.map(r => {
+    const bold = r.method.startsWith('Hierarchical');
+    const name = bold ? '<strong>' + r.method + '</strong>' : r.method;
+    return `<tr><td>${name}</td><td class="n">${pct(r['predicted vol'])}</td>` +
+           `<td class="n">${pct(r['realized vol'])}</td>` +
+           `<td class="n ${r.ratio > 1 ? 'neg' : ''}">${r.ratio.toFixed(2)}</td>` +
+           `<td class="n">${pct(r['ann return'])}</td>` +
+           `<td class="n">${r.sharpe.toFixed(2)}</td>` +
+           `<td class="n">${pct(r.turnover)}</td>` +
+           `<td class="n">${pct(r['max weight'])}</td>` +
+           `<td class="n">${pct(r.short)}</td></tr>`;
+  }).join('');
+})();
 
 </script>
 </body>

@@ -17,6 +17,7 @@ import yfinance as yf
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import factor_study
+import hrp_study
 from factor_study import k_sweep_estimators
 from run_optimization import (ALT_ANCHORS, END, ETF_BAND, LOOKBACK_YEARS, MARKET_SHARPE,
                               START, UNIVERSE, build_portfolios, cost_section,
@@ -31,6 +32,58 @@ from src.returns import annualized_cov, annualized_mean, daily_returns
 from src.risk_parity import risk_contributions
 
 OUT = Path(__file__).resolve().parent / "data.js"
+
+
+def hrp_section():
+    """HRP against the optimizers, on the 50-stock universe of section 9.
+
+    Same numbers hrp_study.py prints. The point of the section is the
+    realized/predicted ratio, so that is what the chart is built on rather
+    than return, which over any one sample is mostly luck.
+    """
+    small = hrp_study.load(hrp_study.SMALL)
+    large = hrp_study.load(hrp_study.LARGE)
+
+    def rows(table):
+        return [{k: (round(float(v), 4) if isinstance(v, (int, float))
+                     and not isinstance(v, bool) else v)
+                 for k, v in r.items()}
+                for r in table.sort_values("ratio").to_dict("records")]
+
+    big = hrp_study.backtest(large)
+    counts = concentration_counts(large)
+    return {
+        "n_large": len(large.columns),
+        "n_small": len(small.columns),
+        "rebalances": int(big.attrs["rebalances"]),
+        "hold_days": hrp_study.HOLD_DAYS,
+        "large": rows(big),
+        "small": rows(hrp_study.backtest(small)),
+        "shrunk": rows(hrp_study.backtest(large, shrink=0.3)),
+        "effective": counts,
+    }
+
+
+def concentration_counts(prices):
+    """Effective number of positions, 1 / sum(w^2), averaged over rebalances.
+
+    The honest version of "diversified": a 50-stock book with 60% in three
+    names is a three-stock book wearing a costume.
+    """
+    rets = daily_returns(prices).values
+    window = hrp_study.WINDOW_DAYS
+    out = {}
+    for start in range(window, len(rets) - hrp_study.HOLD_DAYS + 1,
+                       hrp_study.HOLD_DAYS):
+        cov = np.cov(rets[start - window:start], rowvar=False) * 252
+        for name, solve in hrp_study.methods(cov).items():
+            try:
+                w = solve()
+            except Exception:
+                continue
+            out.setdefault(name, []).append(1.0 / float(np.sum(w ** 2)))
+    return [{"method": k, "positions": round(float(np.mean(v)), 2)}
+            for k, v in sorted(out.items(), key=lambda kv: -np.mean(kv[1]))]
 
 
 def main():
@@ -155,6 +208,9 @@ def main():
                  "drag": {str(c): round(r[f"drag {c}"], 6) for c in COST_LEVELS_BPS}}
                 for r in cost_section(prices, w_market, verbose=False)]
 
+    print("HRP study (50 stocks + 5 ETFs)...")
+    hrp = hrp_section()
+
     data = {
         "meta": {"universe": UNIVERSE, "start": str(prices.index[0].date()),
                  "end": str(prices.index[-1].date()), "days": len(prices),
@@ -179,6 +235,7 @@ def main():
             "bands": factor_study.BANDS, "etf_band": ETF_BAND,
             "large": cost_large, "sweep": cost_sweep, "etf": cost_etf,
         },
+        "hrp": hrp,
         "bl": {
             "market_weights": [round(float(x), 4) for x in w_market],
             "delta": round(delta, 3),
