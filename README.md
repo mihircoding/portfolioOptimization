@@ -97,7 +97,7 @@ python -m streamlit run streamlit_app.py
 | [notes/statarb.md](notes/statarb.md) | the cointegration screen, its control group, its size distortion, its survivorship bias |
 | [notes/volcarry.md](notes/volcarry.md) | Black-Scholes from scratch, the SSVI surface, and what the hedge actually earns |
 | [notes/interview-allocator.md](notes/interview-allocator.md) | how to talk about the allocator |
-| [notes/interview-statarb.md](notes/interview-statarb.md) | how to talk about the stat-arb sleeve |
+
 | [notes/interview-volcarry.md](notes/interview-volcarry.md) | how to talk about the options side |
 
 The short version of all of it: the cointegration screen predicts almost

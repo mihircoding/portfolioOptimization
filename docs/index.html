@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Portfolio Optimization — Mihir Konda</title>
-<meta name="description" content="Markowitz, shrinkage, risk parity and CVaR, tested out of sample. Max-Sharpe wins in sample at 0.90 and finishes fourth of six walking forward, behind equal weighting.">
+<title>Alpha to Allocation — Mihir Konda</title>
+<meta name="description" content="Two alpha sleeves - cointegration stat-arb and the variance risk premium - and the risk allocator that sizes them. Mean-variance finally beats equal weighting, and not for the reason the textbook predicts.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -95,17 +95,79 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 
 <header>
 <div class="wrap">
-  <div class="tagline">The optimizer lost to dividing by five</div>
-  <h1>Portfolio Optimization</h1>
-  <p class="lede">Markowitz mean-variance optimization, the efficient frontier, covariance shrinkage, risk parity and CVaR — implemented, then tested the only way that matters: out of sample. <strong style="color:var(--ink)">In sample the max-Sharpe portfolio wins with a Sharpe of 0.90. Walk it forward and it finishes fourth of six, behind equal weighting — which requires no estimation, no optimizer, and almost no trading.</strong></p>
+  <div class="tagline">The optimizer lost to dividing by five. Then it got something worth optimizing.</div>
+  <h1>Alpha to Allocation</h1>
+  <p class="lede">Two strategies that produce a return stream, and the machinery that decides how much of each to hold. Mean-variance, shrinkage, risk parity, CVaR, a factor risk model and hierarchical risk parity — each tested out of sample, where <strong style="color:var(--ink)">equal weighting beats all of them on assets, and loses to mean-variance on strategies by more than a full unit of Sharpe.</strong> 243 tests.</p>
   <div class="links">
-    <a class="btn primary" href="#oos">The out-of-sample result</a>
-    <a class="btn" href="#hrp">Without the inverse</a>
+    <a class="btn primary" href="#sleeves">Allocating the sleeves</a>
+    <a class="btn" href="#oos">The out-of-sample result</a>
+    <a class="btn" href="statarb/">Stat-arb sleeve &rarr;</a>
+    <a class="btn" href="volcarry/">Volatility sleeve &rarr;</a>
     <a class="btn" href="https://github.com/mihircoding/portfolioOptimization">Source on GitHub</a>
-    <a class="btn" href="https://github.com/mihircoding/portfolioOptimization/blob/main/RESULTS.md">Full write-up</a>
   </div>
 </div>
 </header>
+
+
+<section id="sleeves">
+<div class="wrap">
+  <div class="eyebrow">The result that needed all three parts</div>
+  <h2>The optimizer finally gets something worth optimizing</h2>
+  <p class="lede">Everything below this section tests the optimizer on <em>assets</em> — five ETFs, then fifty US large caps — and finds that equal weighting wins. That result has always had an obvious rejoinder: a risk allocator exists to combine <em>strategies</em>, and when everything in the book is 85% correlated with the market there is no risk left to diversify away.</p>
+  <p>So: two sleeves, each producing a monthly return stream, built by the two projects that merged into this one.</p>
+
+  <table>
+    <thead><tr><th>Sleeve</th><th>What it is</th><th class="n">Ann. return</th><th class="n">Ann. vol</th><th class="n">Sharpe</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">statarb</td><td>930 cointegrated equity pairs, long one leg, short the other</td><td class="mono">&minus;0.67%</td><td class="mono">1.53%</td><td class="mono"><strong>&minus;0.44</strong></td></tr>
+      <tr><td class="mono">volcarry</td><td>Sell a one-month ATM SPY call monthly, delta-hedge daily</td><td class="mono">+4.59%</td><td class="mono">1.66%</td><td class="mono"><strong>2.77</strong></td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:14px">46 overlapping months. Correlation between them <strong style="color:var(--ink)">+0.029</strong>, diversification ratio <strong style="color:var(--ink)">1.39</strong> against a ceiling of 1.41. About as clean a two-strategy book as exists.</p>
+
+  <h3 style="margin-top:32px">For the first time here, mean-variance wins</h3>
+  <p>Walk-forward: estimate on a trailing 24 months, hold one, repeat. 22 out-of-sample months.</p>
+  <table>
+    <thead><tr><th>Scheme</th><th class="n">Ann. return</th><th class="n">Ann. vol</th><th class="n">Sharpe</th><th class="n">Weight on statarb</th></tr></thead>
+    <tbody>
+      <tr><td><strong>max Sharpe</strong></td><td class="mono">3.51%</td><td class="mono">1.33%</td><td class="mono"><strong>2.64</strong></td><td class="mono"><strong>0%</strong></td></tr>
+      <tr><td>risk parity</td><td class="mono">1.49%</td><td class="mono">0.95%</td><td class="mono">1.58</td><td class="mono">43%</td></tr>
+      <tr><td>inverse vol</td><td class="mono">1.49%</td><td class="mono">0.95%</td><td class="mono">1.58</td><td class="mono">43%</td></tr>
+      <tr><td>equal weight</td><td class="mono">1.39%</td><td class="mono">0.89%</td><td class="mono">1.57</td><td class="mono">50%</td></tr>
+      <tr><td>HRP</td><td class="mono">1.60%</td><td class="mono">1.03%</td><td class="mono">1.56</td><td class="mono">37%</td></tr>
+      <tr><td>min variance</td><td class="mono">1.59%</td><td class="mono">1.02%</td><td class="mono">1.55</td><td class="mono">37%</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:32px">But not for the reason the diversification argument predicts</h3>
+  <p>It wins because <strong style="color:var(--ink)">one sleeve does not make money, and only mean-variance can see it.</strong> Risk parity, inverse volatility, HRP and min variance never read an expected return — that is the whole appeal of the family. The cost, which nobody puts on the slide, is that they have no mechanism for declining to fund something broken.</p>
+  <p>And the trap closes, because the sleeve that earns nothing is also the <em>quieter</em> one — 1.53% volatility against 1.66%. So all four allocate <em>toward</em> it: 37&ndash;43% of the book into a strategy with a negative Sharpe. A strategy with no edge has no edge to be volatile about, which makes &ldquo;calm&rdquo; a poor proxy for &ldquo;safe.&rdquo;</p>
+
+  <h3 style="margin-top:32px">One number reconciles the two findings</h3>
+  <p>Mean-variance beats equal weighting when the difference in expected return is large relative to the error on estimating it, and loses when it is not — because then it is allocating on noise.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Quantity</th><th class="n">Value</th></tr></thead>
+    <tbody>
+      <tr><td>Return gap</td><td class="mono">+5.27% a year</td></tr>
+      <tr><td>Standard error</td><td class="mono">0.0961% a month, on 46 months</td></tr>
+      <tr><td><strong>t-statistic</strong></td><td class="mono"><strong>4.57</strong></td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:14px">On the five-ETF problem below, the same statistic is under 1 — which is why the optimizer loses there and wins here. &ldquo;Optimizers don&rsquo;t work&rdquo; and &ldquo;optimizers work&rdquo; are both wrong. The question is whether your assets differ by more than your sample can resolve, and that is computable <em>before</em> choosing an allocator.</p>
+
+  <h3 style="margin-top:32px">The check that matters</h3>
+  <p>The stat-arb sleeve only exists from 2021, so the overlap is 2021&ndash;2024 — which contains no 2008 and no March 2020. Short volatility is a strategy whose entire risk lives in months like those, and the window was chosen by the other sleeve's start date.</p>
+  <table>
+    <thead><tr><th>volcarry over</th><th class="n">Months</th><th class="n">Ann. return</th><th class="n">Ann. vol</th><th class="n">Sharpe</th><th class="n">Worst month</th></tr></thead>
+    <tbody>
+      <tr><td>Its full history</td><td class="mono">215</td><td class="mono">4.87%</td><td class="mono">2.22%</td><td class="mono">2.20</td><td class="mono">&minus;2.68%</td></tr>
+      <tr><td>The overlap only</td><td class="mono">46</td><td class="mono">4.59%</td><td class="mono">1.66%</td><td class="mono"><strong>2.77</strong></td><td class="mono">&minus;0.78%</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:14px">The window inflates the sleeve's Sharpe by <strong style="color:var(--ink)">+0.57</strong>. The important part is <em>where</em>: the return is almost unchanged (4.59% against 4.87%) and all the difference is in volatility. So the quantity mean-variance actually acted on survives the check. The 2.64 does not.</p>
+  <p><a href="statarb/">The stat-arb sleeve's own results &rarr;</a> &middot; <a href="volcarry/">the volatility sleeve's &rarr;</a></p>
+</div>
+</section>
 
 <section>
 <div class="wrap">
