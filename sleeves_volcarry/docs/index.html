@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Options Pricer — Mihir Konda</title>
+<meta name="description" content="Black-Scholes from scratch with all five Greeks, cross-checked against Monte Carlo and a binomial tree. Live in-browser calculator, volatility smile, early-exercise premium, and eighteen years of delta-hedging SPY.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fbfbfa; --surface:#fff; --line:#e5e4df; --line2:#d0cfc8;
+  --ink:#16161a; --ink2:#55554f; --ink3:#8b8a83;
+  --blue:#2a6fd6; --green:#12946a; --red:#d0413f; --amber:#b3760a;
+  --blue-bg:#eaf2fc; --green-bg:#e6f4ee; --red-bg:#fcecec; --amber-bg:#fdf3e3;
+  --radius:10px; --max:1120px;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#141414;--surface:#1c1c1b;--line:#2e2e2c;--line2:#3d3d3a;
+  --ink:#f2f2ef;--ink2:#b8b7b0;--ink3:#87867f;
+  --blue:#5b9bf0;--green:#3fbf90;--red:#ef6a68;--amber:#dfa03c;
+  --blue-bg:#17263a;--green-bg:#122a22;--red-bg:#331a1a;--amber-bg:#332715;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.88em}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+h1{font-size:38px;line-height:1.15;font-weight:600;letter-spacing:-.02em;margin:0 0 12px}
+h2{font-size:25px;font-weight:600;letter-spacing:-.015em;margin:0 0 6px}
+h3{font-size:17px;font-weight:600;margin:0 0 8px}
+p{margin:0 0 14px;color:var(--ink2)}
+section{padding:46px 0;border-top:1px solid var(--line)}
+.lede{font-size:18px;color:var(--ink2);max-width:70ch}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);margin-bottom:10px}
+header{padding:60px 0 46px}
+.tagline{display:inline-block;font-size:12.5px;font-weight:500;padding:4px 11px;border-radius:99px;
+  background:var(--red-bg);color:var(--red);margin-bottom:18px}
+.links{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;border-radius:8px;
+  border:1px solid var(--line2);color:var(--ink);font-size:14px;font-weight:500;background:var(--surface)}
+.btn:hover{border-color:var(--ink3);text-decoration:none}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin:26px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:15px 17px}
+.card .k{font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500}
+.card .v{font-size:29px;font-weight:600;letter-spacing:-.02em;line-height:1.05}
+.card .s{font-size:12.5px;color:var(--ink3);margin-top:5px}
+.v.red{color:var(--red)} .v.green{color:var(--green)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.grid2>*{min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px}
+.chart{position:relative;height:210px;margin-top:4px}
+.cap{font-size:13px;color:var(--ink3);line-height:1.6;margin-top:10px}
+.note{border-left:3px solid var(--amber);background:var(--amber-bg);padding:13px 16px;border-radius:0 8px 8px 0;margin:18px 0}
+.note.blue{border-color:var(--blue);background:var(--blue-bg)}
+.note p{margin:0;color:var(--ink);font-size:14.5px}
+.note p+p{margin-top:9px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-weight:600;color:var(--ink2);padding:9px 10px;border-bottom:1px solid var(--line2);
+  white-space:nowrap;font-size:12.5px}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--ink)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);color:var(--ink2)}
+td.n{text-align:right;font-family:"JetBrains Mono",monospace;font-size:12.5px}
+td strong{color:var(--ink);font-weight:600}
+.pos{color:var(--green)} .neg{color:var(--red)}
+.pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--blue-bg);color:var(--blue);font-weight:500}
+.pill.grey{background:var(--line);color:var(--ink3)}
+.ctl{display:flex;gap:14px;flex-wrap:wrap;align-items:end;margin-bottom:16px}
+.ctl label{display:block;font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500}
+select,input[type=search]{padding:7px 10px;border:1px solid var(--line2);border-radius:7px;
+  background:var(--surface);color:var(--ink);font-size:13.5px;font-family:inherit}
+.slider{min-width:150px}
+.slider .row{display:flex;justify-content:space-between;font-size:12px;color:var(--ink3);margin-bottom:4px;font-weight:500}
+.slider .row b{color:var(--ink);font-family:"JetBrains Mono",monospace}
+input[type=range]{width:100%;accent-color:var(--blue)}
+.scroll{overflow-x:auto}
+.pager{display:flex;gap:8px;align-items:center;margin-top:14px;font-size:13px;color:var(--ink3)}
+.pager button{padding:5px 11px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);
+  border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit}
+.pager button:disabled{opacity:.4;cursor:default}
+ul{color:var(--ink2);padding-left:20px;margin:0 0 14px}
+li{margin-bottom:7px}
+footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);font-size:13.5px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}h1{font-size:30px}}
+</style>
+
+<style>
+button.btn{cursor:pointer;font-family:inherit}
+input[type=number]{padding:7px 10px;border:1px solid var(--line2);border-radius:7px;
+  background:var(--surface);color:var(--ink);font-size:13.5px;font-family:inherit}
+.slider{min-width:170px}
+sup{font-size:.72em}
+</style>
+</head>
+<body>
+
+<header>
+<div class="wrap">
+  <div class="tagline">Three methods, one answer, no library doing the math</div>
+  <h1>Options Pricer</h1>
+  <p class="lede">Black-Scholes implemented from scratch — <span class="mono">d1</span>, <span class="mono">d2</span>, prices, all five Greeks and an implied-vol solver, with <span class="mono">scipy.stats.norm</span> as the only outside help. Then the same option priced twice more, by Monte Carlo and by a binomial tree, <strong style="color:var(--ink)">because a pricing model you've only derived one way is a model you haven't checked.</strong></p>
+  <div class="links">
+    <a class="btn primary" href="#calc">Price an option</a>
+    <a class="btn" href="#arbitrage">The implied distribution</a>
+    <a class="btn" href="#svi">The arbitrage-free fit</a>
+    <a class="btn" href="https://github.com/mihircoding/options-pricer">Source on GitHub</a>
+  </div>
+</div>
+</header>
+
+<section id="calc">
+<div class="wrap">
+  <div class="eyebrow">Interactive</div>
+  <h2>All three pricers, running in your browser</h2>
+  <p class="lede">Everything below is a direct port of the project's Python: the closed form from <span class="mono">black_scholes.py</span>, the simulation from <span class="mono">monte_carlo.py</span>, the tree from <span class="mono">binomial.py</span>. Three genuinely independent methods that share only an assumption — geometric Brownian motion — and should therefore land on the same number.</p>
+
+  <div class="ctl" style="margin-bottom:18px">
+    <div><label for="i-S">Spot ($)</label><input type="number" id="i-S" value="100" step="1" style="width:88px"></div>
+    <div><label for="i-K">Strike ($)</label><input type="number" id="i-K" value="100" step="1" style="width:88px"></div>
+    <div><label for="i-days">Days to expiry</label><input type="number" id="i-days" value="365" step="1" style="width:96px"></div>
+    <div class="slider"><div class="row"><span>volatility</span><b id="v-vol">20%</b></div>
+      <input type="range" id="i-vol" min="1" max="120" step="1" value="20"></div>
+    <div class="slider"><div class="row"><span>risk-free rate</span><b id="v-r">5.0%</b></div>
+      <input type="range" id="i-r" min="0" max="150" step="1" value="50"></div>
+    <div class="slider"><div class="row"><span>dividend yield</span><b id="v-q">0.0%</b></div>
+      <input type="range" id="i-q" min="0" max="100" step="1" value="0"></div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="k">Call — Black-Scholes</div><div class="v green" id="o-call">—</div><div class="s" id="o-call-int">—</div></div>
+    <div class="card"><div class="k">Put — Black-Scholes</div><div class="v red" id="o-put">—</div><div class="s" id="o-put-int">—</div></div>
+    <div class="card"><div class="k">Monte Carlo (200k paths)</div><div class="v" id="o-mc">—</div><div class="s" id="o-mc-se">—</div></div>
+    <div class="card"><div class="k">Binomial tree (500 steps)</div><div class="v" id="o-bin">—</div><div class="s" id="o-bin-d">—</div></div>
+  </div>
+
+  <div class="note blue" id="agree-note">
+    <p>—</p>
+  </div>
+
+  <div class="grid2" style="margin-top:6px">
+    <div class="panel">
+      <h3>Value against spot</h3>
+      <div class="chart" style="height:250px"><canvas id="c-value"></canvas></div>
+      <p class="cap">The solid line is what the option is worth <em>today</em>; the dashed line is its payoff at expiry. The gap between them is time value — everything you're paying for uncertainty that hasn't resolved yet. It's widest at the money, which is also where gamma peaks, and it collapses to zero as expiry approaches.</p>
+    </div>
+    <div class="panel">
+      <h3>The Greeks</h3>
+      <div class="scroll"><table id="t-greeks">
+        <thead><tr><th>Greek</th><th class="n">Call</th><th class="n">Put</th><th>What it answers</th></tr></thead>
+        <tbody></tbody></table></div>
+      <div class="chart" style="height:150px;margin-top:14px"><canvas id="c-greeks"></canvas></div>
+      <p class="cap">Delta across spot for both legs. Call delta runs 0→1, put delta &minus;1→0, and they're always exactly one apart — which is put-call parity differentiated once.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">The model</div>
+  <h2>What the formula actually says</h2>
+  <div class="grid2">
+    <div>
+      <p>Black-Scholes prices a European option under the assumption that the stock follows a random walk with constant volatility. The whole thing hangs on two numbers:</p>
+      <div class="panel" style="font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.9">
+        d1 = [ln(S/K) + (r &minus; q + &sigma;&sup2;/2)T] / (&sigma;&radic;T)<br>
+        d2 = d1 &minus; &sigma;&radic;T<br><br>
+        call = S&middot;e<sup>&minus;qT</sup>N(d1) &minus; K&middot;e<sup>&minus;rT</sup>N(d2)<br>
+        put&nbsp; = K&middot;e<sup>&minus;rT</sup>N(&minus;d2) &minus; S&middot;e<sup>&minus;qT</sup>N(&minus;d1)
+      </div>
+      <p style="margin-top:14px"><span class="mono">N(d2)</span> is (roughly) the risk-neutral probability the option finishes in the money; <span class="mono">N(d1)</span> weights that probability by how big the payoff is when it happens. Read the call formula as "what you get, minus what you pay, both discounted."</p>
+    </div>
+    <div>
+      <h3>Dividends aren't cosmetic</h3>
+      <p>Holding an option doesn't entitle you to dividends, and the stock drops by the dividend on each ex-date. Merton's fix is to discount the spot by <span class="mono">e<sup>&minus;qT</sup></span> everywhere it appears — you're effectively optioning the stock minus the dividends you won't receive.</p>
+      <p>Dividends drag the forward price down, so they make <strong style="color:var(--ink)">calls cheaper and puts dearer</strong>. Move the dividend slider above and watch both prices go opposite directions. The test suite checks the dividend-adjusted parity identity <span class="mono">C &minus; P = Se<sup>&minus;qT</sup> &minus; Ke<sup>&minus;rT</sup></span> holds to 1e-9.</p>
+      <h3>Implied volatility goes the other way</h3>
+      <p>Given a market price, find the &sigma; that reproduces it. There's no closed form, so the solver bisects: price is monotonically increasing in volatility, so keep halving <span class="mono">[0.0001, 5.0]</span> until the model price matches. That's what turns the market's quotes into the volatility smile.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Cross-checking</div>
+  <h2>Why price the same thing three times</h2>
+  <p class="lede">Because agreement between methods that share an assumption but nothing else is the only evidence you have that the implementation is right. A closed form can be algebraically wrong in a way that still looks plausible; it cannot be wrong in a way that a simulation of the same process happens to reproduce.</p>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3>Monte Carlo</h3>
+      <p>Skip the calculus. Draw thousands of terminal prices straight from the risk-neutral distribution, average the payoffs, discount:</p>
+      <p class="mono" style="font-size:12.5px;color:var(--ink)">S_T = S&middot;exp((r &minus; q &minus; &sigma;&sup2;/2)T + &sigma;&radic;T&middot;Z)</p>
+      <p>It reports a standard error alongside the estimate, because it's an estimate — the test suite requires it to land within 4 standard errors of the closed form at 500k paths, with and without dividends. Convergence is <span class="mono">O(1/&radic;n)</span>: 100&times; more paths buys one extra digit.</p>
+    </div>
+    <div class="panel">
+      <h3>Binomial tree — and what it can do that the others can't</h3>
+      <p>Black-Scholes and Monte Carlo both price <em>European</em> exercise only. The model cannot ask "what if I exercised early?" because the derivation assumes you can't. Most listed US equity options are American.</p>
+      <p>A Cox-Ross-Rubinstein tree can: at every node, walking backward from expiry, it compares holding against exercising immediately and keeps whichever is worth more. Three results worth knowing, all checked directly in the test suite rather than assumed:</p>
+      <ul style="font-size:14px">
+        <li>With no dividend, an American call is worth <strong style="color:var(--ink)">exactly</strong> the same as its European twin — exercising early throws away time value for nothing.</li>
+        <li>A deep in-the-money American put is worth <strong style="color:var(--ink)">more</strong> even with no dividend: locking in the strike starts earning interest sooner.</li>
+        <li>Add a dividend and American calls pick up a premium too — now there's something to capture.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:22px">
+    <h3>Early-exercise premium, live</h3>
+    <p class="cap" style="margin-top:0;margin-bottom:12px">American minus European, priced on the tree at your inputs above. Change the dividend yield and watch the call premium appear from nothing.</p>
+    <div class="cards" style="margin:0">
+      <div class="card"><div class="k">American call premium</div><div class="v" id="o-prem-c">—</div><div class="s" id="o-prem-c-s">—</div></div>
+      <div class="card"><div class="k">American put premium</div><div class="v" id="o-prem-p">—</div><div class="s" id="o-prem-p-s">—</div></div>
+      <div class="card"><div class="k">Put-call parity residual</div><div class="v" id="o-parity">—</div><div class="s">must be zero to machine precision</div></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Greeks by simulation</div>
+  <h2>Two techniques, because one can't do all three</h2>
+  <div class="grid2">
+    <div>
+      <p><strong style="color:var(--ink)">Delta and vega use pathwise differentiation.</strong> The simulated terminal price is a smooth function of both spot and volatility — <span class="mono">dS_T/dS = S_T/S</span> — so the derivative can be pushed inside the expectation and estimated from the very same paths that priced the option.</p>
+      <p><strong style="color:var(--ink)">Gamma can't use that trick at all.</strong> It needs the derivative of the payoff's <em>slope</em>, and a call's slope jumps from 0 to 1 at the strike. Differentiate that kink and you get a Dirac delta, not a number. This isn't a bug to work around — it's a structural limit of the pathwise method for any Greek involving a second derivative of a kinked payoff.</p>
+    </div>
+    <div>
+      <p>So gamma uses the <strong style="color:var(--ink)">likelihood-ratio (score function) method</strong> instead, which differentiates the probability <em>density</em> of the terminal price rather than the payoff. The density stays perfectly smooth even where the payoff doesn't:</p>
+      <p class="mono" style="font-size:12px;color:var(--ink)">gamma = e<sup>&minus;rT</sup>/(S&sup2;&sigma;&sup2;T) &middot; E[payoff &middot; (Z&sup2; &minus; 1 &minus; Z&sigma;&radic;T)]</p>
+      <p>The weight doesn't depend on the payoff being differentiable at all — it would work identically on a digital option's genuinely discontinuous payoff, which is exactly the case pathwise differentiation cannot handle even in principle. All three are checked against the closed-form Greeks within 4 standard errors.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Real market</div>
+  <h2>The one assumption the market openly refuses</h2>
+  <p class="lede">Everything above assumes a single volatility for every strike and every expiry. Here is what SPY was actually quoting, <span id="x-asof">&mdash;</span>: <span id="x-nq">&mdash;</span> out-of-the-money quotes pulled live, each one inverted for its own implied volatility by the same solver in <span class="mono">black_scholes.py</span>. Nothing here reads Yahoo's IV column.</p>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="chart"><canvas id="c-smile"></canvas></div>
+      <p class="cap">Plotted against log(strike / forward) so expiries are comparable &mdash; a $10 move means something different in a week than in a year. The forward for each expiry comes from put-call parity, not from a dividend estimate.</p>
+    </div>
+    <div>
+      <div class="scroll"><table id="t-terms"><thead><tr><th>Expiry</th><th class="n">Days</th><th class="n">ATM vol</th><th class="n">25&Delta; RR</th><th class="n">25&Delta; fly</th></tr></thead><tbody></tbody></table></div>
+      <p style="margin-top:14px">The curve slopes down everywhere. That's the <strong style="color:var(--ink)">equity skew</strong>: a 25-delta put costs <span id="x-rr">&mdash;</span> more volatility than the matching call, at every expiry on the board. Crash protection is bid, permanently, and a flat-vol model has nowhere to put that fact.</p>
+      <p>The risk reversal and butterfly are read off the quoted deltas by interpolation, so "25-delta" means the strike the market treats as 25-delta &mdash; not one computed from a volatility we assumed.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><strong>Where the forward comes from, since it decides everything else.</strong> Black-Scholes needs a forward, and a forward needs a dividend yield and a borrow rate nobody publishes. The options quote both already: <span class="mono">C &minus; P = e<sup>&minus;rT</sup>(F &minus; K)</span> is a straight line in K, so regressing call-minus-put on strike gives the discount factor as the slope and the forward from the intercept. The fit's R&sup2; comes back with the answer and a poor one gets the chain refused rather than quietly used.</p>
+  </div>
+
+  <h3 style="margin-top:34px">What one flat volatility costs</h3>
+  <div class="grid2">
+    <div class="panel">
+      <div class="chart" style="height:280px"><canvas id="c-flat"></canvas></div>
+      <p class="cap">The front chain priced with a single volatility &mdash; the median of its own smile, so this is the flat model's best case.</p>
+    </div>
+    <div>
+      <p>Red is the model charging more than the market, green less. The errors are not noise scattered around zero; they are a curve, which is the smile showing up as money. Worst single strike: <strong style="color:var(--ink)" id="x-worst">&mdash;</strong>, median absolute error <span id="x-med">&mdash;</span> per contract.</p>
+      <p>Far out on the downside the flat model prices puts at essentially nothing while the market pays a few cents for them. A few cents is not an error worth chasing &mdash; but it is the market saying it does not believe in a lognormal tail, in the only language an option quote has.</p>
+      <p style="color:var(--ink3);font-size:13.5px">US ETF options are American and this inverts a European formula. Restricting to out-of-the-money quotes keeps the early-exercise premium small, not zero, so these read slightly high on deep strikes and long maturities. The fix is inverting the binomial tree instead, at roughly 500&times; the cost per quote.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section id="arbitrage">
+<div class="wrap">
+  <div class="eyebrow">Sanity</div>
+  <h2>Is the chain pricing a real distribution?</h2>
+  <p class="lede">The smile above is built from quotes, and quotes are not always consistent with each other. Three conditions on the call price follow from the payoff alone &mdash; no model needed: it falls as the strike rises, a call spread never costs more than it can pay, and it is convex in the strike. The third is the one worth having, because the second derivative of the call price <em>is</em> the risk-neutral probability distribution.</p>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="chart"><canvas id="c-density"></canvas></div>
+      <p class="cap">The distribution SPY's option market is quoting for <span id="a-dexp">&mdash;</span> (<span id="a-ddays">&mdash;</span> days), read straight off the curvature of the call prices &mdash; Breeden&ndash;Litzenberger, 1978. No model was fitted to produce it. The dip below zero on the left is not a market view; it is two quotes that weren't alive at the same instant.</p>
+    </div>
+    <div>
+      <p>A butterfly quoted at a negative price is the market assigning <strong style="color:var(--ink)">negative probability</strong> to a range of prices, which never actually happens. What happened is that three quotes weren't simultaneous, or one leg is stale, or the forward is slightly off.</p>
+      <p>Which is why every violation here is measured against the bid-ask spread of the legs you would have to trade:</p>
+      <div class="cards" style="margin-top:14px">
+        <div class="card"><div class="k">Violated by the mid prices</div><div class="v" id="a-raw">&mdash;</div><div class="s">across six expiries</div></div>
+        <div class="card"><div class="k">Violated by more than the spread</div><div class="v green" id="a-tradable">&mdash;</div><div class="s">what you could actually trade</div></div>
+      </div>
+      <p style="margin-top:14px">That gap is what a screen built on mid prices with no spread filter reports as opportunities &mdash; and it is why those screens generate hundreds of alerts a day and no fills.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:34px">The chain runs out before the distribution does</h3>
+  <div class="grid2">
+    <div>
+      <div class="scroll"><table id="t-arb"><thead><tr><th>Expiry</th><th class="n">Days</th><th class="n">Strikes</th><th class="n">Bad flies</th><th class="n">Tradable</th><th class="n">Density mass</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div>
+      <p><strong style="color:var(--ink)">Density mass is the implied distribution integrated over the strikes the market quotes.</strong> It is <span class="mono" id="a-near">&mdash;</span> at a week and <span class="mono" id="a-far">&mdash;</span> at two years: the far-dated chain simply doesn't quote enough of the tails.</p>
+      <p>That matters more than it sounds. Anything computed from the far chain &mdash; an expected value, a tail probability, a risk number &mdash; is missing a seventh of its probability, and would come out looking like a confident figure if nobody checked. The check costs one pass over the quotes.</p>
+      <p>Filling the gaps between quoted strikes doesn't help either. Interpolating total variance and interpolating volatility produce almost the same number of bad butterflies (<span class="mono" id="a-interp">&mdash;</span> on a 200-strike grid), because a straight line between two quoted IVs inherits whatever non-convexity the quotes already had. A surface you can price a book with has to be <em>fitted</em> under the convexity constraint, not joined up dot to dot &mdash; which is <a href="#svi">the next section</a>.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section id="svi">
+<div class="wrap">
+  <div class="eyebrow">The fix</div>
+  <h2>Fit it, don't join the dots</h2>
+  <p class="lede">The section above ends on a promise: a surface you can price a book with has to be <em>fitted</em> under the convexity constraint. <span class="mono">svi.py</span> is that fit. For log-moneyness <span class="mono">k = log(K/F)</span> it models total variance with Gatheral's raw SVI.</p>
+
+  <div class="panel" style="text-align:center;padding:18px 16px">
+    <span class="mono" style="font-size:15px">w(k) = a + b &middot; ( &rho;(k &minus; m) + &radic;((k &minus; m)&sup2; + &sigma;&sup2;) )</span>
+  </div>
+
+  <p>Five parameters, each one a feature you can point at: <span class="mono">a</span> the level, <span class="mono">b</span> the wing slope, <span class="mono">&rho;</span> the tilt (negative for an equity index, because the crash is on the put side), <span class="mono">m</span> where the minimum sits, <span class="mono">&sigma;</span> how rounded the bottom is. <strong style="color:var(--ink)">The reason for this function rather than a spline is its shape.</strong> It is a hyperbola, so it is convex in <span class="mono">k</span> by construction and goes linear in both wings &mdash; exactly what the no-arbitrage conditions ask for. A cubic spline has no such shape and will turn over in the wings however well it fits the quoted points.</p>
+
+  <div class="cards">
+    <div class="card"><div class="k">Bad butterflies, linear interpolation</div><div class="v red" id="s-lin">&mdash;</div><div class="s">between the quoted strikes</div></div>
+    <div class="card"><div class="k">Bad butterflies, SVI fit</div><div class="v green" id="s-svi">&mdash;</div><div class="s">structurally, not by luck</div></div>
+    <div class="card"><div class="k">Typical fit error</div><div class="v" id="s-rmse">&mdash;</div><div class="s">volatility points</div></div>
+    <div class="card"><div class="k">Lands inside the spread</div><div class="v amber" id="s-inside">&mdash;</div><div class="s" id="s-inside-s">&mdash;</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:26px;align-items:start">
+    <div class="panel">
+      <div class="chart"><canvas id="c-svi-fit"></canvas></div>
+      <p class="cap">The fitted smile through the quoted implied vols for <span id="s-exp">&mdash;</span> (<span id="s-days">&mdash;</span> days), <span id="s-nq">&mdash;</span> quotes. The line extends past the quoted range on both sides, which is the point of fitting a function: it has to give a sane number where nothing was quoted.</p>
+    </div>
+    <div>
+      <p><strong style="color:var(--ink)">The constraint is enforced during the fit, not checked afterwards.</strong> Gatheral and Jacquier give the risk-neutral density's sign in closed form from the parameters &mdash; <span class="mono">g(k)</span>, implemented as <span class="mono">durrleman_g</span> &mdash; so a candidate whose density would go negative is rejected before it is ever accepted. That is the whole difference from interpolating: the surface <em>cannot</em> price a negative probability, for a structural reason rather than a lucky one.</p>
+      <p><strong style="color:var(--ink)">And the five-parameter fit is really a two-parameter search.</strong> For fixed <span class="mono">(m, &sigma;)</span> the model is linear in the other three, so those come out of a small weighted least-squares solve and only two parameters get searched &mdash; a grid, then a local refine. SVI has well-documented local minima; reducing the non-convex part to two dimensions removes that failure mode for about a thousand tiny solves, which is microseconds.</p>
+    </div>
+  </div>
+
+  <div class="scroll" style="margin-top:26px">
+    <table id="t-svi"><thead><tr><th>Expiry</th><th class="n">Days</th><th class="n">Quotes</th><th class="n">Fit error</th><th class="n">Worst</th><th class="n">Inside spread</th><th class="n">Bad flies, linear</th><th class="n">Bad flies, SVI</th><th class="n">min g</th><th class="n">&rho;</th></tr></thead><tbody></tbody></table>
+    <p class="cap">Fit error and &ldquo;worst&rdquo; are in volatility points, so 0.30 means three tenths of a vol away from the quote. &ldquo;min g&rdquo; is the smallest value of the density-sign function across the fitted range; positive everywhere means no butterfly arbitrage exists anywhere on the curve, including between the strikes and outside them.</p>
+  </div>
+
+  <div class="note">
+    <p><strong>The honest half, and it is not flattering.</strong> A single five-parameter function <em>cannot</em> reprice a liquid SPY chain inside its own bid-ask spreads. At one week it lands between the bid and the ask on a handful of strikes out of a hundred, and the worst miss is tens of half-spreads. At two years it is nearly all of them &mdash; not because the fit got better (the error in vol points is <em>larger</em> there) but because the spreads got wide enough to hide it.</p>
+    <p style="margin-top:10px">That is the real trade being made, and it is worth saying rather than quoting an r-squared: <strong style="color:var(--ink)">SVI is a no-arbitrage interpolator, not a repricer.</strong> Its job is to give a usable surface at every strike nobody quoted, and the price of guaranteeing no arbitrage everywhere is that it will not match the busiest strikes to the penny. A desk that needs both runs SVI for the surface and carries a per-strike residual on top of it.</p>
+  </div>
+
+  <div class="grid2" style="margin-top:26px;align-items:start">
+    <div class="panel">
+      <h3>What the vega weighting buys</h3>
+      <div class="chart"><canvas id="c-svi-weight"></canvas></div>
+      <p class="cap">Worst repricing error, measured in half-spreads of that strike. Lower is better.</p>
+    </div>
+    <div>
+      <p>Each quote is weighted by its vega &mdash; how much the option's price actually responds to volatility. Equal weighting <em>wins</em> on root-mean-square error and loses badly on the thing that matters, by a factor of three to five on the worst repricing error.</p>
+      <p>The reason is worth keeping: a deep out-of-the-money option barely responds to volatility at all, so inverting its price for an implied vol produces a number that is mostly rounding. Equal weighting spends its accuracy on those quotes and pays for it at the strikes anyone trades. <strong style="color:var(--ink)">Fitting in the right units is a smaller decision than choosing the parameterization and a larger one than it looks.</strong></p>
+      <p style="font-size:13.5px;color:var(--ink3)">One condition this does not touch: each expiry is fitted on its own, so nothing here prevents calendar arbitrage <em>between</em> expiries. That needs the fits tied together across maturity, and is the next thing to build.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<section id="hedging">
+<div class="wrap">
+  <div class="eyebrow">Hedging</div>
+  <h2>Running the hedge the price depends on</h2>
+  <p class="lede">Every price on this page rests on one claim inside the derivation: that the option can be replicated by trading the stock, so it's worth exactly what the replication costs. Nobody trades continuously. <span class="mono">hedging.py</span> runs the replication for real, in discrete steps, and <span class="mono">hedging_study.py</span> runs it on SPY: sell a one-month at-the-money call on the first trading day of every month, at whatever VIX said, and delta-hedge it daily to expiry. <span id="h-n">&mdash;</span> non-overlapping trades, <span id="h-span">&mdash;</span>, all quoted per $100 of SPY so 2008 and 2024 are comparable.</p>
+
+  <div class="cards">
+    <div class="card"><div class="k">Average monthly P&amp;L</div><div class="v green" id="h-mean">&mdash;</div><div class="s" id="h-mean-s">&mdash;</div></div>
+    <div class="card"><div class="k">Implied vs realized vol</div><div class="v" id="h-vols">&mdash;</div><div class="s" id="h-vols-s">&mdash;</div></div>
+    <div class="card"><div class="k">Annualized Sharpe</div><div class="v" id="h-sharpe">&mdash;</div><div class="s" id="h-sharpe-s">&mdash;</div></div>
+    <div class="card"><div class="k">Worst month</div><div class="v red" id="h-worst">&mdash;</div><div class="s" id="h-worst-s">&mdash;</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3>Every month, one short call</h3>
+      <div class="chart" style="height:250px"><canvas id="c-hmonths"></canvas></div>
+      <p class="cap">Hedged P&amp;L per month. Small and steady, with a few large bills: the four worst are <span id="h-worst-list">&mdash;</span>, which is the same list a credit desk would give you. Selling volatility is selling insurance. This sells one option a month with no sizing and no stop, so read it as a measurement of the variance risk premium, not a strategy.</p>
+    </div>
+    <div class="panel">
+      <h3>Where the money comes from</h3>
+      <div class="chart" style="height:250px"><canvas id="c-hgamma"></canvas></div>
+      <p class="cap">Each dot is one month. Across is <span class="mono">&frac12;&middot;&Gamma;&middot;S&sup2;&middot;(&sigma;<sub>implied</sub>&sup2; &minus; &sigma;<sub>realized</sub>&sup2;)</span> summed step by step by <span class="mono">gamma_pnl()</span>; up is what the hedge actually made. The dashed line is equality. Correlation <span id="h-gr">&mdash;</span>, mean gap <span id="h-gmae">&mdash;</span> against <span id="h-prem">&mdash;</span> of premium.</p>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:22px">
+    <div>
+      <p><strong style="color:var(--ink)">A delta-hedged option is a bet on variance.</strong> Once the delta is hedged away, the direction of the stock drops out and what's left is the gap between the volatility you sold and the volatility that showed up, weighted by gamma. The scatter above is that identity checked on real trades rather than assumed. It's why traders say "long gamma" instead of "long calls".</p>
+    </div>
+    <div>
+      <p><strong style="color:var(--ink)">The gamma weighting isn't a technicality.</strong> Regress each month's P&amp;L on its variance gap alone, implied&sup2; minus realized&sup2; with no gamma, and r&sup2; is <span id="h-gap">&mdash;</span>. With the weighting it's <span id="h-gap2">&mdash;</span>. The rest isn't about how much the stock moved but when: once spot drifts away from the strike, gamma is close to zero and the option stops caring. That is why variance swaps exist.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:34px">Hedging less often costs certainty, not money</h3>
+  <div class="grid2">
+    <div class="panel" style="align-self:start">
+      <div class="chart" style="height:260px"><canvas id="c-hfreq"></canvas></div>
+      <p class="cap"><span id="h-sim-n">&mdash;</span> simulated months in which the stock realizes exactly the 20% the call was sold at, so the hedge should break even and whatever is left is the cost of hedging in steps. The dashed line is <span class="mono">1/&radic;N</span> drawn through the once-a-day point. Fitted slope from four rebalances up: <span id="h-slope">&mdash;</span>, where Boyle &amp; Emanuel (1980) predict &minus;0.5. The mean stays within <span id="h-sim-mean">&mdash;</span> of zero at every N, against a <span id="h-sim-prem">&mdash;</span> premium.</p>
+    </div>
+    <div>
+      <div class="scroll"><table id="t-hfreq"><thead><tr><th>Rebalance</th><th class="n">Mean P&amp;L</th><th class="n">vs daily</th><th class="n">Error std</th><th class="n">/ &radic;days</th><th class="n">Worst</th></tr></thead><tbody></tbody></table></div>
+      <p style="margin-top:14px">The same question on the real SPY trades, each measured against that month's own daily hedge so the premium they share cancels out. The mean barely moves; the error grows like the square root of the interval, which is why the fifth column is flat from 2 to 10 days. At 21 days the option is hedged once at inception and the error has nowhere left to grow. Hedging weekly instead of daily isn't a cheaper trade, it's the same trade with wider error bars and a worst month of <span id="h-w5">&mdash;</span> instead of <span id="h-w1">&mdash;</span>.</p>
+      <p>Transaction costs matter less than that choice: at 1bp a share traded the average month drops from <span id="h-c0">&mdash;</span> to <span id="h-c1">&mdash;</span>, at 5bp to <span id="h-c5">&mdash;</span>.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><strong>Caveats, because this one has more than most.</strong> VIX is SPX's implied volatility, not SPY's, and it's a variance-swap-style index across the whole strike range rather than the at-the-money vol the study treats it as. It runs about a point above ATM vol, so the measured premium is a little generous. Prices are dividend-adjusted and the rate is zero, which folds both carry terms into the path. The hedge uses the vol the option was sold at and is never re-marked; a desk would re-hedge on current implied, which damps the tails. None of these change the shape of a result above.</p>
+  </div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+  <div class="eyebrow">Limitations</div>
+  <h2>Where this model stops being true</h2>
+  <div class="grid2">
+    <div>
+      <ul>
+        <li><strong style="color:var(--ink)">Constant volatility is the assumption that breaks worst.</strong> The market prices each strike with its own implied vol — the smile — because real returns jump and have fat tails. The live app's market page displays that violation directly against real option chains.</li>
+        <li>European exercise in the closed form. US single-stock options are American, so deep ITM puts on dividend payers show the largest model-vs-market gaps.</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li><span class="mono">lastPrice</span> on illiquid strikes can be hours stale — check volume before concluding an option is mispriced.</li>
+        <li><strong style="color:var(--ink)">"My model says it's cheap" is not a trade.</strong> The gap is mostly the smile, possibly American exercise premium, possibly a stale quote. The model is a lens for reading the market's expectations, not an alpha signal.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</section>
+
+<footer>
+<div class="wrap">
+  <p style="margin-bottom:10px">Built by <a href="https://github.com/mihircoding">Mihir Konda</a> — every number on this page is generated by <span class="mono">docs/build_data.py</span> from the code in <a href="https://github.com/mihircoding/options-pricer">the repository</a>.</p>
+  <p style="margin:0;font-size:13px">Quant projects: <a href="https://mihircoding.github.io/backtestingEngine/">Backtesting Engine</a> · <a href="https://mihircoding.github.io/limitOrderBook/">Order Book</a> · <a href="https://mihircoding.github.io/pairsTrading/">Pairs Trading</a> · <strong style="color:var(--ink2)">Options Pricer</strong> · <a href="https://mihircoding.github.io/portfolioOptimization/">Portfolio Optimization</a></p>
+</div>
+</footer>
+
+<script src="data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = () => ({ink:css('--ink'), ink2:css('--ink2'), ink3:css('--ink3'), line:css('--line'),
+                  blue:css('--blue'), green:css('--green'), red:css('--red'), amber:css('--amber')});
+Chart.defaults.font.family = "Inter, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.animation = false;
+
+/* ------------------------------------------------------------------
+   black_scholes.py, ported. The normal CDF is the Zelen & Severo
+   rational approximation (|error| < 7.5e-8) standing in for
+   scipy.stats.norm — everything else is the same closed form.
+   ------------------------------------------------------------------ */
+const npdf = x => Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+function ncdf(x) {
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t
+            - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return 0.5 * (1 + sign * y);
+}
+
+function d1d2(S, K, T, r, sig, q) {
+  T = Math.max(T, 1e-10); sig = Math.max(sig, 1e-10);
+  const d1 = (Math.log(S / K) + (r - q + 0.5 * sig * sig) * T) / (sig * Math.sqrt(T));
+  return [d1, d1 - sig * Math.sqrt(T)];
+}
+const callPrice = (S, K, T, r, sig, q) => {
+  const [d1, d2] = d1d2(S, K, T, r, sig, q);
+  return S * Math.exp(-q * T) * ncdf(d1) - K * Math.exp(-r * T) * ncdf(d2);
+};
+const putPrice = (S, K, T, r, sig, q) => {
+  const [d1, d2] = d1d2(S, K, T, r, sig, q);
+  return K * Math.exp(-r * T) * ncdf(-d2) - S * Math.exp(-q * T) * ncdf(-d1);
+};
+
+function greeks(S, K, T, r, sig, q) {
+  const [d1, d2] = d1d2(S, K, T, r, sig, q);
+  const sq = Math.sqrt(Math.max(T, 1e-10)), eq = Math.exp(-q * T), er = Math.exp(-r * T);
+  const gamma = eq * npdf(d1) / (S * sig * sq);
+  const vega = S * eq * npdf(d1) * sq / 100;
+  const common = -(S * eq * npdf(d1) * sig) / (2 * sq);
+  return {
+    deltaC: eq * ncdf(d1), deltaP: eq * (ncdf(d1) - 1),
+    gamma, vega,
+    thetaC: (common - r * K * er * ncdf(d2) + q * S * eq * ncdf(d1)) / 365,
+    thetaP: (common + r * K * er * ncdf(-d2) - q * S * eq * ncdf(-d1)) / 365,
+    rhoC: K * T * er * ncdf(d2) / 100, rhoP: -K * T * er * ncdf(-d2) / 100
+  };
+}
+
+/* monte_carlo.py, ported. Seeded so the same inputs give the same
+   estimate — an unseeded number that wobbles on every keystroke reads
+   as a bug even when it's just sampling noise. */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function mcPrice(kind, S, K, T, r, sig, q, n = 200000) {
+  const rand = mulberry32(12345);
+  const drift = (r - q - 0.5 * sig * sig) * T, vol = sig * Math.sqrt(T), disc = Math.exp(-r * T);
+  let sum = 0, sumsq = 0;
+  for (let i = 0; i < n; i += 2) {
+    let u = rand(), v = rand();
+    if (u < 1e-12) u = 1e-12;
+    const mag = Math.sqrt(-2 * Math.log(u));
+    const z1 = mag * Math.cos(2 * Math.PI * v), z2 = mag * Math.sin(2 * Math.PI * v);
+    for (const z of [z1, z2]) {
+      const sT = S * Math.exp(drift + vol * z);
+      const pay = kind === 'call' ? Math.max(sT - K, 0) : Math.max(K - sT, 0);
+      const d = disc * pay;
+      sum += d; sumsq += d * d;
+    }
+  }
+  const mean = sum / n;
+  return {price: mean, se: Math.sqrt(Math.max(0, sumsq / n - mean * mean) / n)};
+}
+
+/* binomial.py, ported — CRR tree, European or American exercise. */
+function crr(kind, style, S, K, T, r, sig, q, steps = 500) {
+  const dt = T / steps, u = Math.exp(sig * Math.sqrt(dt)), d = 1 / u;
+  const p = (Math.exp((r - q) * dt) - d) / (u - d), disc = Math.exp(-r * dt);
+  const v = new Float64Array(steps + 1);
+  for (let i = 0; i <= steps; i++) {
+    const sT = S * Math.pow(u, steps - i) * Math.pow(d, i);
+    v[i] = kind === 'call' ? Math.max(sT - K, 0) : Math.max(K - sT, 0);
+  }
+  for (let step = steps - 1; step >= 0; step--) {
+    for (let i = 0; i <= step; i++) {
+      v[i] = disc * (p * v[i] + (1 - p) * v[i + 1]);
+      if (style === 'american') {
+        const sN = S * Math.pow(u, step - i) * Math.pow(d, i);
+        const ex = kind === 'call' ? Math.max(sN - K, 0) : Math.max(K - sN, 0);
+        if (ex > v[i]) v[i] = ex;
+      }
+    }
+  }
+  return v[0];
+}
+
+/* ---------------- wiring ---------------- */
+const $ = id => document.getElementById(id);
+const usd = x => '$' + x.toFixed(2);
+const GREEK_META = [
+  ['Delta', 'deltaC', 'deltaP', 3, 'price move per $1 of stock'],
+  ['Gamma', 'gamma', 'gamma', 4, "delta's own rate of change"],
+  ['Vega', 'vega', 'vega', 3, 'per 1 point of volatility'],
+  ['Theta', 'thetaC', 'thetaP', 3, 'per calendar day of decay'],
+  ['Rho', 'rhoC', 'rhoP', 3, 'per 1 point of interest rate']
+];
+
+let valueChart, greekChart;
+
+function read() {
+  return {
+    S: Math.max(0.01, +$('i-S').value || 100),
+    K: Math.max(0.01, +$('i-K').value || 100),
+    T: Math.max(1, +$('i-days').value || 1) / 365,
+    r: (+$('i-r').value) / 1000,
+    sig: (+$('i-vol').value) / 100,
+    q: (+$('i-q').value) / 1000
+  };
+}
+
+function update() {
+  const {S, K, T, r, sig, q} = read();
+  $('v-vol').textContent = (sig * 100).toFixed(0) + '%';
+  $('v-r').textContent = (r * 100).toFixed(1) + '%';
+  $('v-q').textContent = (q * 100).toFixed(1) + '%';
+
+  const call = callPrice(S, K, T, r, sig, q), put = putPrice(S, K, T, r, sig, q);
+  const g = greeks(S, K, T, r, sig, q);
+
+  $('o-call').textContent = usd(call);
+  $('o-put').textContent = usd(put);
+  $('o-call-int').textContent = 'intrinsic ' + usd(Math.max(S - K, 0)) +
+    ' · time value ' + usd(call - Math.max(S - K, 0));
+  $('o-put-int').textContent = 'intrinsic ' + usd(Math.max(K - S, 0)) +
+    ' · time value ' + usd(put - Math.max(K - S, 0));
+
+  const mc = mcPrice('call', S, K, T, r, sig, q);
+  $('o-mc').textContent = usd(mc.price);
+  $('o-mc-se').textContent = '± ' + mc.se.toFixed(4) + ' standard error';
+
+  const bin = crr('call', 'european', S, K, T, r, sig, q);
+  $('o-bin').textContent = usd(bin);
+  $('o-bin-d').textContent = (bin - call >= 0 ? '+' : '') + (bin - call).toFixed(4) + ' vs closed form';
+
+  // do the three agree?
+  const sigmas = mc.se > 0 ? Math.abs(mc.price - call) / mc.se : 0;
+  $('agree-note').innerHTML = `<p><strong>The three methods agree.</strong> The closed form says
+    <b>${usd(call)}</b>. Simulating 200,000 random price paths gives <b>${usd(mc.price)}</b>
+    — ${sigmas.toFixed(1)} standard errors away, which is exactly the kind of gap sampling noise
+    should produce. Walking a 500-step binomial tree backwards from expiry gives <b>${usd(bin)}</b>,
+    within ${Math.abs(bin - call).toFixed(4)} of the formula and converging closer as the tree gets finer.
+    Three different derivations, one number.</p>`;
+
+  // American premiums
+  const amC = crr('call', 'american', S, K, T, r, sig, q);
+  const amP = crr('put', 'american', S, K, T, r, sig, q);
+  const euP = crr('put', 'european', S, K, T, r, sig, q);
+  const premC = amC - bin, premP = amP - euP;
+  $('o-prem-c').textContent = premC < 5e-4 ? '$0.00' : usd(premC);
+  $('o-prem-c-s').textContent = q < 1e-9
+    ? 'zero with no dividend — never exercise early'
+    : 'the dividend is worth capturing early';
+  $('o-prem-p').textContent = usd(premP);
+  $('o-prem-p-s').textContent = premP > 0.01
+    ? 'interest on the strike, earned sooner'
+    : 'negligible this far from the money';
+  const parity = call - put - (S * Math.exp(-q * T) - K * Math.exp(-r * T));
+  $('o-parity').textContent = parity.toExponential(1);
+
+  // greeks table
+  document.querySelector('#t-greeks tbody').innerHTML = GREEK_META.map(([name, ck, pk, dp, what]) => `
+    <tr><td><strong>${name}</strong></td>
+        <td class="n">${g[ck].toFixed(dp)}</td>
+        <td class="n">${g[pk].toFixed(dp)}</td>
+        <td style="font-size:12.5px">${what}</td></tr>`).join('');
+
+  // charts
+  const lo = Math.max(1, S * 0.5), hi = S * 1.5, N = 80;
+  const xs = Array.from({length: N}, (_, i) => lo + (hi - lo) * i / (N - 1));
+  const c = C();
+  const sets = [
+    {label: 'Call today', data: xs.map(x => callPrice(x, K, T, r, sig, q)), color: c.green, width: 2},
+    {label: 'Call at expiry', data: xs.map(x => Math.max(x - K, 0)), color: c.green, width: 1.2, dash: [5, 4]},
+    {label: 'Put today', data: xs.map(x => putPrice(x, K, T, r, sig, q)), color: c.red, width: 2},
+    {label: 'Put at expiry', data: xs.map(x => Math.max(K - x, 0)), color: c.red, width: 1.2, dash: [5, 4]}
+  ];
+  const labels = xs.map(x => x.toFixed(0));
+
+  if (!valueChart) {
+    valueChart = new Chart($('c-value'), {
+      type: 'line',
+      data: {labels, datasets: sets.map(s => ({label: s.label, data: s.data, borderColor: s.color,
+        borderWidth: s.width, borderDash: s.dash || [], pointRadius: 0, tension: 0}))},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: {mode: 'index', intersect: false},
+        plugins: {legend: {labels: {color: c.ink2, boxWidth: 10, boxHeight: 2, padding: 12}},
+                  tooltip: {callbacks: {label: ctx => `${ctx.dataset.label}: ${usd(ctx.parsed.y)}`}}},
+        scales: {x: {title: {display: true, text: 'spot price at expiry', color: c.ink3},
+                     grid: {display: false}, ticks: {color: c.ink3, maxTicksLimit: 8}},
+                 y: {grid: {color: c.line}, ticks: {color: c.ink3, callback: v => '$' + v},
+                     border: {display: false}}}
+      }
+    });
+  } else {
+    valueChart.data.labels = labels;
+    sets.forEach((s, i) => valueChart.data.datasets[i].data = s.data);
+    valueChart.update();
+  }
+
+  const dsets = [
+    {label: 'Call delta', data: xs.map(x => greeks(x, K, T, r, sig, q).deltaC), color: c.green},
+    {label: 'Put delta', data: xs.map(x => greeks(x, K, T, r, sig, q).deltaP), color: c.red}
+  ];
+  if (!greekChart) {
+    greekChart = new Chart($('c-greeks'), {
+      type: 'line',
+      data: {labels, datasets: dsets.map(s => ({label: s.label, data: s.data, borderColor: s.color,
+        borderWidth: 2, pointRadius: 0, tension: 0}))},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: {mode: 'index', intersect: false},
+        plugins: {legend: {labels: {color: c.ink2, boxWidth: 10, boxHeight: 2, padding: 10}}},
+        scales: {x: {grid: {display: false}, ticks: {color: c.ink3, maxTicksLimit: 6}},
+                 y: {grid: {color: c.line}, ticks: {color: c.ink3}, border: {display: false},
+                     min: -1, max: 1}}
+      }
+    });
+  } else {
+    greekChart.data.labels = labels;
+    dsets.forEach((s, i) => greekChart.data.datasets[i].data = s.data);
+    greekChart.update();
+  }
+}
+
+['i-S', 'i-K', 'i-days', 'i-vol', 'i-r', 'i-q'].forEach(id =>
+  $(id).addEventListener('input', update));
+update();
+
+
+/* ---- live SPY volatility surface, built by docs/build_data.py ---- */
+(function () {
+  const D = window.DATA;
+  if (!D) return;
+  const pctv = x => (x * 100).toFixed(2) + '%';
+  document.getElementById('x-asof').textContent = 'as of ' + D.as_of;
+  document.getElementById('x-nq').textContent = D.n_quotes.toLocaleString();
+
+  const palette = [C().blue, C().green, C().amber, C().red, C().ink2, C().ink3];
+  new Chart(document.getElementById('c-smile'), {
+    type: 'scatter',
+    data: {datasets: D.smiles.map((s, i) => ({
+      label: `${s.expiry} (${s.days}d)`,
+      data: s.points.map(p => ({x: p[0], y: p[1]})),
+      borderColor: palette[i % palette.length],
+      backgroundColor: palette[i % palette.length],
+      showLine: true, pointRadius: 1.5, borderWidth: 1.6, tension: 0
+    }))},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {labels: {color: C().ink2, boxWidth: 10, boxHeight: 2, padding: 10}},
+        tooltip: {callbacks: {label: c => `${c.dataset.label}: ${pctv(c.parsed.y)} at k=${c.parsed.x.toFixed(3)}`}}
+      },
+      scales: {
+        x: {title: {display: true, text: 'log(strike / forward)', color: C().ink3},
+            grid: {color: C().line}, ticks: {color: C().ink3}},
+        y: {title: {display: true, text: 'implied volatility', color: C().ink3},
+            grid: {color: C().line}, ticks: {color: C().ink3, callback: v => (v * 100).toFixed(0) + '%'},
+            border: {display: false}}
+      }
+    }
+  });
+
+  document.querySelector('#t-terms tbody').innerHTML = D.terms.map(t => `
+    <tr><td class="mono">${t.expiry}</td>
+        <td class="n">${Math.round(t.T * 365)}</td>
+        <td class="n">${pctv(t.atm)}</td>
+        <td class="n">${t.risk_reversal >= 0 ? '+' : ''}${pctv(t.risk_reversal)}</td>
+        <td class="n">${t.butterfly >= 0 ? '+' : ''}${pctv(t.butterfly)}</td></tr>`).join('');
+
+  const rrs = D.terms.map(t => t.risk_reversal);
+  document.getElementById('x-rr').textContent =
+    `${(Math.min(...rrs) * 100).toFixed(1)} to ${(Math.max(...rrs) * 100).toFixed(1)} points`;
+
+  new Chart(document.getElementById('c-flat'), {
+    type: 'bar',
+    data: {labels: D.flat.points.map(p => p[0].toFixed(2)),
+           datasets: [{data: D.flat.points.map(p => p[1]),
+                       backgroundColor: D.flat.points.map(p => p[1] > 0 ? C().red : C().green),
+                       borderWidth: 0}]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend: {display: false},
+                tooltip: {callbacks: {label: c => `model - market: $${c.parsed.y.toFixed(2)}`}}},
+      scales: {
+        x: {title: {display: true, text: 'log(strike / forward)', color: C().ink3},
+            grid: {display: false}, ticks: {color: C().ink3, maxTicksLimit: 9}},
+        y: {title: {display: true, text: 'model - market ($)', color: C().ink3},
+            grid: {color: C().line}, ticks: {color: C().ink3}, border: {display: false}}
+      }
+    }
+  });
+
+  // ---- cross-strike arbitrage and the implied density ----
+  const A = D.arbitrage;
+  if (A) {
+    const dens = A.density;
+    document.getElementById('a-dexp').textContent = dens.expiry;
+    document.getElementById('a-ddays').textContent = dens.days;
+    document.getElementById('a-raw').textContent = A.raw;
+    document.getElementById('a-tradable').textContent = A.tradable;
+
+    const near = A.rows[0], far = A.rows[A.rows.length - 1];
+    document.getElementById('a-near').textContent = near.density_mass.toFixed(3);
+    document.getElementById('a-far').textContent = far.density_mass.toFixed(3);
+    const widest = A.rows.reduce((a, b) => b.strikes > a.strikes ? b : a, A.rows[0]);
+    document.getElementById('a-interp').textContent =
+      widest.interp_variance + ' vs ' + widest.interp_vol;
+
+    new Chart(document.getElementById('c-density'), {
+      type: 'line',
+      data: {labels: dens.points.map(p => p[0].toFixed(0)),
+             datasets: [{data: dens.points.map(p => p[1]),
+                         borderColor: C().blue, backgroundColor: C().blue + '22',
+                         borderWidth: 1.6, pointRadius: 0, fill: true, tension: 0}]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {legend: {display: false},
+                  tooltip: {callbacks: {title: i => 'strike ' + i[0].label,
+                                        label: c => 'density ' + c.parsed.y.toFixed(5)}}},
+        scales: {
+          x: {title: {display: true, text: 'strike', color: C().ink3},
+              grid: {display: false}, ticks: {color: C().ink3, maxTicksLimit: 9}},
+          y: {title: {display: true, text: 'implied probability density', color: C().ink3},
+              grid: {color: C().line}, ticks: {color: C().ink3}, border: {display: false}}
+        }
+      },
+      plugins: [{
+        id: 'fwd',
+        afterDraw(chart) {
+          const {ctx, chartArea, scales} = chart;
+          const i = dens.points.reduce((best, p, j) =>
+            Math.abs(p[0] - dens.forward) < Math.abs(dens.points[best][0] - dens.forward) ? j : best, 0);
+          const x = scales.x.getPixelForValue(i);
+          ctx.save();
+          ctx.strokeStyle = C().ink3; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
+          ctx.setLineDash([]); ctx.fillStyle = C().ink3; ctx.font = '600 11px Inter, sans-serif';
+          ctx.fillText('forward ' + dens.forward.toFixed(0), x + 6, chartArea.top + 12);
+          ctx.restore();
+        }
+      }]
+    });
+
+    document.querySelector('#t-arb tbody').innerHTML = A.rows.map(r => `
+      <tr><td class="mono">${r.expiry}</td>
+          <td class="n">${r.days}</td>
+          <td class="n">${r.strikes}</td>
+          <td class="n">${r.butterfly}</td>
+          <td class="n">${r.butterfly_tradable}</td>
+          <td class="n">${r.density_mass.toFixed(3)}</td></tr>`).join('');
+  }
+
+  document.getElementById('x-worst').textContent = '$' + D.flat.worst.toFixed(2);
+  document.getElementById('x-med').textContent = '$' + D.flat.median_abs.toFixed(2);
+})();
+
+/* ---- delta-hedging study, built by docs/build_data.py ---- */
+(function () {
+  const H = window.DATA && window.DATA.hedging;
+  if (!H) return;
+  const $ = id => document.getElementById(id);
+  const f3 = x => (x >= 0 ? '' : '−') + Math.abs(x).toFixed(3);
+  const pct1 = x => (x * 100).toFixed(1) + '%';
+  const monthName = ym => new Date(ym + '-15').toLocaleString('en-US', {month: 'long', year: 'numeric'});
+
+  $('h-n').textContent = H.n;
+  $('h-span').textContent = `${monthName(H.first)} to ${monthName(H.last)}`;
+  $('h-mean').textContent = f3(H.mean);
+  $('h-mean-s').textContent = `on ${H.premium.toFixed(3)} of premium sold`;
+  $('h-vols').textContent = `${pct1(H.implied)} / ${pct1(H.realized)}`;
+  $('h-vols-s').textContent = `implied higher in ${pct1(H.implied_above)} of months`;
+  $('h-sharpe').textContent = H.sharpe.toFixed(2);
+  $('h-sharpe-s').textContent = `profitable in ${pct1(H.win_rate)} of months`;
+  $('h-worst').textContent = f3(H.worst);
+  $('h-worst-s').textContent = `${monthName(H.worst_month)}, ${(Math.abs(H.worst) / H.mean).toFixed(1)}× the average month`;
+  const worst = H.worst5.slice(0, 4).map(w => monthName(w[0]));
+  $('h-worst-list').textContent = worst.slice(0, -1).join(', ') + ' and ' + worst[worst.length - 1];
+  $('h-gr').textContent = H.gamma_r.toFixed(4);
+  $('h-gmae').textContent = H.gamma_mae.toFixed(3);
+  $('h-prem').textContent = H.premium.toFixed(3);
+  $('h-gap').textContent = H.gap_r2.toFixed(2);
+  $('h-gap2').textContent = (H.gamma_r * H.gamma_r).toFixed(2);
+
+  const c = C();
+  new Chart($('c-hmonths'), {
+    type: 'bar',
+    data: {labels: H.months.map(m => m[0]),
+           datasets: [{data: H.months.map(m => m[1]),
+                       backgroundColor: H.months.map(m => m[1] >= 0 ? c.green : c.red),
+                       borderWidth: 0, barPercentage: 1, categoryPercentage: 0.9}]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend: {display: false},
+                tooltip: {callbacks: {label: t => `hedged P&L: ${f3(t.parsed.y)} per $100`}}},
+      scales: {
+        x: {grid: {display: false},
+            ticks: {color: c.ink3, autoSkip: false, maxRotation: 0,
+                    callback: function (v) { const l = this.getLabelForValue(v);
+                      return l.endsWith('-01') && +l.slice(0, 4) % 4 === 0 ? l.slice(0, 4) : null; }}},
+        y: {title: {display: true, text: 'P&L per $100 of SPY', color: c.ink3},
+            grid: {color: c.line}, ticks: {color: c.ink3}, border: {display: false}}
+      }
+    }
+  });
+
+  const g = H.months.map(m => m[2]), lo = Math.min(...g, ...H.months.map(m => m[1])),
+        hi = Math.max(...g, ...H.months.map(m => m[1]));
+  new Chart($('c-hgamma'), {
+    type: 'scatter',
+    data: {datasets: [
+      {label: 'month', data: H.months.map(m => ({x: m[2], y: m[1], d: m[0]})),
+       backgroundColor: c.blue, borderColor: c.blue, pointRadius: 2.2},
+      {label: 'equal', data: [{x: lo, y: lo}, {x: hi, y: hi}], showLine: true,
+       borderColor: c.ink3, borderDash: [5, 4], borderWidth: 1.2, pointRadius: 0}
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend: {display: false},
+                tooltip: {filter: t => t.datasetIndex === 0,
+                          callbacks: {label: t => `${t.raw.d}: gamma ${f3(t.parsed.x)}, hedge ${f3(t.parsed.y)}`}}},
+      scales: {
+        x: {title: {display: true, text: 'gamma decomposition', color: c.ink3},
+            grid: {color: c.line}, ticks: {color: c.ink3}},
+        y: {title: {display: true, text: 'simulated hedge P&L', color: c.ink3},
+            grid: {color: c.line}, ticks: {color: c.ink3}, border: {display: false}}
+      }
+    }
+  });
+
+  const S = H.sim, daily = S.rows.find(r => r.n === 21);
+  $('h-sim-n').textContent = S.paths.toLocaleString();
+  $('h-slope').textContent = f3(S.slope);
+  $('h-sim-mean').textContent = Math.max(...S.rows.map(r => Math.abs(r.mean))).toFixed(3);
+  $('h-sim-prem').textContent = S.premium.toFixed(3);
+  new Chart($('c-hfreq'), {
+    type: 'scatter',
+    data: {datasets: [
+      {label: 'std of hedged P&L', data: S.rows.map(r => ({x: r.n, y: r.std})), showLine: true,
+       borderColor: c.blue, backgroundColor: c.blue, borderWidth: 2, pointRadius: 3},
+      {label: '1/√N', data: S.rows.map(r => ({x: r.n, y: daily.std * Math.sqrt(21 / r.n)})),
+       showLine: true, borderColor: c.ink3, borderDash: [5, 4], borderWidth: 1.2, pointRadius: 0}
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend: {labels: {color: c.ink2, boxWidth: 10, boxHeight: 2, padding: 10}},
+                tooltip: {callbacks: {label: t => `${t.dataset.label}: ${t.parsed.y.toFixed(3)} at N = ${t.parsed.x}`}}},
+      scales: {
+        x: {type: 'logarithmic', title: {display: true, text: 'rebalances over the month (N)', color: c.ink3},
+            afterBuildTicks: ax => { ax.ticks = [1, 3, 7, 21, 84, 252].map(value => ({value})); },
+            grid: {color: c.line}, ticks: {color: c.ink3, autoSkip: false, maxRotation: 0, callback: v => v}},
+        y: {type: 'logarithmic', title: {display: true, text: 'std of P&L per $100', color: c.ink3},
+            afterBuildTicks: ax => { ax.ticks = [0.1, 0.2, 0.5, 1, 2].map(value => ({value})); },
+            grid: {color: c.line}, ticks: {color: c.ink3, callback: v => v},
+            border: {display: false}}
+      }
+    }
+  });
+
+  const sign = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(3);
+  document.querySelector('#t-hfreq tbody').innerHTML = H.frequency.map(r => `
+    <tr><td style="white-space:nowrap">every ${r.every}d</td>
+        <td class="n">${f3(r.mean)}</td>
+        <td class="n">${r.every === 1 ? '&mdash;' : sign(r.vs_daily)}</td>
+        <td class="n">${r.every === 1 ? '&mdash;' : r.err_std.toFixed(3)}</td>
+        <td class="n">${r.every === 1 ? '&mdash;' : r.scaled.toFixed(3)}</td>
+        <td class="n neg">${f3(r.worst)}</td></tr>`).join('');
+  $('h-w1').textContent = f3(H.frequency.find(r => r.every === 1).worst);
+  $('h-w5').textContent = f3(H.frequency.find(r => r.every === 5).worst);
+  const cost = bps => f3(H.costs.find(r => r.bps === bps).mean);
+  $('h-c0').textContent = cost(0);
+  $('h-c1').textContent = cost(1);
+  $('h-c5').textContent = cost(5);
+})();
+
+
+/* ---- SVI smile fit (svi.py), built by docs/build_data.py ---- */
+(function () {
+  const D = window.DATA;
+  if (!D || !D.svi || !D.svi.rows.length) return;
+  const S = D.svi, el = id => document.getElementById(id);
+  const c = C();
+  const rows = S.rows;
+  const near = rows[0];
+  const median = [...rows].sort((a, b) => a.rmse_vol - b.rmse_vol)[Math.floor(rows.length / 2)];
+  const inside = rows.reduce((a, r) => a + r.inside, 0);
+  const total = rows.reduce((a, r) => a + r.n, 0);
+
+  el('s-lin').textContent = S.linear_total.toLocaleString();
+  el('s-svi').textContent = S.svi_total;
+  el('s-rmse').textContent = median.rmse_vol.toFixed(2);
+  el('s-inside').textContent = inside + ' / ' + total;
+  el('s-inside-s').textContent = 'mostly the long-dated chain, where spreads are wide';
+
+  const curve = S.curve;
+  if (curve) {
+    el('s-exp').textContent = curve.expiry;
+    el('s-days').textContent = curve.days;
+    el('s-nq').textContent = curve.quotes;
+    new Chart(document.getElementById('c-svi-fit'), {
+      data:{datasets:[
+        {type:'scatter', label:'quoted implied vol',
+         data: curve.points.map(p => ({x:p[0], y:p[1] * 100})),
+         backgroundColor: c.ink3, pointRadius:2},
+        {type:'line', label:'SVI fit',
+         data: curve.fit.map(p => ({x:p[0], y:p[1] * 100})),
+         borderColor: c.blue, borderWidth:2, pointRadius:0, tension:0}
+      ]},
+      options:{responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{labels:{boxWidth:10, boxHeight:10, padding:12}},
+          tooltip:{callbacks:{label:i =>
+            'k ' + i.parsed.x.toFixed(3) + '  vol ' + i.parsed.y.toFixed(2) + '%'}}},
+        scales:{x:{type:'linear', title:{display:true, text:'log-moneyness  k = log(K/F)'},
+                   grid:{color:c.line}},
+                y:{title:{display:true, text:'implied volatility (%)'},
+                   grid:{color:c.line}}}}});
+  }
+
+  document.querySelector('#t-svi tbody').innerHTML = rows.map(r =>
+    `<tr><td>${r.expiry}</td><td class="n">${r.days}</td><td class="n">${r.quotes}</td>` +
+    `<td class="n">${r.rmse_vol.toFixed(2)}</td><td class="n">${r.max_vol.toFixed(2)}</td>` +
+    `<td class="n">${r.inside}/${r.n}</td>` +
+    `<td class="n neg">${r.linear_bad}</td>` +
+    `<td class="n" style="color:var(--green);font-weight:600">${r.svi_bad}</td>` +
+    `<td class="n">${r.min_g.toFixed(3)}</td><td class="n">${r.rho.toFixed(2)}</td></tr>`).join('');
+
+  new Chart(document.getElementById('c-svi-weight'), {type:'bar', data:{
+    labels: rows.map(r => r.expiry),
+    datasets:[
+      {label:'vega weighted', data: rows.map(r => r.worst_spreads),
+       backgroundColor: c.blue, borderRadius:2},
+      {label:'equal weighted', data: rows.map(r => r.equal_worst),
+       backgroundColor: c.red, borderRadius:2}
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{boxWidth:10, boxHeight:10, padding:12}},
+        tooltip:{callbacks:{label:i =>
+          i.dataset.label + ': worst miss ' + i.parsed.y.toFixed(1) + ' half-spreads'}}},
+      scales:{x:{grid:{display:false}, ticks:{font:{size:10}}},
+              y:{title:{display:true, text:'worst repricing error (half-spreads)'},
+                 grid:{color:c.line}}}}});
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Streamlit config - keeps the look plain and consistent everywhere the
+# app runs (locally and on Streamlit Community Cloud).
+
+[theme]
+base = "dark"
+
+[browser]
+gatherUsageStats = false

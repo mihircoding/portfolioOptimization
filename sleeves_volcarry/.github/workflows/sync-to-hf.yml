@@ -1,0 +1,31 @@
+# Mirrors every push on main to the Hugging Face Space, so the public
+# site updates automatically - same pattern as Streamlit Cloud.
+#
+# One-time setup (skipped gracefully until done):
+#   1. Create the Space: huggingface.co/new-space, SDK = Streamlit
+#   2. Make a WRITE token: huggingface.co/settings/tokens
+#   3. In the GitHub repo: Settings -> Secrets and variables -> Actions ->
+#      New repository secret, name HF_TOKEN, value = the token
+#   4. If your Space isn't named kondamihir/options-pricer, fix the URL below.
+name: sync-to-huggingface
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push to Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN secret not set - skipping sync (see comments in this file)."
+            exit 0
+          fi
+          git push --force "https://kondamihir:$HF_TOKEN@huggingface.co/spaces/kondamihir/options-pricer" main
