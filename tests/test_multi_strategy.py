@@ -207,3 +207,85 @@ def test_shrinkage_pulls_the_covariance_toward_a_diagonal():
     _, plain = estimate(frame, shrink=False)
     _, shrunk = estimate(frame, shrink=True)
     assert abs(shrunk[0, 1]) <= abs(plain[0, 1]) + 1e-12
+
+
+# ---------- the cost the sleeves were not matched on ----------
+#
+# volcarry sold its option at the mid while statarb paid bid-ask on every
+# share, so the return gap between them was measured on unequal terms. The
+# fix is one parameter and the study sweeps it; what is tested here is the
+# mechanism and the one structural claim the sweep rests on - that a monthly
+# half-spread is close enough to a constant drag that it moves the means and
+# leaves the covariance alone. That is why it cannot reorder the risk-based
+# allocators, and it is worth an assertion rather than a sentence.
+
+
+def drag(p: pd.DataFrame, bps_per_month: float) -> pd.DataFrame:
+    """Charge a constant monthly cost to the volcarry column only."""
+    out = p.copy()
+    out["volcarry"] = out["volcarry"] - bps_per_month
+    return out
+
+
+def test_a_constant_monthly_cost_does_not_move_the_correlation():
+    base = panel()
+    charged = drag(base, 0.0004)
+
+    assert (return_gap_tstat(charged)["correlation"]
+            == pytest.approx(return_gap_tstat(base)["correlation"]))
+
+
+def test_a_constant_monthly_cost_does_not_move_the_diversification_ratio():
+    base = panel()
+    charged = drag(base, 0.0004)
+
+    assert (diversification_ratio(charged)
+            == pytest.approx(diversification_ratio(base)))
+
+
+def test_a_constant_monthly_cost_shrinks_the_return_gap():
+    base = panel()
+    charged = drag(base, 0.0004)
+
+    assert (return_gap_tstat(charged)["annualized_gap"]
+            < return_gap_tstat(base)["annualized_gap"])
+    assert return_gap_tstat(charged)["tstat"] < return_gap_tstat(base)["tstat"]
+
+
+def test_the_return_blind_allocators_do_not_notice_the_cost_at_all():
+    """The section 4 finding, restated as the thing that makes section 7 work.
+
+    Inverse volatility, risk parity, HRP and minimum variance never read an
+    expected return, so charging one sleeve a cost cannot move their weights
+    by any amount. Mean-variance is the only one that reacts. If this ever
+    fails, one of those four has started reading means and the blind-spot
+    argument needs rewriting rather than patching.
+    """
+    base = walk_forward(panel(), lookback=24)["schemes"]
+    charged = walk_forward(drag(panel(), 0.0010), lookback=24)["schemes"]
+
+    for name in ("inverse vol", "risk parity", "HRP", "min variance"):
+        assert (charged[name]["weight_on_statarb"]
+                == pytest.approx(base[name]["weight_on_statarb"])), name
+
+    assert (charged["max Sharpe"]["weight_on_statarb"]
+            >= base["max Sharpe"]["weight_on_statarb"])
+
+
+def test_a_big_enough_cost_eventually_makes_mean_variance_fund_the_other_sleeve():
+    """The break-even the sweep is looking for, on a constructed panel.
+
+    Charge enough that the good sleeve is the worse one and mean-variance has
+    to switch. A study that reported a break-even without this would not have
+    shown that one exists.
+    """
+    base = walk_forward(panel(), lookback=24)["schemes"]
+    heavy = walk_forward(drag(panel(), 0.0060), lookback=24)["schemes"]
+
+    # Not a hard floor on the first number: 60 months of draws put a little
+    # weight on the flat sleeve in some windows even with no cost charged, and
+    # a threshold tight enough to exclude that would be fitted to the seed.
+    assert base["max Sharpe"]["weight_on_statarb"] < 0.3
+    assert heavy["max Sharpe"]["weight_on_statarb"] > 0.8
+    assert (heavy["max Sharpe"]["weight_on_statarb"]
+            > base["max Sharpe"]["weight_on_statarb"] + 0.5)

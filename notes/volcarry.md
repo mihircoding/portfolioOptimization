@@ -610,6 +610,31 @@ reliably, and the occasional bill is enormous. The four worst months here are
 March 2020, September 2008, November 2008 and August 2011, which is the same
 list a credit desk would give you.
 
+**One cost in that table used to be missing: the option was sold at the mid.**
+`cost_bps` charges bid-ask on every share the hedge trades, which is most of
+the trading here but not all of it — there is also one option sale a month, and
+nobody sells at the mid. `option_spread_vol_pts` charges half the option's
+bid-ask on that sale, in vol points, selling at the bid while still hedging on
+the mid (which is where a desk marks, and the two volatilities were already
+separate arguments to `delta_hedge`).
+
+The size is checkable rather than asserted: one-month ATM vega is about
+`S·√(T/2π)`, which at SPY 580 and 21 trading days is **$0.67 per vol point**,
+and the test suite verifies that against the pricer. SPY's front-month market
+runs a penny or two wide, so a cent of half-spread is around 0.02 vol points.
+The default charge is 0.10 — two to five times a calm day's width, because this
+sleeve trades every month from 2007 and option markets in October 2008 were not
+a penny wide. It costs **0.0115 per $100 a month**, taking the average P&L from
+0.405 to 0.394 and the Sharpe from 2.20 to 2.13.
+
+So the premium survives its own transaction costs by a wide margin, which is
+worth knowing in the direction it points: the edge here is not a spread artifact.
+The sweep in `multi_strategy.py` section 7 runs it out to 8.00 vol points and
+finds the P&L only turns negative somewhere past 3 — thirty times SPY's quoted
+width. What a constant cannot capture is that a real spread widens in exactly
+the months this strategy is most exposed, so the right reading of a flat charge
+is a floor rather than an estimate.
+
 **The point of the exercise is the decomposition, not the Sharpe.** In
 continuous time the P&L of a delta-hedged option is exactly
 

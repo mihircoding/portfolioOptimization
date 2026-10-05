@@ -20,12 +20,26 @@ rate is set to zero, so both carry terms are folded into the path rather than
 modeled separately. The hedge is computed at the volatility the option was sold
 at and never re-marked - a desk would re-hedge on current implied, which damps
 the tails.
+
+One cost that used to be missing and is not any more. `cost_bps` charges the
+bid-ask on every SHARE the hedge trades, which is most of the trading this
+strategy does but not all of it: the option itself was being sold at the mid.
+Nobody sells at the mid. `option_spread_vol_pts` charges the half-spread on the
+one option trade a month, quoted in volatility points because that is how an
+options market is quoted and how its width is compared across names and dates.
+
+Selling at the bid and hedging on the mid is the real asymmetry, and the two
+arguments to `delta_hedge` were already separate, so it is one line: price at
+`sigma - spread`, hedge at `sigma`. The strategy holds to expiry,
+so the spread is crossed once rather than round-tripped - an option that
+expires needs no exit trade, which is worth half the cost of one that does.
 """
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from sleeves.volcarry.black_scholes import price
 from sleeves.volcarry.hedging import delta_hedge, gamma_pnl, realized_vol
 
 TICKER = "SPY"
@@ -35,6 +49,25 @@ T_YEARS = HEDGE_DAYS / 252
 RATE = 0.0
 FREQUENCIES = (2, 5, 10, 21)
 COSTS_BPS = (0.0, 1.0, 5.0)
+
+# Half the option's bid-ask, in volatility points, charged on the monthly sale.
+#
+# 0.10 for one-month at-the-money SPY. The arithmetic behind it, because a
+# number like this is worthless if the reader cannot check it: vega of a
+# one-month ATM option is about S*sqrt(T/2pi), which at SPY 580 and 21 trading
+# days is $0.67 per vol point. SPY's front-month ATM market is a penny or two
+# wide, so a cent of half-spread is around 0.02 vol points and two cents about
+# 0.04. 0.10 is therefore deliberately two to five times the quoted width of a
+# calm day, because this sleeve trades every month from 2007 and option markets
+# in October 2008 and March 2020 were not a penny wide. A constant cannot
+# capture that widening, which is why SPREAD_VOLS sweeps it.
+# Units are vol POINTS, not decimal vol: 0.10 here means a tenth of a vol
+# point, and the conversion to sigma's decimal units happens in trade(). I had
+# these the same way round at first, which made a tenth of a point into ten
+# points and ate the entire premium - the kind of mistake that looks like a
+# finding until you check the vega arithmetic above against it.
+OPTION_SPREAD_VOL_PTS = 0.10
+SPREAD_VOL_PTS = (0.0, 0.05, 0.10, 0.25, 1.00)
 
 
 def load() -> pd.DataFrame:
@@ -60,13 +93,22 @@ def months(data: pd.DataFrame) -> list[pd.DataFrame]:
 
 
 def trade(window: pd.DataFrame, option_type="call", rebalance_every=1,
-          cost_bps=0.0) -> dict:
-    """One month: sell an at-the-money option at VIX, hedge to expiry."""
+          cost_bps=0.0, option_spread_vol_pts=0.0) -> dict:
+    """One month: sell an at-the-money option at VIX, hedge to expiry.
+
+    option_spread_vol_pts : half the option's bid-ask in VOL POINTS - 0.10 is
+        a tenth of a point, which is 0.001 in sigma's decimal units. The option
+        is SOLD at the bid and HEDGED at the mid, which is where a desk marks
+        and therefore where it takes its delta from. Zero reproduces the
+        mid-market result exactly.
+    """
     path = window["spy"].to_numpy(dtype=float)
     sigma = float(window["vix"].iloc[0]) / 100.0
     strike = path[0]
-    result = delta_hedge(path, strike, T_YEARS, RATE, sigma,
-                         option_type=option_type, rebalance_every=rebalance_every,
+    sold_at = max(sigma - option_spread_vol_pts / 100.0, 1e-6)
+    result = delta_hedge(path, strike, T_YEARS, RATE, sold_at,
+                         option_type=option_type, sigma_hedge=sigma,
+                         rebalance_every=rebalance_every,
                          cost_bps=cost_bps)
     decomposition, _ = gamma_pnl(path, strike, T_YEARS, RATE, sigma,
                                  option_type=option_type)
@@ -77,6 +119,10 @@ def trade(window: pd.DataFrame, option_type="call", rebalance_every=1,
     return {
         "date": window.index[0],
         "implied": sigma,
+        "sold_at": sold_at,
+        "spread_cost": (price(option_type, path[0], strike, T_YEARS, RATE, sigma)
+                        - price(option_type, path[0], strike, T_YEARS, RATE,
+                                sold_at)) * scale,
         "realized": result["realized_vol"],
         "pnl": result["pnl"] * scale,
         "premium": result["premium"] * scale,

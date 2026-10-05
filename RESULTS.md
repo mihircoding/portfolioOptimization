@@ -41,7 +41,7 @@ projects that merged into it.
 | sleeve | what it is | ann. return | ann. vol | Sharpe | worst month |
 |---|---|---|---|---|---|
 | `statarb` | 930 cointegrated equity pairs, long one leg, short the other | −0.67% | 1.53% | **−0.44** | −1.17% |
-| `volcarry` | sell a one-month ATM SPY call monthly, delta-hedge daily | +4.59% | 1.66% | **2.77** | −0.78% |
+| `volcarry` | sell a one-month ATM SPY call monthly, delta-hedge daily | +4.46% | 1.66% | **2.68** | −0.79% |
 
 46 overlapping months, 2021-02 to 2024-11. Correlation between them: **+0.029**.
 Diversification ratio **1.39**, against a ceiling of 1.41 for two sleeves. By
@@ -54,12 +54,12 @@ out-of-sample months.
 
 | scheme | ann. return | ann. vol | Sharpe | weight on `statarb` |
 |---|---|---|---|---|
-| **max Sharpe** | 3.51% | 1.33% | **2.64** | **0%** |
-| risk parity | 1.49% | 0.95% | 1.58 | 43% |
-| inverse vol | 1.49% | 0.95% | 1.58 | 43% |
-| equal weight | 1.39% | 0.89% | 1.57 | 50% |
-| HRP | 1.60% | 1.03% | 1.56 | 37% |
-| min variance | 1.59% | 1.02% | 1.55 | 37% |
+| **max Sharpe** | 3.37% | 1.33% | **2.54** | **0%** |
+| risk parity | 1.41% | 0.95% | 1.50 | 43% |
+| inverse vol | 1.41% | 0.95% | 1.50 | 43% |
+| equal weight | 1.32% | 0.89% | 1.49 | 50% |
+| HRP | 1.51% | 1.03% | 1.47 | 37% |
+| min variance | 1.50% | 1.02% | 1.47 | 37% |
 
 Mean-variance beats equal weighting by more than a full unit of Sharpe, and
 every risk-based method lands in a dead heat with 1/N. That is the opposite of
@@ -109,12 +109,12 @@ return is **large relative to the error on estimating it**, and loses when it is
 not, because then it is allocating on noise.
 
 ```
-return gap        +5.27% a year  (+0.4391% a month)
+return gap        +5.13% a year  (+0.4276% a month)
 standard error     0.0961% a month, on 46 months
-t-statistic           4.57
+t-statistic           4.45
 ```
 
-A t-statistic of 4.57 on the return difference. The sleeves are not similar
+A t-statistic of 4.45 on the return difference. The sleeves are not similar
 assets whose means cannot be told apart; one of them is reliably better, and 46
 months is enough to know it. In notes/allocator.md's five-ETF problem the same
 statistic is under 1 — which is why the optimizer loses there and wins here.
@@ -133,17 +133,17 @@ sleeve's start date, which is a selection effect even though nobody selected it.
 
 | `volcarry` over | months | ann. return | ann. vol | Sharpe | worst month |
 |---|---|---|---|---|---|
-| its full history | 215 | 4.87% | 2.22% | 2.20 | −2.68% |
-| the overlap only | 46 | 4.59% | 1.66% | **2.77** | −0.78% |
+| its full history | 215 | 4.73% | 2.22% | 2.13 | −2.69% |
+| the overlap only | 46 | 4.46% | 1.66% | **2.68** | −0.79% |
 
-Worst months excluded: 2020-03 (−2.68%), 2008-09 (−1.96%), 2008-11 (−1.47%).
-The window inflates the sleeve's Sharpe by **+0.57**.
+Worst months excluded: 2020-03 (−2.69%), 2008-09 (−1.97%), 2008-11 (−1.48%).
+The window inflates the sleeve's Sharpe by **+0.55**.
 
 The important part is *where* the inflation is. The annualized return is almost
-unchanged — 4.59% against 4.87% — and all of the difference is in volatility,
+unchanged — 4.46% against 4.73% — and all of the difference is in volatility,
 1.66% against 2.22%. So the quantity mean-variance actually acted on, the
 **return gap**, is not a window artifact; what the window flattered is the risk.
-The allocation conclusion survives. The 2.64 Sharpe does not, and the honest
+The allocation conclusion survives. The 2.54 Sharpe does not, and the honest
 number for the combined book is lower.
 
 ### 5. And it holds at every estimation window
@@ -153,14 +153,93 @@ for its own headline:
 
 | lookback | OOS months | equal weight | inverse vol | risk parity | HRP | min variance | max Sharpe |
 |---|---|---|---|---|---|---|---|
-| 12m | 34 | 1.21 | 1.23 | 1.23 | 1.22 | 1.09 | **2.06** |
-| 18m | 28 | 1.43 | 1.55 | 1.55 | 1.62 | 1.64 | **2.36** |
-| 24m | 22 | 1.57 | 1.58 | 1.58 | 1.56 | 1.55 | **2.64** |
-| 30m | 16 | 1.75 | 1.73 | 1.73 | 1.68 | 1.69 | **1.88** |
+| 12m | 34 | 1.14 | 1.16 | 1.16 | 1.14 | 1.01 | **1.93** |
+| 18m | 28 | 1.35 | 1.46 | 1.46 | 1.53 | 1.55 | **2.25** |
+| 24m | 22 | 1.49 | 1.50 | 1.50 | 1.47 | 1.47 | **2.54** |
+| 30m | 16 | 1.66 | 1.63 | 1.63 | 1.58 | 1.59 | **1.78** |
 
 Max Sharpe wins at all four. The margin collapses at 30 months, where only 16
 out-of-sample months are left and the comparison is close to meaningless — which
 is the right place for it to collapse.
+
+### 6. The cost the two sleeves were not matched on
+
+Reproduce with: `python multi_strategy.py` (section 7)
+
+Every version of this study until now carried a caveat that it could not
+price: `statarb` pays bid-ask on every share it trades, while `volcarry`
+charged its delta-hedging in basis points and then **sold the option itself at
+the mid**. Nobody sells at the mid. So the gap between the sleeves was
+measured with one of them paying its spreads and the other not, and the honest
+sentence in that section said it was overstated "by an unmeasured amount". This
+measures it — and every number in sections 1 to 5 above is now quoted with the
+charge applied, so the 0.00 row below is what those sections used to say.
+
+`option_spread_vol_pts` charges half the option's bid-ask on the monthly sale,
+quoted in **vol points** because that is how an options market's width is
+quoted and compared. The option is sold at the bid and hedged at the mid, which
+is what a desk actually does — it crosses the spread to get the position on and
+then marks and hedges on its own mid — and `delta_hedge` already took those two
+volatilities as separate arguments, so it is one line.
+
+The default is 0.10 vol points, and the arithmetic behind it is checkable
+rather than asserted: one-month ATM vega is about `S·√(T/2π)`, which at SPY 580
+and 21 trading days is **$0.67 per vol point** (the test suite verifies that
+number against the pricer). SPY's front-month ATM market is a penny or two
+wide, so a cent of half-spread is roughly 0.02 vol points. 0.10 is therefore
+deliberately two to five times a calm day's quoted width, because this sleeve
+trades every month from 2007 and option markets in October 2008 and March 2020
+were not a penny wide.
+
+The useful question is not what the spread really was — nobody has an
+eighteen-year history of SPY option quotes to settle it — but **how large it
+would have to be to change the answer.** That converts an unmeasured hole into
+a bounded one, which is the most a study can do with a number it cannot
+observe:
+
+| half-spread (vol pts) | volcarry return | volcarry Sharpe | gap t-stat | max Sharpe | 1/N | weight on statarb: MV | IV |
+|---|---|---|---|---|---|---|---|
+| 0.00 (mid) | 4.59% | 2.77 | 4.57 | **2.64** | 1.57 | 0% | 43% |
+| **0.10 (shipped)** | **4.46%** | **2.68** | **4.45** | **2.54** | 1.49 | 0% | 43% |
+| 0.25 | 4.25% | 2.56 | 4.27 | **2.38** | 1.38 | 0% | 43% |
+| 0.50 | 3.90% | 2.35 | 3.97 | **2.12** | 1.18 | 0% | 43% |
+| 1.00 | 3.21% | 1.93 | 3.37 | **1.60** | 0.79 | 0% | 43% |
+| 2.00 | 1.83% | 1.10 | 2.17 | −0.01 | 0.01 | 23% | 43% |
+| 4.00 | −0.93% | −0.56 | −0.22 | −0.16 | −1.55 | 91% | 43% |
+| 8.00 | −6.46% | −3.89 | −5.01 | −0.48 | −4.66 | 100% | 43% |
+
+**At the realistic charge the caveat was worth 0.14% of annual return and 0.08
+of Sharpe.** The return gap goes from 5.27% to 5.13%, its t-statistic from 4.57
+to 4.45, the combined book's out-of-sample Sharpe from 2.64 to 2.54, and the
+ranking of all six schemes is unchanged. Mean-variance still beats equal
+weighting by more than a unit of Sharpe. Since the correction is small and
+points the right way, the charge is now the default rather than a sensitivity,
+which is why the tables above moved too.
+
+The gap stays significant out to a half-spread of **2.00 vol points — about
+twenty times SPY's front-month market** — and mean-variance keeps zero weight
+on the stat-arb sleeve all the way to that point. So the objection is real,
+correctly stated, and bounded at roughly 20x. That is a better answer than
+either pretending the cost away or quietly removing the caveat.
+
+Two things in that table are worth more than the headline.
+
+**The correlation and the diversification ratio do not move at all** — 0.029
+and 1.393 at every row. A monthly half-spread is very nearly a constant drag,
+so it shifts a mean and leaves the covariance alone. That is the mechanical
+reason a cost correction cannot reorder the risk-based allocators against each
+other: it only moves the input that mean-variance is the one to read. There is
+a test on each half of that.
+
+**And the last column is section 2's finding, harder.** Inverse volatility
+holds 43% of the book in the stat-arb sleeve at *every* spread — including the
+rows where the other sleeve has stopped making money altogether, and the row
+where it loses 6.5% a year. It is not reacting slowly to the deterioration; it
+is not reacting. Section 2 established that by multiplying expected returns by
+ten and watching the weights not move, which is a synthetic test. This is the
+same blind spot shown on a change that actually happened to the book, and it
+is a sharper way to say it: a method that never reads a return cannot notice
+that something it funds has stopped working, however far it falls.
 
 ### What this does not establish
 
@@ -170,11 +249,13 @@ is the right place for it to collapse.
 - **22 out-of-sample months.** Everything in section 1 rests on fewer than two
   years. Section 5 is the only reason to take it at all seriously, and it is a
   weak reason.
-- **The sleeves are not cost-matched.** `statarb` charges its own transaction
-  costs per notes/statarb.md; `volcarry` charges hedging costs in basis points
-  but no bid-ask on the option it sells, which for a one-month ATM SPY option
-  is not negligible. The return gap is therefore overstated by an unmeasured
-  amount, and the amount is small relative to 5.27% a year but not zero.
+- ~~**The sleeves are not cost-matched.**~~ Measured in section 6.
+  `option_spread_vol_pts` charges the option's half-spread on the monthly sale,
+  and at a realistic 0.10 vol points it costs the sleeve 0.14% a year and 0.08
+  of Sharpe. The gap stays significant out to twenty times SPY's quoted width.
+  What is still not matched: the spread is a constant, and a real one widens in
+  exactly the months this sleeve is most exposed. The sweep brackets that
+  rather than modelling it.
 - **Nothing here is levered to a common risk target.** Both sleeves run at
   under 2% volatility, so the combined book earns 3.5% a year at 1.3% vol. A
   real book would lever that, and leverage changes which risks matter.

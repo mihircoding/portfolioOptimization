@@ -1,0 +1,146 @@
+[
+ {
+  "spread_vol_pts": 0.0,
+  "volcarry": {
+   "ann_return": 0.04594953422535143,
+   "ann_vol": 0.016610801644303598,
+   "sharpe": 2.7662442312715876,
+   "worst_month": -0.0078294227860078,
+   "hit_rate": 0.8043478260869565
+  },
+  "annualized_gap": 0.052697213435108956,
+  "gap_tstat": 4.569129285584508,
+  "correlation": 0.0294458411956412,
+  "diversification_ratio": 1.3927274427156304,
+  "max_sharpe": 2.643041019835553,
+  "equal_weight": 1.57096560792647,
+  "w_statarb_max_sharpe": 0.0014230451337495216,
+  "w_statarb_inverse_vol": 0.4336134927488196
+ },
+ {
+  "spread_vol_pts": 0.1,
+  "volcarry": {
+   "ann_return": 0.044568245851375796,
+   "ann_vol": 0.016610831617866882,
+   "sharpe": 2.6830833564911623,
+   "worst_month": -0.0079445861562415,
+   "hit_rate": 0.7608695652173914
+  },
+  "annualized_gap": 0.05131592506113332,
+  "gap_tstat": 4.449359876654006,
+  "correlation": 0.029442118608057476,
+  "diversification_ratio": 1.3927299039200913,
+  "max_sharpe": 2.5383336414746083,
+  "equal_weight": 1.493063218492457,
+  "w_statarb_max_sharpe": 0.0013294052162099645,
+  "w_statarb_inverse_vol": 0.43361381089261075
+ },
+ {
+  "spread_vol_pts": 0.25,
+  "volcarry": {
+   "ann_return": 0.042496163289618916,
+   "ann_vol": 0.01661088930239867,
+   "sharpe": 2.558331617048482,
+   "worst_month": -0.0081173071258454,
+   "hit_rate": 0.717391304347826
+  },
+  "annualized_gap": 0.04924384249937644,
+  "gap_tstat": 4.269691426134392,
+  "correlation": 0.029442923153047806,
+  "diversification_ratio": 1.3927292678658767,
+  "max_sharpe": 2.3818268203828943,
+  "equal_weight": 1.3762006063438992,
+  "w_statarb_max_sharpe": 0.0012523510564942072,
+  "w_statarb_inverse_vol": 0.4336143120049625
+ },
+ {
+  "spread_vol_pts": 0.5,
+  "volcarry": {
+   "ann_return": 0.0390426903168898,
+   "ann_vol": 0.016610990416699414,
+   "sharpe": 2.3504131504187296,
+   "worst_month": -0.0084052104295358,
+   "hit_rate": 0.717391304347826
+  },
+  "annualized_gap": 0.045790369526647313,
+  "gap_tstat": 3.97024468931424,
+  "correlation": 0.02944323021239552,
+  "diversification_ratio": 1.392728896739843,
+  "max_sharpe": 2.1218682218385516,
+  "equal_weight": 1.1814328281680606,
+  "w_statarb_max_sharpe": 0.001287679131469394,
+  "w_statarb_inverse_vol": 0.43361562488309213
+ },
+ {
+  "spread_vol_pts": 1.0,
+  "volcarry": {
+   "ann_return": 0.03213556450334447,
+   "ann_vol": 0.01661117175367147,
+   "sharpe": 1.9345754158638286,
+   "worst_month": -0.0089809215032684,
+   "hit_rate": 0.6739130434782609
+  },
+  "annualized_gap": 0.038883243713101985,
+  "gap_tstat": 3.3713438328537846,
+  "correlation": 0.029446906690883734,
+  "diversification_ratio": 1.39272612366927,
+  "max_sharpe": 1.6019226530797381,
+  "equal_weight": 0.7918799737081971,
+  "w_statarb_max_sharpe": 0.00142301401844274,
+  "w_statarb_inverse_vol": 0.4336167757771992
+ },
+ {
+  "spread_vol_pts": 2.0,
+  "volcarry": {
+   "ann_return": 0.0183209923158264,
+   "ann_vol": 0.016611538726083636,
+   "sharpe": 1.102907600429487,
+   "worst_month": -0.0101324643059088,
+   "hit_rate": 0.6086956521739131
+  },
+  "annualized_gap": 0.025068671525583917,
+  "gap_tstat": 2.173535248870515,
+  "correlation": 0.029451088469761834,
+  "diversification_ratio": 1.392722708536326,
+  "max_sharpe": -0.006762489917159883,
+  "equal_weight": 0.01277153555849431,
+  "w_statarb_max_sharpe": 0.22727272727272724,
+  "w_statarb_inverse_vol": 0.4336204362031468
+ },
+ {
+  "spread_vol_pts": 4.0,
+  "volcarry": {
+   "ann_return": -0.009309694216023895,
+   "ann_vol": 0.01661220782400627,
+   "sharpe": -0.5604128189734343,
+   "worst_month": -0.0124355538875211,
+   "hit_rate": 0.32608695652173914
+  },
+  "annualized_gap": -0.002562015006266376,
+  "gap_tstat": -0.22213018115126332,
+  "correlation": 0.029461159782577667,
+  "diversification_ratio": 1.3927148318851372,
+  "max_sharpe": -0.16312808972248205,
+  "equal_weight": -1.5455136789009094,
+  "w_statarb_max_sharpe": 0.9090909090909086,
+  "w_statarb_inverse_vol": 0.4336264167034678
+ },
+ {
+  "spread_vol_pts": 8.0,
+  "volcarry": {
+   "ann_return": -0.06457622442627686,
+   "ann_vol": 0.016613333263396837,
+   "sharpe": -3.8870119200313518,
+   "worst_month": -0.0170419505061629,
+   "hit_rate": 0.1956521739130435
+  },
+  "annualized_gap": -0.05782854521651933,
+  "gap_tstat": -5.013629605404822,
+  "correlation": 0.029479909245722045,
+  "diversification_ratio": 1.3927003626590215,
+  "max_sharpe": -0.4785162595662121,
+  "equal_weight": -4.662282888750145,
+  "w_statarb_max_sharpe": 0.9999999999999882,
+  "w_statarb_inverse_vol": 0.43363688221169366
+ }
+]

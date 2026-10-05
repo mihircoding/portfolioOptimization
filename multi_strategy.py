@@ -62,6 +62,11 @@ from src.risk_parity import (equal_risk_contribution_weights,
 
 MONTHS_PER_YEAR = 12
 LOOKBACK_MONTHS = 24     # trailing window the walk-forward estimates on
+# Half-spreads on the option, in vol points, for section 7. 0.10 is the
+# sleeve's own default and roughly SPY's front-month market; the rest run out
+# to 8.00, which is eighty times that and not a market anyone has seen, in
+# order to find where the conclusion actually breaks rather than to propose it.
+SPREAD_VOL_SWEEP = (0.0, 0.10, 0.25, 0.50, 1.00, 2.00, 4.00, 8.00)
 SLEEVES = ("statarb", "volcarry")
 OUT = "results/multi_strategy.json"
 
@@ -84,7 +89,8 @@ def statarb_monthly(path: str = "sleeves/statarb/results/portfolio.json") -> pd.
 
 
 def volcarry_monthly(start: str = "2007-01-01", end: str = "2024-12-31",
-                     cache: str = "results/volcarry_monthly.csv") -> pd.Series:
+                     cache: str | None = None,
+                     spread_vol_pts: float | None = None) -> pd.Series:
     """Monthly P&L of the delta-hedged short call, as a return.
 
     hedging_study reports P&L per $100 of underlying, which is already a return
@@ -92,19 +98,40 @@ def volcarry_monthly(start: str = "2007-01-01", end: str = "2024-12-31",
     choice, and it is the one the sleeve's own write-up uses, so the Sharpe here
     matches the Sharpe there and the two files cannot drift.
 
-    Cached because it is the only part of this study that needs the network, and
-    a cached file means the walk-forward is reproducible after Yahoo changes its
-    mind about something.
+    spread_vol_pts : half the option's bid-ask in vol points, charged on the
+        monthly sale. Defaults to the sleeve's own OPTION_SPREAD_VOL_PTS so
+        this file and hedging_study cannot disagree about what the sleeve
+        costs. Section 6 sweeps it, including 0, which is the mid-market
+        series the first version of this study used.
+
+        This matters because the two sleeves were NOT cost-matched. statarb
+        charges bid-ask on every share it trades; volcarry charged hedging
+        costs in basis points but sold the option itself at the mid. Comparing
+        a sleeve that pays its spreads against one that does not overstates
+        the gap between them by an amount nobody had measured.
+
+    Cached because it is the only part of this study that needs the network,
+    and a cached file means the walk-forward is reproducible after Yahoo
+    changes its mind about something. The cache name carries the spread, so
+    changing it does not silently read back a series priced differently.
     """
+    from sleeves.volcarry.hedging_study import (OPTION_SPREAD_VOL_PTS, load,
+                                                months, trade)
+
+    if spread_vol_pts is None:
+        spread_vol_pts = OPTION_SPREAD_VOL_PTS
+    if cache is None:
+        tag = f"{spread_vol_pts:g}".replace(".", "p")
+        cache = f"results/volcarry_monthly_sp{tag}.csv"
+
     if os.path.exists(cache):
         frame = pd.read_csv(cache, index_col=0, parse_dates=True)
         return frame["ret"]
 
-    from sleeves.volcarry.hedging_study import load, months, trade
-
     data = load()
     data = data.loc[start:end]
-    rows = [trade(window) for window in months(data)]
+    rows = [trade(window, option_spread_vol_pts=spread_vol_pts)
+            for window in months(data)]
     frame = pd.DataFrame(rows).set_index("date")
     series = (frame["pnl"] / 100.0).rename("ret")
     series.index = series.index.to_period("M").to_timestamp("M")
@@ -258,8 +285,9 @@ def diversification_ratio(panel: pd.DataFrame) -> float:
     return float((w @ vols) / np.sqrt(w @ cov @ w))
 
 
-def window_bias(cache: str = "results/volcarry_monthly.csv",
-                overlap: pd.DataFrame | None = None) -> dict:
+def window_bias(cache: str | None = None,
+                overlap: pd.DataFrame | None = None,
+                spread_vol_pts: float | None = None) -> dict:
     """What the overlap window leaves out of the volatility sleeve's history.
 
     This is the check that decides whether section 2 is a result or an artifact.
@@ -274,8 +302,13 @@ def window_bias(cache: str = "results/volcarry_monthly.csv",
     comparison below is the size of it. If the full-history Sharpe is far below
     the overlap-window Sharpe, then section 2's answer is partly a statement
     about 2021-2024 rather than about allocation, and the write-up has to say so.
+
+    Costs come from the same place the panel's do. This read the mid-market
+    cache by default until the option spread existed, which made section 5
+    quote a different sleeve from section 1 - a small inconsistency, and the
+    kind that is invisible once it is in a table.
     """
-    full = volcarry_monthly(cache=cache)
+    full = volcarry_monthly(cache=cache, spread_vol_pts=spread_vol_pts)
     full.index = full.index.to_period("M").to_timestamp("M")
     window = full if overlap is None else full.loc[overlap.index]
     excluded = full.drop(window.index, errors="ignore")
@@ -402,6 +435,79 @@ def print_lookback(rows: list[dict]) -> None:
         print(f"{r['lookback']:>8}m {r['months_traded']:>7}{cells}")
 
 
+def spread_sensitivity(spreads=SPREAD_VOL_SWEEP,
+                       lookback: int = LOOKBACK_MONTHS) -> list[dict]:
+    """How wrong the option spread has to be before the conclusion moves.
+
+    The two sleeves were never cost-matched. statarb pays bid-ask on every
+    share it trades; volcarry charged its delta-hedging in basis points but
+    sold the option itself at the mid. So the return gap between them was
+    measured with one sleeve paying its spreads and the other not, and that
+    is the most obvious objection to section 3.
+
+    Charging it is one parameter, and the useful form of the question is not
+    "what is the right spread" - nobody has a long history of SPY option
+    quotes to settle it - but "how large would it have to be to change the
+    answer". That turns an unmeasured hole into a bounded one, which is the
+    most an honest study can do with a number it cannot observe.
+
+    Note what does NOT move: the correlation and the diversification ratio.
+    A per-month half-spread is very nearly a constant drag, so it shifts the
+    mean and leaves the covariance alone. That is exactly why it cannot
+    reorder the risk-based allocators against each other - it only moves the
+    input that mean-variance is the one to read.
+    """
+    rows = []
+    for spread in spreads:
+        panel = sleeve_panel(spread_vol_pts=spread)
+        schemes = walk_forward(panel, lookback=lookback)["schemes"]
+        gap = return_gap_tstat(panel)
+        rows.append({
+            "spread_vol_pts": spread,
+            "volcarry": performance(panel["volcarry"]),
+            "annualized_gap": gap["annualized_gap"],
+            "gap_tstat": gap["tstat"],
+            "correlation": gap["correlation"],
+            "diversification_ratio": diversification_ratio(panel),
+            "max_sharpe": schemes["max Sharpe"]["sharpe"],
+            "equal_weight": schemes["equal weight"]["sharpe"],
+            "w_statarb_max_sharpe": schemes["max Sharpe"]["weight_on_statarb"],
+            "w_statarb_inverse_vol": schemes["inverse vol"]["weight_on_statarb"],
+        })
+    return rows
+
+
+def print_spread_sensitivity(rows: list[dict]) -> None:
+    print(f"\n7. THE COST THE SLEEVES WERE NOT MATCHED ON")
+    print(f"   volcarry sold the option at the mid. Charging the half-spread, "
+          f"in vol points:")
+    print(f"\n{'half-spread':>11} {'volcarry ret':>13} {'sharpe':>7} "
+          f"{'gap t':>7} {'maxSharpe':>10} {'1/N':>7} "
+          f"{'w(statarb) MV':>14} {'w(statarb) IV':>14}")
+    for r in rows:
+        print(f"{r['spread_vol_pts']:>11.2f} {r['volcarry']['ann_return']:>12.2%} "
+              f"{r['volcarry']['sharpe']:>7.2f} {r['gap_tstat']:>7.2f} "
+              f"{r['max_sharpe']:>10.2f} {r['equal_weight']:>7.2f} "
+              f"{r['w_statarb_max_sharpe']:>13.0%} "
+              f"{r['w_statarb_inverse_vol']:>13.0%}")
+
+    live = [r for r in rows if r["gap_tstat"] >= 2.0]
+    if live:
+        edge = max(r["spread_vol_pts"] for r in live)
+        print(f"\n   The return gap stays significant out to a half-spread of "
+              f"{edge:.2f} vol points,")
+        print(f"   which is about {edge / 0.10:.0f}x SPY's front-month market. "
+              f"At the realistic 0.10 the")
+        print(f"   sleeve gives up {rows[0]['volcarry']['ann_return'] - rows[1]['volcarry']['ann_return']:.2%} "
+              f"of return and {rows[0]['volcarry']['sharpe'] - rows[1]['volcarry']['sharpe']:.2f} of Sharpe.")
+    print(f"\n   The last column is the finding from section 4 again, harder: "
+          f"inverse volatility")
+    print(f"   holds the same weight on statarb at EVERY spread, including the "
+          f"ones where the")
+    print(f"   other sleeve stops making money. It is not reacting slowly - it "
+          f"is not reacting.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true",
@@ -422,6 +528,8 @@ def main() -> None:
     print_window_bias(bias)
     sens = lookback_sensitivity(panel)
     print_lookback(sens)
+    spreads = spread_sensitivity(lookback=lookback)
+    print_spread_sensitivity(spreads)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -433,7 +541,13 @@ def main() -> None:
                    "lookback_months": lookback,
                    "walk_forward": result,
                    "window_bias": bias,
-                   "lookback_sensitivity": sens}, fh, indent=1, default=float)
+                   "lookback_sensitivity": sens,
+                   "spread_sensitivity": spreads}, fh, indent=1, default=float)
+
+    # Also on its own, because section 7 is the one table someone is likely to
+    # want without parsing the whole run.
+    with open("results/spread_sensitivity.json", "w") as fh:
+        json.dump(spreads, fh, indent=1, default=float)
     print(f"\nwrote {OUT}")
 
 

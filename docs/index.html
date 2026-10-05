@@ -120,7 +120,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
     <thead><tr><th>Sleeve</th><th>What it is</th><th class="n">Ann. return</th><th class="n">Ann. vol</th><th class="n">Sharpe</th></tr></thead>
     <tbody>
       <tr><td class="mono">statarb</td><td>930 cointegrated equity pairs, long one leg, short the other</td><td class="mono">&minus;0.67%</td><td class="mono">1.53%</td><td class="mono"><strong>&minus;0.44</strong></td></tr>
-      <tr><td class="mono">volcarry</td><td>Sell a one-month ATM SPY call monthly, delta-hedge daily</td><td class="mono">+4.59%</td><td class="mono">1.66%</td><td class="mono"><strong>2.77</strong></td></tr>
+      <tr><td class="mono">volcarry</td><td>Sell a one-month ATM SPY call monthly, delta-hedge daily</td><td class="mono">+4.46%</td><td class="mono">1.66%</td><td class="mono"><strong>2.68</strong></td></tr>
     </tbody>
   </table>
   <p style="margin-top:14px">46 overlapping months. Correlation between them <strong style="color:var(--ink)">+0.029</strong>, diversification ratio <strong style="color:var(--ink)">1.39</strong> against a ceiling of 1.41. About as clean a two-strategy book as exists.</p>
@@ -130,12 +130,12 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <table>
     <thead><tr><th>Scheme</th><th class="n">Ann. return</th><th class="n">Ann. vol</th><th class="n">Sharpe</th><th class="n">Weight on statarb</th></tr></thead>
     <tbody>
-      <tr><td><strong>max Sharpe</strong></td><td class="mono">3.51%</td><td class="mono">1.33%</td><td class="mono"><strong>2.64</strong></td><td class="mono"><strong>0%</strong></td></tr>
-      <tr><td>risk parity</td><td class="mono">1.49%</td><td class="mono">0.95%</td><td class="mono">1.58</td><td class="mono">43%</td></tr>
-      <tr><td>inverse vol</td><td class="mono">1.49%</td><td class="mono">0.95%</td><td class="mono">1.58</td><td class="mono">43%</td></tr>
-      <tr><td>equal weight</td><td class="mono">1.39%</td><td class="mono">0.89%</td><td class="mono">1.57</td><td class="mono">50%</td></tr>
-      <tr><td>HRP</td><td class="mono">1.60%</td><td class="mono">1.03%</td><td class="mono">1.56</td><td class="mono">37%</td></tr>
-      <tr><td>min variance</td><td class="mono">1.59%</td><td class="mono">1.02%</td><td class="mono">1.55</td><td class="mono">37%</td></tr>
+      <tr><td><strong>max Sharpe</strong></td><td class="mono">3.37%</td><td class="mono">1.33%</td><td class="mono"><strong>2.54</strong></td><td class="mono"><strong>0%</strong></td></tr>
+      <tr><td>risk parity</td><td class="mono">1.41%</td><td class="mono">0.95%</td><td class="mono">1.50</td><td class="mono">43%</td></tr>
+      <tr><td>inverse vol</td><td class="mono">1.41%</td><td class="mono">0.95%</td><td class="mono">1.50</td><td class="mono">43%</td></tr>
+      <tr><td>equal weight</td><td class="mono">1.32%</td><td class="mono">0.89%</td><td class="mono">1.49</td><td class="mono">50%</td></tr>
+      <tr><td>HRP</td><td class="mono">1.51%</td><td class="mono">1.03%</td><td class="mono">1.47</td><td class="mono">37%</td></tr>
+      <tr><td>min variance</td><td class="mono">1.50%</td><td class="mono">1.02%</td><td class="mono">1.47</td><td class="mono">37%</td></tr>
     </tbody>
   </table>
 
@@ -148,9 +148,9 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <div class="scroll"><table>
     <thead><tr><th>Quantity</th><th class="n">Value</th></tr></thead>
     <tbody>
-      <tr><td>Return gap</td><td class="mono">+5.27% a year</td></tr>
+      <tr><td>Return gap</td><td class="mono">+5.13% a year</td></tr>
       <tr><td>Standard error</td><td class="mono">0.0961% a month, on 46 months</td></tr>
-      <tr><td><strong>t-statistic</strong></td><td class="mono"><strong>4.57</strong></td></tr>
+      <tr><td><strong>t-statistic</strong></td><td class="mono"><strong>4.45</strong></td></tr>
     </tbody>
   </table></div>
   <p style="margin-top:14px">On the five-ETF problem below, the same statistic is under 1 — which is why the optimizer loses there and wins here. &ldquo;Optimizers don&rsquo;t work&rdquo; and &ldquo;optimizers work&rdquo; are both wrong. The question is whether your assets differ by more than your sample can resolve, and that is computable <em>before</em> choosing an allocator.</p>
@@ -160,11 +160,32 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <table>
     <thead><tr><th>volcarry over</th><th class="n">Months</th><th class="n">Ann. return</th><th class="n">Ann. vol</th><th class="n">Sharpe</th><th class="n">Worst month</th></tr></thead>
     <tbody>
-      <tr><td>Its full history</td><td class="mono">215</td><td class="mono">4.87%</td><td class="mono">2.22%</td><td class="mono">2.20</td><td class="mono">&minus;2.68%</td></tr>
-      <tr><td>The overlap only</td><td class="mono">46</td><td class="mono">4.59%</td><td class="mono">1.66%</td><td class="mono"><strong>2.77</strong></td><td class="mono">&minus;0.78%</td></tr>
+      <tr><td>Its full history</td><td class="mono">215</td><td class="mono">4.73%</td><td class="mono">2.22%</td><td class="mono">2.13</td><td class="mono">&minus;2.69%</td></tr>
+      <tr><td>The overlap only</td><td class="mono">46</td><td class="mono">4.46%</td><td class="mono">1.66%</td><td class="mono"><strong>2.68</strong></td><td class="mono">&minus;0.79%</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:14px">The window inflates the sleeve's Sharpe by <strong style="color:var(--ink)">+0.57</strong>. The important part is <em>where</em>: the return is almost unchanged (4.59% against 4.87%) and all the difference is in volatility. So the quantity mean-variance actually acted on survives the check. The 2.64 does not.</p>
+  <p style="margin-top:14px">The window inflates the sleeve's Sharpe by <strong style="color:var(--ink)">+0.55</strong>. The important part is <em>where</em>: the return is almost unchanged (4.46% against 4.73%) and all the difference is in volatility. So the quantity mean-variance actually acted on survives the check. The 2.54 does not.</p>
+  <h3 style="margin-top:32px">The cost the two sleeves were not matched on</h3>
+  <p>Until now this study carried a caveat it could not price. The stat-arb sleeve pays bid-ask on every share it trades; the volatility sleeve charged its delta-hedging in basis points and then <strong style="color:var(--ink)">sold the option itself at the mid</strong>. Nobody sells at the mid, so the return gap was measured with one sleeve paying its spreads and the other not. Every figure above is now quoted with the charge applied, so the 0.00 row below is what this page used to say.</p>
+  <p>Charging it is one parameter: half the option's bid-ask on the monthly sale, in <em>vol points</em>, sold at the bid and hedged on the mid &mdash; which is what a desk does, crossing the spread to get the position on and then marking on its own mid. The size is checkable rather than asserted: one-month ATM vega is about <span class="mono">S&middot;&radic;(T/2&pi;)</span>, or <strong style="color:var(--ink)">$0.67 per vol point</strong> at SPY 580, and SPY's front-month market runs a penny or two wide &mdash; so a cent of half-spread is roughly 0.02 vol points. The shipped charge of 0.10 is two to five times a calm day's width, because this sleeve trades every month from 2007 and option markets in October 2008 were not a penny wide.</p>
+  <p>The useful question is not what the spread really was &mdash; nobody has an eighteen-year history of SPY option quotes to settle it &mdash; but <strong style="color:var(--ink)">how large it would have to be to change the answer.</strong></p>
+  <div class="scroll"><table>
+    <thead><tr><th>Half-spread, vol pts</th><th class="n">volcarry return</th><th class="n">Sharpe</th><th class="n">Gap t-stat</th><th class="n">Max Sharpe</th><th class="n">1/N</th><th class="n">w(statarb) MV</th><th class="n">w(statarb) inv-vol</th></tr></thead>
+    <tbody>
+      <tr><td>0.00 <span style="opacity:.6">(mid)</span></td><td class="mono">4.59%</td><td class="mono">2.77</td><td class="mono">4.57</td><td class="mono">2.64</td><td class="mono">1.57</td><td class="mono">0%</td><td class="mono">43%</td></tr>
+      <tr><td><strong>0.10 (shipped)</strong></td><td class="mono"><strong>4.46%</strong></td><td class="mono"><strong>2.68</strong></td><td class="mono"><strong>4.45</strong></td><td class="mono"><strong>2.54</strong></td><td class="mono">1.49</td><td class="mono">0%</td><td class="mono">43%</td></tr>
+      <tr><td>0.25</td><td class="mono">4.25%</td><td class="mono">2.56</td><td class="mono">4.27</td><td class="mono">2.38</td><td class="mono">1.38</td><td class="mono">0%</td><td class="mono">43%</td></tr>
+      <tr><td>0.50</td><td class="mono">3.90%</td><td class="mono">2.35</td><td class="mono">3.97</td><td class="mono">2.12</td><td class="mono">1.18</td><td class="mono">0%</td><td class="mono">43%</td></tr>
+      <tr><td>1.00</td><td class="mono">3.21%</td><td class="mono">1.93</td><td class="mono">3.37</td><td class="mono">1.60</td><td class="mono">0.79</td><td class="mono">0%</td><td class="mono">43%</td></tr>
+      <tr><td>2.00</td><td class="mono">1.83%</td><td class="mono">1.10</td><td class="mono">2.17</td><td class="mono">&minus;0.01</td><td class="mono">0.01</td><td class="mono">23%</td><td class="mono">43%</td></tr>
+      <tr><td>4.00</td><td class="mono">&minus;0.93%</td><td class="mono">&minus;0.56</td><td class="mono">&minus;0.22</td><td class="mono">&minus;0.16</td><td class="mono">&minus;1.55</td><td class="mono">91%</td><td class="mono">43%</td></tr>
+      <tr><td>8.00</td><td class="mono">&minus;6.46%</td><td class="mono">&minus;3.89</td><td class="mono">&minus;5.01</td><td class="mono">&minus;0.48</td><td class="mono">&minus;4.66</td><td class="mono">100%</td><td class="mono">43%</td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:14px"><strong style="color:var(--ink)">At the realistic charge the caveat was worth 0.14% of annual return and 0.08 of Sharpe.</strong> The gap goes from 5.27% to 5.13%, its t-statistic from 4.57 to 4.45, the combined book's out-of-sample Sharpe from 2.64 to 2.54, and the ranking of all six schemes is unchanged. The gap stays significant out to a half-spread of 2.00 vol points &mdash; about <em>twenty times</em> SPY's quoted width &mdash; and mean-variance holds zero weight on the stat-arb sleeve the whole way there. The objection is real, correctly stated, and now bounded.</p>
+  <p>Two things in that table matter more than the headline. <strong style="color:var(--ink)">The correlation and the diversification ratio do not move at all</strong> &mdash; 0.029 and 1.393 on every row. A monthly half-spread is very nearly a constant drag, so it shifts a mean and leaves the covariance alone, which is the mechanical reason a cost correction cannot reorder the risk-based allocators: it only moves the input that mean-variance is the one to read.</p>
+  <p>And <strong style="color:var(--ink)">the last column is the blind spot again, harder.</strong> Inverse volatility holds 43% of the book in the stat-arb sleeve at <em>every</em> spread &mdash; including the rows where the other sleeve has stopped making money, and the row where it loses 6.5% a year. It is not reacting slowly to that; it is not reacting. The earlier version of this finding multiplied expected returns by ten and watched the weights sit still, which is a synthetic test. This is the same blind spot on a change that actually happened to the book.</p>
+
   <p><a href="statarb/">The stat-arb sleeve's own results &rarr;</a> &middot; <a href="volcarry/">the volatility sleeve's &rarr;</a></p>
 </div>
 </section>
