@@ -1,0 +1,42 @@
+{
+  "trading": {
+    "survive BH at 10%": {
+      "n": 17,
+      "mean_sharpe": -0.026122969623507526,
+      "book_sharpe": -0.18771074328883497
+    },
+    "passed the old screen, not BH": {
+      "n": 913,
+      "mean_sharpe": -0.009637984629273897,
+      "book_sharpe": -0.1935544814304941
+    },
+    "rejected by the old screen": {
+      "n": 4020,
+      "mean_sharpe": 0.009456367430982125,
+      "book_sharpe": -0.096994522643622
+    }
+  },
+  "size": {
+    "n_sim": 2000,
+    "n_obs": 1384,
+    "naive_size": 0.1535,
+    "proper_size": 0.057,
+    "naive_size_1pct": 0.0455,
+    "proper_size_1pct": 0.011,
+    "honest_threshold": 0.011243176759529292,
+    "naive_median": 0.25294391889946977,
+    "proper_median": 0.48591474197779827
+  },
+  "naive_pass": 930,
+  "proper_pass": 541,
+  "pass_both": 486,
+  "pi0": 0.7373737373737373,
+  "bh": {
+    "0.05": 8,
+    "0.10": 17,
+    "0.20": 41
+  },
+  "bonferroni": 1,
+  "n_pairs": 4950,
+  "n_obs": 1384
+}
