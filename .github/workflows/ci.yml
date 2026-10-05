@@ -1,0 +1,21 @@
+# Runs the whole suite on every push. It used to run only the options math
+# sanity checks, because that was the only thing in the repository; now there
+# are three subsystems and an allocator sitting on top of two of them, so a
+# green tick has to mean all of it.
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Deliberately not requirements.txt: that pulls streamlit and plotly for
+      # the interactive pages, which no test imports and which double the
+      # install time.
+      - run: pip install numpy scipy pandas statsmodels pyarrow pytest
+      - run: python -m pytest -q

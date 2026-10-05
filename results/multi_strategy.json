@@ -1,0 +1,176 @@
+{
+ "panel_start": "2021-02-28",
+ "panel_end": "2024-11-30",
+ "n_months": 46,
+ "sleeves": {
+  "statarb": {
+   "ann_return": -0.00674767920975752,
+   "ann_vol": 0.015296445579251035,
+   "sharpe": -0.4411272654681591,
+   "worst_month": -0.011708815690423369,
+   "hit_rate": 0.45652173913043476
+  },
+  "volcarry": {
+   "ann_return": 0.04594948229384751,
+   "ann_vol": 0.016610694607849485,
+   "sharpe": 2.7662589300831404,
+   "worst_month": -0.0078293308900537,
+   "hit_rate": 0.8043478260869565
+  }
+ },
+ "gap": {
+  "monthly_gap": 0.004391430125300419,
+  "annualized_gap": 0.05269716150360503,
+  "std_error": 0.0009611063434749586,
+  "tstat": 4.569140714879525,
+  "correlation": 0.029444220537935488,
+  "n_months": 46
+ },
+ "diversification_ratio": 1.3927287090835514,
+ "lookback_months": 24,
+ "walk_forward": {
+  "months_traded": 22,
+  "first": "2023-02-28",
+  "last": "2024-11-30",
+  "schemes": {
+   "equal weight": {
+    "ann_return": 0.013929675802074683,
+    "ann_vol": 0.008866877101133047,
+    "sharpe": 1.5709787835330087,
+    "worst_month": -0.0027393860513614844,
+    "hit_rate": 0.6363636363636364,
+    "mean_weight": {
+     "statarb": 0.5,
+     "volcarry": 0.5
+    },
+    "weight_on_statarb": 0.5
+   },
+   "inverse vol": {
+    "ann_return": 0.014916953536387886,
+    "ann_vol": 0.009451657327125475,
+    "sharpe": 1.5782368128790982,
+    "worst_month": -0.003106230436876177,
+    "hit_rate": 0.6363636363636364,
+    "mean_weight": {
+     "statarb": 0.4336,
+     "volcarry": 0.5664
+    },
+    "weight_on_statarb": 0.4336126698007522
+   },
+   "risk parity": {
+    "ann_return": 0.014916953536387887,
+    "ann_vol": 0.009451657327125475,
+    "sharpe": 1.5782368128790984,
+    "worst_month": -0.003106230436876177,
+    "hit_rate": 0.6363636363636364,
+    "mean_weight": {
+     "statarb": 0.4336,
+     "volcarry": 0.5664
+    },
+    "weight_on_statarb": 0.433612669800752
+   },
+   "HRP": {
+    "ann_return": 0.0159792054962597,
+    "ann_vol": 0.010258534265764866,
+    "sharpe": 1.5576499607342595,
+    "worst_month": -0.004848208940141951,
+    "hit_rate": 0.6363636363636364,
+    "mean_weight": {
+     "statarb": 0.3722,
+     "volcarry": 0.6278
+    },
+    "weight_on_statarb": 0.37218766331716324
+   },
+   "min variance": {
+    "ann_return": 0.01588772660959404,
+    "ann_vol": 0.010235316724745758,
+    "sharpe": 1.5522457230055757,
+    "worst_month": -0.004848208984937752,
+    "hit_rate": 0.6363636363636364,
+    "mean_weight": {
+     "statarb": 0.3729,
+     "volcarry": 0.6271
+    },
+    "weight_on_statarb": 0.37285326555465853
+   },
+   "max Sharpe": {
+    "ann_return": 0.035103062632031584,
+    "ann_vol": 0.013281198121579024,
+    "sharpe": 2.643064451767859,
+    "worst_month": -0.0078293308900537,
+    "hit_rate": 0.9090909090909091,
+    "mean_weight": {
+     "statarb": 0.0014,
+     "volcarry": 0.9986
+    },
+    "weight_on_statarb": 0.0014235341371411094
+   }
+  }
+ },
+ "window_bias": {
+  "full": {
+   "n_months": 215,
+   "ann_return": 0.048658631900450264,
+   "ann_vol": 0.02216645211305663,
+   "sharpe": 2.1951474982227324,
+   "worst_month": -0.0267503080092974,
+   "hit_rate": 0.813953488372093
+  },
+  "overlap": {
+   "n_months": 46,
+   "ann_return": 0.04594948229384751,
+   "ann_vol": 0.016610694607849485,
+   "sharpe": 2.7662589300831404,
+   "worst_month": -0.0078293308900537,
+   "hit_rate": 0.8043478260869565
+  },
+  "worst_excluded": {
+   "2020-03-31": -0.0267503080092974,
+   "2008-09-30": -0.0196222444590304,
+   "2008-11-30": -0.0147016603347908
+  },
+  "sharpe_inflation": 0.571111431860408
+ },
+ "lookback_sensitivity": [
+  {
+   "lookback": 12,
+   "months_traded": 34,
+   "equal weight": 1.2104275938681035,
+   "inverse vol": 1.2322716629541102,
+   "risk parity": 1.2322716629541102,
+   "HRP": 1.215959166781108,
+   "min variance": 1.0855574463825022,
+   "max Sharpe": 2.0621302057674087
+  },
+  {
+   "lookback": 18,
+   "months_traded": 28,
+   "equal weight": 1.4270922347383697,
+   "inverse vol": 1.5494399711658724,
+   "risk parity": 1.5494399711658724,
+   "HRP": 1.6205390077466015,
+   "min variance": 1.6433603161813735,
+   "max Sharpe": 2.3610921624467713
+  },
+  {
+   "lookback": 24,
+   "months_traded": 22,
+   "equal weight": 1.5709787835330087,
+   "inverse vol": 1.5782368128790982,
+   "risk parity": 1.5782368128790984,
+   "HRP": 1.5576499607342595,
+   "min variance": 1.5522457230055757,
+   "max Sharpe": 2.643064451767859
+  },
+  {
+   "lookback": 30,
+   "months_traded": 16,
+   "equal weight": 1.7487591912106362,
+   "inverse vol": 1.727219460162266,
+   "risk parity": 1.727219460162266,
+   "HRP": 1.6772323853496987,
+   "min variance": 1.6861379724059526,
+   "max Sharpe": 1.8766721667418518
+  }
+ ]
+}
