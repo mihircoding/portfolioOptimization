@@ -52,10 +52,10 @@ proxy for "safe."
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
-Sharpe by 0.57 — all of it in the risk, almost none in the return the optimizer
+Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-243 tests.
+265 tests.
 
 ```bash
 pip install -r requirements.txt

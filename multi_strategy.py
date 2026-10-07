@@ -90,7 +90,8 @@ def statarb_monthly(path: str = "sleeves/statarb/results/portfolio.json") -> pd.
 
 def volcarry_monthly(start: str = "2007-01-01", end: str = "2024-12-31",
                      cache: str | None = None,
-                     spread_vol_pts: float | None = None) -> pd.Series:
+                     spread_vol_pts: float | None = None,
+                     vix_anchor: float | None = -1.0) -> pd.Series:
     """Monthly P&L of the delta-hedged short call, as a return.
 
     hedging_study reports P&L per $100 of underlying, which is already a return
@@ -110,18 +111,31 @@ def volcarry_monthly(start: str = "2007-01-01", end: str = "2024-12-31",
         a sleeve that pays its spreads against one that does not overstates
         the gap between them by an amount nobody had measured.
 
+    vix_anchor : the VIX level at which that half-spread is the quoted one.
+        Set, the spread is proportional to the level of volatility, which is
+        how an options market actually widens. None gives the constant spread
+        section 7 sweeps. The sentinel -1.0 means "the sleeve's own shipped
+        anchor", so that a caller who says nothing gets the realistic setting
+        while a caller who means the constant can still ask for it - None is a
+        real value here, not an absence, which is why the default cannot be it.
+
     Cached because it is the only part of this study that needs the network,
     and a cached file means the walk-forward is reproducible after Yahoo
     changes its mind about something. The cache name carries the spread, so
     changing it does not silently read back a series priced differently.
     """
-    from sleeves.volcarry.hedging_study import (OPTION_SPREAD_VOL_PTS, load,
+    from sleeves.volcarry.hedging_study import (OPTION_SPREAD_VIX_ANCHOR,
+                                                OPTION_SPREAD_VOL_PTS, load,
                                                 months, trade)
 
     if spread_vol_pts is None:
         spread_vol_pts = OPTION_SPREAD_VOL_PTS
+    if vix_anchor == -1.0:
+        vix_anchor = OPTION_SPREAD_VIX_ANCHOR
     if cache is None:
         tag = f"{spread_vol_pts:g}".replace(".", "p")
+        if vix_anchor is not None:
+            tag += f"_vix{vix_anchor:g}".replace(".", "p")
         cache = f"results/volcarry_monthly_sp{tag}.csv"
 
     if os.path.exists(cache):
@@ -130,7 +144,8 @@ def volcarry_monthly(start: str = "2007-01-01", end: str = "2024-12-31",
 
     data = load()
     data = data.loc[start:end]
-    rows = [trade(window, option_spread_vol_pts=spread_vol_pts)
+    rows = [trade(window, option_spread_vol_pts=spread_vol_pts,
+                  option_spread_vix_anchor=vix_anchor)
             for window in months(data)]
     frame = pd.DataFrame(rows).set_index("date")
     series = (frame["pnl"] / 100.0).rename("ret")
@@ -342,6 +357,201 @@ def lookback_sensitivity(panel: pd.DataFrame,
     return rows
 
 
+def volcarry_detail(start: str = "2007-01-01", end: str = "2024-12-31",
+                    spread_vol_pts: float | None = None,
+                    vix_anchor: float | None = -1.0,
+                    cache: str | None = None) -> pd.DataFrame:
+    """Every month's trade, not just its return.
+
+    volcarry_monthly() throws away everything but the P&L, which is all the
+    allocator needs. Section 8 needs the premium sold and the spread paid side
+    by side, because the question there is what the cost is as a FRACTION of
+    the exposure and that ratio is not recoverable from the return alone.
+    """
+    from sleeves.volcarry.hedging_study import (OPTION_SPREAD_VIX_ANCHOR,
+                                                OPTION_SPREAD_VOL_PTS, load,
+                                                months, trade)
+
+    if spread_vol_pts is None:
+        spread_vol_pts = OPTION_SPREAD_VOL_PTS
+    if vix_anchor == -1.0:
+        vix_anchor = OPTION_SPREAD_VIX_ANCHOR
+    if cache is None:
+        tag = f"{spread_vol_pts:g}".replace(".", "p")
+        if vix_anchor is not None:
+            tag += f"_vix{vix_anchor:g}".replace(".", "p")
+        cache = f"results/volcarry_detail_sp{tag}.csv"
+
+    if os.path.exists(cache):
+        return pd.read_csv(cache, index_col=0, parse_dates=True)
+
+    data = load().loc[start:end]
+    frame = pd.DataFrame([
+        trade(window, option_spread_vol_pts=spread_vol_pts,
+              option_spread_vix_anchor=vix_anchor)
+        for window in months(data)]).set_index("date")
+    keep = ["implied", "half_spread", "spread_cost", "premium", "pnl"]
+    frame = frame[keep]
+    os.makedirs(os.path.dirname(cache), exist_ok=True)
+    frame.to_csv(cache)
+    return frame
+
+
+# ---------- 8. the spread is not the same width every month ----------
+
+def spread_comovement(lookback: int = LOOKBACK_MONTHS,
+                      anchor: float | None = None,
+                      terciles: int = 3) -> dict:
+    """What it costs this sleeve that an options market widens when vol rises.
+
+    Section 7 bounded the LEVEL of the option spread. It left the shape of the
+    objection standing, in its own words: "the spread is a constant, and a real
+    one widens in exactly the months this sleeve is most exposed." That is the
+    uncomfortable version, because it says the cost and the risk arrive
+    together, and a sweep over constants cannot see it.
+
+    The fix is one line in the sleeve - charge `spread * VIX / anchor` instead
+    of `spread` - and then the same decomposition the market-simulation repo
+    uses on its order book, for the same reason: a cost that moves with the
+    market has a LEVEL and a CO-MOVEMENT, and conflating them is how a small
+    effect gets written up as a large one. So three series:
+
+      - constant: the shipped 0.10 on every month.
+      - proportional: 0.10 at the anchor, 0.39 in March 2020, 0.07 in 2017.
+      - level-matched: a CONSTANT spread set to the proportional series' own
+        realized average. Same average cost, none of the timing. Whatever this
+        one fails to explain is what the co-movement is actually worth.
+
+    The tercile table is the part worth reading. It reports the spread as a
+    share of the premium sold, which is the only form in which the two models
+    can be compared honestly - the sleeve's exposure is not constant either.
+    """
+    from sleeves.volcarry.hedging_study import (OPTION_SPREAD_VIX_ANCHOR,
+                                                OPTION_SPREAD_VOL_PTS)
+
+    anchor = OPTION_SPREAD_VIX_ANCHOR if anchor is None else anchor
+    spread = OPTION_SPREAD_VOL_PTS
+
+    proportional = volcarry_detail(vix_anchor=anchor)
+    matched = float(proportional["half_spread"].mean())
+
+    variants = {
+        "mid": {"spread_vol_pts": 0.0, "vix_anchor": None},
+        "constant": {"spread_vol_pts": spread, "vix_anchor": None},
+        "proportional": {"spread_vol_pts": spread, "vix_anchor": anchor},
+        "level_matched": {"spread_vol_pts": matched, "vix_anchor": None},
+    }
+
+    out = {"anchor": anchor, "spread_vol_pts": spread,
+           "matched_constant": matched, "rows": {}}
+    for name, kwargs in variants.items():
+        panel = sleeve_panel(**kwargs)
+        schemes = walk_forward(panel, lookback=lookback)["schemes"]
+        gap = return_gap_tstat(panel)
+        out["rows"][name] = {
+            # Realized average width, not the parameter: for the proportional
+            # row those are different numbers and the average is the one that
+            # makes the four rows comparable.
+            "half_spread": (matched if name in ("proportional", "level_matched")
+                            else kwargs["spread_vol_pts"]),
+            "volcarry": performance(panel["volcarry"]),
+            "annualized_gap": gap["annualized_gap"],
+            "gap_tstat": gap["tstat"],
+            "correlation": gap["correlation"],
+            "max_sharpe": schemes["max Sharpe"]["sharpe"],
+            "w_statarb_max_sharpe": schemes["max Sharpe"]["weight_on_statarb"],
+            "w_statarb_inverse_vol": schemes["inverse vol"]["weight_on_statarb"],
+        }
+
+    # The cost as a share of what was sold, by how volatile the month was.
+    constant = volcarry_detail(vix_anchor=None)
+    buckets = pd.qcut(proportional["implied"], terciles,
+                      labels=[f"t{i + 1}" for i in range(terciles)])
+    out["by_vol"] = []
+    for label, index in proportional.groupby(buckets, observed=True).groups.items():
+        prop, const = proportional.loc[index], constant.loc[index]
+        out["by_vol"].append({
+            "bucket": str(label),
+            "months": len(index),
+            "mean_vix": float(prop["implied"].mean() * 100),
+            "mean_premium": float(prop["premium"].mean()),
+            "proportional_half_spread": float(prop["half_spread"].mean()),
+            "proportional_share_of_premium":
+                float((prop["spread_cost"] / prop["premium"]).mean()),
+            "constant_share_of_premium":
+                float((const["spread_cost"] / const["premium"]).mean()),
+        })
+    return out
+
+
+def print_spread_comovement(study: dict) -> None:
+    rows = study["rows"]
+    print(f"\n8. AND THE SPREAD IS NOT THE SAME WIDTH EVERY MONTH")
+    print(f"   Section 7 bounded how WIDE the spread is. This is about when it "
+          f"is wide: the")
+    print(f"   half-spread becomes {study['spread_vol_pts']:.2f} vol points at "
+          f"VIX {study['anchor']:.1f} and scales with VIX from there.")
+    print(f"\n{'spread charged':>23} {'avg half-spread':>16} "
+          f"{'volcarry ret':>13} {'sharpe':>7} {'gap t':>7} "
+          f"{'w(statarb) MV':>14}")
+    labels = {"mid": "mid (none)", "constant": "constant",
+              "proportional": "proportional to VIX",
+              "level_matched": "constant, level-matched"}
+    for key in ("mid", "constant", "proportional", "level_matched"):
+        r = rows[key]
+        print(f"{labels[key]:>23} {r['half_spread']:>16.4f} "
+              f"{r['volcarry']['ann_return']:>12.2%} "
+              f"{r['volcarry']['sharpe']:>7.2f} {r['gap_tstat']:>7.2f} "
+              f"{r['w_statarb_max_sharpe']:>13.0%}")
+
+    print(f"\n   Cost as a share of the premium sold, by how volatile the "
+          f"month was:")
+    print(f"\n{'months':>8} {'avg VIX':>9} {'premium':>9} "
+          f"{'half-spread':>12} {'proportional':>13} {'constant':>10}")
+    for b in study["by_vol"]:
+        print(f"{b['months']:>8} {b['mean_vix']:>9.1f} "
+              f"{b['mean_premium']:>9.2f} "
+              f"{b['proportional_half_spread']:>12.3f} "
+              f"{b['proportional_share_of_premium']:>12.2%} "
+              f"{b['constant_share_of_premium']:>9.2%}")
+
+    shares = [b["proportional_share_of_premium"] for b in study["by_vol"]]
+    print(f"\n   That second-to-last column is flat to four decimal places, "
+          f"and it is the")
+    print(f"   whole answer. The premium scales with volatility and so does "
+          f"the spread, so")
+    print(f"   the cost is {np.mean(shares):.2%} of what was sold in every "
+          f"regime. The constant spread")
+    print(f"   is the one that is regime-dependent: "
+          f"{study['by_vol'][0]['constant_share_of_premium']:.2%} of premium in "
+          f"the calm third and")
+    print(f"   {study['by_vol'][-1]['constant_share_of_premium']:.2%} in the "
+          f"loud third, so it overcharges quiet months and")
+    print(f"   undercharges exactly the ones the sleeve has most on.")
+
+    prop, matched = rows["proportional"], rows["level_matched"]
+    const = rows["constant"]
+    print(f"\n   So the honest answer to the objection is that it is real and "
+          f"it is small.")
+    print(f"   Return goes {const['volcarry']['ann_return']:.2%} to "
+          f"{prop['volcarry']['ann_return']:.2%} and the gap t-stat "
+          f"{const['gap_tstat']:.2f} to {prop['gap_tstat']:.2f}.")
+    print(f"   A constant spread at the same average width gives "
+          f"{matched['volcarry']['ann_return']:.2%} and "
+          f"{matched['gap_tstat']:.2f},")
+    print(f"   so essentially all of the difference is the average width and "
+          f"not the timing.")
+    print(f"\n   Worth contrasting with the order-book repo, where the same "
+          f"question came out")
+    print(f"   the other way: there the strategy's size was fixed and the "
+          f"depth moved, so 81%")
+    print(f"   of the extra cost was the co-movement. Here the exposure moves "
+          f"with the same")
+    print(f"   variable the cost does, and they cancel. Cost co-movement bites "
+          f"when your")
+    print(f"   position size does not co-move with it.")
+
+
 # ---------- reporting ----------
 
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
@@ -459,7 +669,10 @@ def spread_sensitivity(spreads=SPREAD_VOL_SWEEP,
     """
     rows = []
     for spread in spreads:
-        panel = sleeve_panel(spread_vol_pts=spread)
+        # vix_anchor=None deliberately: this sweep asks how WIDE the spread
+        # would have to be, and a proportional spread would move the level and
+        # its co-movement together. Section 8 separates them.
+        panel = sleeve_panel(spread_vol_pts=spread, vix_anchor=None)
         schemes = walk_forward(panel, lookback=lookback)["schemes"]
         gap = return_gap_tstat(panel)
         rows.append({
@@ -530,6 +743,8 @@ def main() -> None:
     print_lookback(sens)
     spreads = spread_sensitivity(lookback=lookback)
     print_spread_sensitivity(spreads)
+    comovement = spread_comovement(lookback=lookback)
+    print_spread_comovement(comovement)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -542,7 +757,9 @@ def main() -> None:
                    "walk_forward": result,
                    "window_bias": bias,
                    "lookback_sensitivity": sens,
-                   "spread_sensitivity": spreads}, fh, indent=1, default=float)
+                   "spread_sensitivity": spreads,
+                   "spread_comovement": comovement}, fh, indent=1,
+                  default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to
     # want without parsing the whole run.

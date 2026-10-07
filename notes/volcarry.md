@@ -631,9 +631,27 @@ So the premium survives its own transaction costs by a wide margin, which is
 worth knowing in the direction it points: the edge here is not a spread artifact.
 The sweep in `multi_strategy.py` section 7 runs it out to 8.00 vol points and
 finds the P&L only turns negative somewhere past 3 — thirty times SPY's quoted
-width. What a constant cannot capture is that a real spread widens in exactly
-the months this strategy is most exposed, so the right reading of a flat charge
-is a floor rather than an estimate.
+width.
+
+A constant could not capture that a real spread widens in exactly the months
+this strategy is most exposed, and `option_spread_vix_anchor` now does: the
+half-spread is `0.10 × VIX / 17.5`, so 0.07 vol points in 2017 and 0.39 in
+March 2020. The reason it is proportional rather than a step function is that a
+maker's bid-ask covers the risk of being wrong about fair value, and fair value
+for an option IS a volatility.
+
+What that turns out to be worth is the useful part, and it is less than the
+caveat implied. The spread as a **share of the premium sold** comes out at 0.57%
+in the calm third of months, the middle third and the loud third alike — flat to
+four decimal places, because the premium is vega times sigma and the spread is
+vega times a width proportional to sigma, so the ratio is sigma-free. The
+constant charge is the regime-dependent one: 0.79% of premium in calm months and
+0.37% in loud ones, which overcharges the quiet months and undercharges exactly
+the ones with the most premium at risk. `multi_strategy.py` section 8 has the
+table, and the control that matters — a constant spread set to the proportional
+series' own average width gives the same answer to within 0.01 of a
+t-statistic, so the timing is worth almost nothing here and the average width
+is worth all of it.
 
 **The point of the exercise is the decomposition, not the Sharpe.** In
 continuous time the P&L of a delta-hedged option is exactly

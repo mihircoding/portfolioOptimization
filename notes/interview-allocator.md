@@ -207,6 +207,29 @@ interval on it — which most reported Sharpe ratios badly need.
 
 ---
 
+**"Your short-vol sleeve pays a flat spread. Real option spreads blow out in a crisis."**
+They do, and that is the version of the objection worth answering because it says the cost and
+the risk arrive together. I charge `0.10 × VIX / 17.5` now, so the half-spread is 0.07 vol points
+in 2017 and 0.39 in March 2020 — proportional, because a maker's bid-ask covers the risk of
+being wrong about fair value and fair value for an option *is* a volatility. The result is that
+it barely matters, and the reason is the part I would want to be asked about: the premium sold
+scales with volatility too, so the spread comes out at 0.57% of the premium in the calm third of
+months, the middle third and the loud third alike. Flat to four decimal places, and it is an
+identity rather than a coincidence — premium is vega times sigma, the spread is vega times a
+width proportional to sigma. The constant charge is the regime-dependent one: 0.79% of premium
+when it is quiet and 0.37% when it is not. I checked the timing separately by running a constant
+spread at the same average width; it gives the same answer to 0.01 of a t-statistic, so the
+average width is worth everything and the co-movement nearly nothing.
+
+**"Then co-movement in costs never matters?"**
+It matters when your position size does not move with it. I have the same experiment in the
+market-simulation repo, on an order book whose depth thins when volatility rises, and there 81%
+of the extra cost is the co-movement rather than the level — because a moving-average crossover
+trades a fixed number of shares and fires when a trend breaks, which is a volatility event. Fixed
+size against variable liquidity is the dangerous combination. A short-vol book scales its own
+exposure with the same variable, so it is nearly immune to the thing that hurts the trend
+follower. That contrast is the most useful thing either project taught me.
+
 ## Things to admit before they ask
 
 - Historical means as the return forecast is the weakest possible choice. The walk-forward test
@@ -218,6 +241,12 @@ interval on it — which most reported Sharpe ratios badly need.
 - 2010–2024 was a strong equity decade, and equal weight carries the most equity risk here, so
   the sample favored it. The general finding (estimation error degrades optimization out of
   sample) is robust and well documented; "equal weight beats everything" is partly this sample.
+- The option spread's elasticity to volatility is 1, which is what the risk argument predicts
+  rather than something I fitted — I have no option-quote history to fit it on. VIX does double
+  duty there as both the sale price and the spread's scale, and real quoted widths gap on event
+  days in a way a smooth ratio cannot produce.
+- The SHARE hedge's bid-ask is still a constant, and equity spreads widen for the same reason
+  option spreads do. That one is not fixed.
 - Five liquid ETFs is an easy estimation problem. The pathology gets much worse with 50+ assets,
   which is where the techniques I *didn't* implement start mattering.
 - Costs are a flat rate per dollar traded. They're charged now (RESULTS.md section 10), and on

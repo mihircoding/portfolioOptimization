@@ -69,6 +69,30 @@ COSTS_BPS = (0.0, 1.0, 5.0)
 OPTION_SPREAD_VOL_PTS = 0.10
 SPREAD_VOL_PTS = (0.0, 0.05, 0.10, 0.25, 1.00)
 
+# The VIX level at which the quoted half-spread equals OPTION_SPREAD_VOL_PTS.
+#
+# A constant half-spread is the part of the cost model I flagged and did not
+# fix: an options market is not the same width in October 2008 as it is in a
+# quiet June, and this sleeve trades every month through both. The reason a
+# constant is wrong has a mechanism rather than just being obviously wrong.
+# A maker quotes a bid-ask wide enough to cover the risk of being wrong about
+# fair value, and fair value for an option IS a volatility. So the width scales
+# with the level of volatility, which is the same statement as "spreads widen
+# in a crisis", said in units that let you check it.
+#
+# So the half-spread charged is OPTION_SPREAD_VOL_PTS * (VIX / this anchor),
+# which makes it 0.10 vol points at VIX 17.5 and 0.39 in March 2020. 17.5 is
+# VIX's long-run median to the nearest half point, chosen because it is round
+# and because it makes the proportional model agree with the constant one on a
+# typical month rather than shifting everything at once. It is a normalisation
+# and not a fitted parameter: the ratio is what does the work, and
+# multi_strategy.py section 8 is about whether the ratio matters at all.
+#
+# Pass None for the constant spread this shipped with first. Section 7's sweep
+# does exactly that, because "how wide would it have to be" is a question about
+# the level and sweeping a proportional spread would answer two at once.
+OPTION_SPREAD_VIX_ANCHOR = 17.5
+
 
 def load() -> pd.DataFrame:
     data = yf.download([TICKER, "^VIX"], start=START, end=END, progress=False,
@@ -92,8 +116,23 @@ def months(data: pd.DataFrame) -> list[pd.DataFrame]:
     return windows
 
 
+def half_spread_vol_pts(vix: float, spread_vol_pts: float,
+                        vix_anchor: float | None) -> float:
+    """The half-spread to charge this month, in vol points.
+
+    With `vix_anchor` set, the spread is proportional to the level of
+    volatility and equals `spread_vol_pts` exactly at the anchor. With it None,
+    the spread is that constant on every month, which is what this study
+    charged first and what section 7 of multi_strategy.py sweeps.
+    """
+    if vix_anchor is None:
+        return spread_vol_pts
+    return spread_vol_pts * vix / vix_anchor
+
+
 def trade(window: pd.DataFrame, option_type="call", rebalance_every=1,
-          cost_bps=0.0, option_spread_vol_pts=0.0) -> dict:
+          cost_bps=0.0, option_spread_vol_pts=0.0,
+          option_spread_vix_anchor: float | None = None) -> dict:
     """One month: sell an at-the-money option at VIX, hedge to expiry.
 
     option_spread_vol_pts : half the option's bid-ask in VOL POINTS - 0.10 is
@@ -101,11 +140,20 @@ def trade(window: pd.DataFrame, option_type="call", rebalance_every=1,
         is SOLD at the bid and HEDGED at the mid, which is where a desk marks
         and therefore where it takes its delta from. Zero reproduces the
         mid-market result exactly.
+    option_spread_vix_anchor : when set, the half-spread above is scaled by
+        VIX / anchor, so an options market gets wider when volatility rises
+        instead of being the same width in March 2020 as in a quiet June.
+        OPTION_SPREAD_VIX_ANCHOR is the shipped value; None is the constant.
+        The default here is None so the one-month arithmetic in the tests stays
+        hand-checkable; the callers that quote results pass the anchor.
     """
     path = window["spy"].to_numpy(dtype=float)
     sigma = float(window["vix"].iloc[0]) / 100.0
     strike = path[0]
-    sold_at = max(sigma - option_spread_vol_pts / 100.0, 1e-6)
+    charged = half_spread_vol_pts(float(window["vix"].iloc[0]),
+                                  option_spread_vol_pts,
+                                  option_spread_vix_anchor)
+    sold_at = max(sigma - charged / 100.0, 1e-6)
     result = delta_hedge(path, strike, T_YEARS, RATE, sold_at,
                          option_type=option_type, sigma_hedge=sigma,
                          rebalance_every=rebalance_every,
@@ -120,6 +168,7 @@ def trade(window: pd.DataFrame, option_type="call", rebalance_every=1,
         "date": window.index[0],
         "implied": sigma,
         "sold_at": sold_at,
+        "half_spread": charged,
         "spread_cost": (price(option_type, path[0], strike, T_YEARS, RATE, sigma)
                         - price(option_type, path[0], strike, T_YEARS, RATE,
                                 sold_at)) * scale,

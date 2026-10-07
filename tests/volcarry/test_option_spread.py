@@ -113,3 +113,98 @@ def test_a_wider_spread_never_helps(seed):
             for p in (0.0, 0.10, 0.25, 1.00)]
 
     assert pnls == sorted(pnls, reverse=True)
+
+
+# ---------- the spread is not the same width every month ----------
+#
+# A constant half-spread was the caveat left standing on the one above: an
+# options market is not a tenth of a vol point wide in March 2020. The width
+# scales with the level of volatility, because a maker's bid-ask covers the
+# risk of being wrong about fair value and fair value for an option IS a
+# volatility.
+#
+# The claim worth testing is the one that makes the result small rather than
+# the one that makes it exist. Premium scales with volatility and so does the
+# spread, so the cost as a SHARE of what was sold should come out the same in a
+# calm month and a violent one - which is why charging it barely moves the
+# sleeve. That is the last test here, and it is the mechanism rather than a
+# recorded figure.
+
+ANCHOR = 17.5
+
+
+def vix_window(vix: float, seed: int = 0) -> pd.DataFrame:
+    """Same path, different quoted volatility.
+
+    The path is deliberately held fixed while VIX changes, so these tests see
+    the spread's response on its own. A real high-VIX month also has a louder
+    path; separating the two is the whole point of the fixture.
+    """
+    w = window(seed=seed)
+    return w.assign(vix=vix)
+
+
+def test_no_anchor_charges_the_constant_spread():
+    """The shipped default of the function has to stay a no-op."""
+    w = vix_window(40.0)
+    assert (trade(w, option_spread_vol_pts=0.10)["half_spread"]
+            == trade(w, option_spread_vol_pts=0.10,
+                     option_spread_vix_anchor=None)["half_spread"] == 0.10)
+
+
+def test_at_the_anchor_the_two_models_agree_exactly():
+    """What makes the anchor a normalisation rather than a repricing: on a month
+    at VIX 17.5 the proportional spread IS the quoted 0.10, so switching the
+    model on does not shift a typical month at all."""
+    w = vix_window(ANCHOR)
+    assert (trade(w, option_spread_vol_pts=0.10,
+                  option_spread_vix_anchor=ANCHOR)["spread_cost"]
+            == pytest.approx(trade(w, option_spread_vol_pts=0.10)["spread_cost"]))
+
+
+@pytest.mark.parametrize("vix,expected", [(8.75, 0.05), (17.5, 0.10),
+                                          (35.0, 0.20), (70.0, 0.40)])
+def test_the_charged_spread_is_linear_in_the_vol_level(vix, expected):
+    charged = trade(vix_window(vix), option_spread_vol_pts=0.10,
+                    option_spread_vix_anchor=ANCHOR)
+    assert charged["half_spread"] == pytest.approx(expected)
+
+
+def test_a_violent_month_is_charged_more_than_a_calm_one():
+    calm = trade(vix_window(10.0), option_spread_vol_pts=0.10,
+                 option_spread_vix_anchor=ANCHOR)
+    loud = trade(vix_window(60.0), option_spread_vol_pts=0.10,
+                 option_spread_vix_anchor=ANCHOR)
+    assert loud["spread_cost"] > calm["spread_cost"] * 5
+
+
+def test_the_cost_is_the_same_share_of_premium_in_every_regime():
+    """The reason the correction turns out to be small, as a property rather
+    than as a number off a run.
+
+    An at-the-money option's premium is roughly 0.4 * S * sigma * sqrt(T) and
+    its vega is roughly 0.4 * S * sqrt(T) - the same quantity without the
+    sigma. So the spread costs vega times the width, the premium is vega times
+    sigma, and a width proportional to sigma makes the ratio sigma-free. A
+    constant width does not, which the next test shows.
+    """
+    shares = []
+    for vix in (10.0, 17.5, 30.0, 55.0):
+        t = trade(vix_window(vix), option_spread_vol_pts=0.10,
+                  option_spread_vix_anchor=ANCHOR)
+        shares.append(t["spread_cost"] / t["premium"])
+
+    assert max(shares) - min(shares) < 0.0005
+    assert np.mean(shares) == pytest.approx(0.10 / ANCHOR, rel=0.05)
+
+
+def test_a_constant_spread_is_the_one_that_depends_on_the_regime():
+    """The flip side, and the actual objection to a constant: it is a large
+    share of a cheap option and a small share of an expensive one, so it
+    overcharges the quiet months and undercharges the months this sleeve has
+    the most premium at risk in."""
+    calm = trade(vix_window(10.0), option_spread_vol_pts=0.10)
+    loud = trade(vix_window(55.0), option_spread_vol_pts=0.10)
+
+    assert (calm["spread_cost"] / calm["premium"]
+            > 3 * loud["spread_cost"] / loud["premium"])
