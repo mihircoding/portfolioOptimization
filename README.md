@@ -17,15 +17,16 @@ interactive pricer runs in the browser.
 
 ![tests](https://github.com/mihircoding/portfolioOptimization/actions/workflows/ci.yml/badge.svg)
 
-Two strategies that produce a return stream, and the machinery that decides how
-much of each to hold.
+Three strategies that produce a return stream, and the machinery that decides
+how much of each to hold.
 
 ```
 sleeves/statarb/     930 cointegrated equity pairs, long one leg and short the other
 sleeves/volcarry/    sell a one-month ATM SPY call every month, delta-hedge it daily
+sleeves/xsmom/       12-1 momentum on the same 102 names, top fifth against bottom fifth
 src/                 the allocator: mean-variance, shrinkage, risk parity, CVaR,
                      a factor risk model, Black-Litterman, hierarchical risk parity
-multi_strategy.py    the allocator, pointed at the two sleeves
+multi_strategy.py    the allocator, pointed at the sleeves
 ```
 
 They were three separate projects and the third one had a hole in it. Every
@@ -49,19 +50,29 @@ expected return, by design, and the sleeve that earns nothing is also the
 with no edge has no edge to be volatile about, which makes "calm" a terrible
 proxy for "safe."
 
+The third sleeve was added because two is not a portfolio, and the first thing
+it showed was about the other two. Cross-sectional momentum on the pairs
+universe has a correlation of **−0.46** with the pairs sleeve — long the
+leaders and short the laggards is the pairs trade with the sign flipped, and
+nearly half of the stat-arb book's variance is a short-momentum position it
+never knew it had. The second thing: equal weighting, which had won every table
+in this repository, loses by 0.8 of Sharpe the moment one sleeve is ten times
+the scale of the others. 1/N only ever meant equal *risk*; the earlier tables
+just never contained anything that could tell the difference.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-265 tests.
+284 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 243 passed
+python -m pytest -q                 # 284 passed
 
-# all three together
+# all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result
 
 # the allocator
@@ -82,6 +93,9 @@ python sleeves/volcarry/hedging_study.py  # sell and hedge an ATM call monthly s
 python sleeves/volcarry/ssvi_study.py     # one arbitrage-free surface, not six smiles
 python sleeves/volcarry/arbitrage_study.py # butterfly and calendar checks on real quotes
 
+# the momentum sleeve
+python -m sleeves.xsmom.momentum          # 12-1 momentum on the S&P 100, plain and sector-neutral
+
 # the interactive pricer
 python -m streamlit run streamlit_app.py
 ```
@@ -92,7 +106,7 @@ python -m streamlit run streamlit_app.py
 
 | | |
 |---|---|
-| [RESULTS.md](RESULTS.md) | allocating across the sleeves, and the blind spot in risk parity |
+| [RESULTS.md](RESULTS.md) | allocating across the sleeves, the blind spot in risk parity, and the one in 1/N |
 | [notes/allocator.md](notes/allocator.md) | mean-variance, shrinkage, risk parity, CVaR, factor model, HRP — all out of sample |
 | [notes/statarb.md](notes/statarb.md) | the cointegration screen, its control group, its size distortion, its survivorship bias |
 | [notes/volcarry.md](notes/volcarry.md) | Black-Scholes from scratch, the SSVI surface, and what the hedge actually earns |

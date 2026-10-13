@@ -552,6 +552,229 @@ def print_spread_comovement(study: dict) -> None:
     print(f"   position size does not co-move with it.")
 
 
+# ---------- 9. a third sleeve, so that "allocation" is more than one number ----------
+
+def xsmom_monthly(path: str = "results/xsmom_monthly.json") -> pd.Series:
+    """Monthly net returns of the momentum sleeve, from its committed output.
+
+    Same arrangement as statarb_monthly: read the sleeve's own results file
+    rather than recompute, so this study and sleeves/xsmom/momentum.py cannot
+    disagree about what the sleeve did. `python -m sleeves.xsmom.momentum`
+    rewrites the file.
+    """
+    from sleeves.xsmom.momentum import read_results
+
+    series = read_results(path)["net"].rename("xsmom")
+    series.index = series.index.to_period("M").to_timestamp("M")
+    return series
+
+
+def three_sleeve_panel(**kwargs) -> pd.DataFrame:
+    """The two-sleeve panel with the momentum sleeve joined on the month."""
+    panel = sleeve_panel(**kwargs)
+    return pd.concat([panel, xsmom_monthly()], axis=1).dropna()
+
+
+def weighted_diversification_ratio(panel: pd.DataFrame,
+                                   w: np.ndarray) -> float:
+    """diversification_ratio at an arbitrary weight vector, not only 1/N."""
+    w = np.asarray(w, dtype=float)
+    vols = panel.std(ddof=1).to_numpy(dtype=float)
+    cov = np.cov(panel.to_numpy(dtype=float), rowvar=False, ddof=1)
+    return float((w @ vols) / np.sqrt(w @ cov @ w))
+
+
+def momentum_crashes(xsmom: pd.Series, n: int = 3) -> list[dict]:
+    """The sleeve's worst months, with what the market did before and during.
+
+    Momentum does not lose money in a crash. It loses money in the month the
+    crash reverses, because by then the short leg is full of the names that
+    fell hardest, which are the names that bounce hardest. Daniel and
+    Moskowitz (2016) call it a momentum crash and it is the one risk the
+    strategy is famous for. This table is the check that the sleeve built
+    here has the same scar in the same place: each of its worst months should
+    be a rally month that followed a drawdown.
+    """
+    from sleeves.xsmom.momentum import load_universe, monthly_prices
+
+    market = monthly_prices(load_universe()).pct_change(fill_method=None).mean(axis=1)
+    market.index = market.index.to_period("M").to_timestamp("M")
+    rows = []
+    for date, ret in xsmom.nsmallest(n).items():
+        i = market.index.get_loc(date)
+        before = float((1 + market.iloc[max(0, i - 3):i]).prod() - 1)
+        rows.append({"month": f"{date:%Y-%m}", "xsmom": float(ret),
+                     "market_that_month": float(market.iloc[i]),
+                     "market_prior_3m": before})
+    return rows
+
+
+def third_sleeve_study(lookback: int = LOOKBACK_MONTHS) -> dict:
+    """What a third return stream does to every conclusion above.
+
+    Two sleeves is not a portfolio. With two, every allocator is choosing one
+    number - the weight on the first sleeve - and the covariance matrix has
+    one off-diagonal entry, so the difference between a risk-parity book and
+    an inverse-volatility book, or between HRP and anything, is nearly
+    definitional. The criticism of including HRP at all was fair: a
+    clustering algorithm with two things to cluster is not clustering.
+
+    sleeves/xsmom/ is the cheapest third stream this repository could build.
+    It is cross-sectional momentum on the same 102 names the pairs scan
+    screens, which is deliberate: the stat-arb sleeve is long the lagging
+    leg of a pair and short the leading leg, and the momentum sleeve is long
+    the leaders and short the laggards. They are opposite bets on relative
+    performance inside one universe, and the correlation below says how far
+    that goes.
+
+    Three things are measured. The sleeve on its own, over its full history.
+    Then the overlap panel - the same 46 months as section 1, because the
+    stat-arb sleeve's start date still decides the window. Then the walk-
+    forward from section 2 again with three columns, which is the first time
+    in this repository that it has a covariance structure to react to.
+    """
+    full = xsmom_monthly()
+    panel = three_sleeve_panel()
+    two = panel[list(SLEEVES)]
+    result = walk_forward(panel, lookback=lookback)
+    reference = walk_forward(two, lookback=lookback)
+
+    inv_vol = inverse_vol_weights(np.cov(panel.to_numpy(dtype=float),
+                                         rowvar=False, ddof=1))
+    equal = np.ones(panel.shape[1]) / panel.shape[1]
+    return {
+        "full_history": {"first": f"{full.index[0]:%Y-%m}",
+                         "last": f"{full.index[-1]:%Y-%m}",
+                         "months": int(len(full)),
+                         **performance(full)},
+        "by_year": {int(y): float(v) for y, v
+                    in full.groupby(full.index.year).sum().items()},
+        "crashes": momentum_crashes(full),
+        "overlap": {"first": str(panel.index[0].date()),
+                    "last": str(panel.index[-1].date()),
+                    "n_months": int(len(panel)),
+                    "sleeves": {c: performance(panel[c]) for c in panel.columns},
+                    "correlation": {a: {b: float(panel[a].corr(panel[b]))
+                                        for b in panel.columns}
+                                    for a in panel.columns}},
+        "diversification_ratio": {
+            "two_sleeves_equal": diversification_ratio(two),
+            "three_sleeves_equal": diversification_ratio(panel),
+            "three_sleeves_inverse_vol":
+                weighted_diversification_ratio(panel, inv_vol),
+            "ceiling_three": float(np.sqrt(3)),
+        },
+        "walk_forward": result,
+        "two_sleeve_reference": {
+            name: {"sharpe": r["sharpe"], "ann_vol": r["ann_vol"]}
+            for name, r in reference["schemes"].items()},
+    }
+
+
+def print_third_sleeve(study: dict) -> None:
+    full = study["full_history"]
+    print(f"\n9. A THIRD SLEEVE: CROSS-SECTIONAL MOMENTUM ON THE SAME 102 NAMES")
+    print(f"   Full history {full['first']} to {full['last']}, "
+          f"{full['months']} months, net of 10 bps a side:")
+    print(f"   {full['ann_return']:+.2%} a year at {full['ann_vol']:.2%} "
+          f"vol, Sharpe {full['sharpe']:.2f}, worst month "
+          f"{full['worst_month']:.2%}")
+
+    years = study["by_year"]
+    print(f"\n   By calendar year:")
+    line = "   " + "  ".join(f"{y}" for y in years)
+    print(line)
+    print("   " + "  ".join(f"{v:+.0%}".rjust(4) for v in years.values()))
+    signs = [np.sign(v) for v in years.values()]
+    flips = sum(1 for a, b in zip(signs, signs[1:]) if a != b)
+    print(f"   The sign flips {flips} times in {len(signs) - 1} year-to-year "
+          f"steps. A twelve-month signal on a\n   hundred names is one bet a "
+          f"year, and in mega-caps that bet keeps reversing.")
+
+    print(f"\n   Its three worst months, with what the market did around them:")
+    print(f"\n{'month':>10} {'xsmom':>8} {'market, that month':>19} "
+          f"{'market, prior 3m':>17}")
+    for c in study["crashes"]:
+        print(f"{c['month']:>10} {c['xsmom']:>8.1%} "
+              f"{c['market_that_month']:>19.1%} {c['market_prior_3m']:>17.1%}")
+    print(f"   Every one is a rally. That is the momentum crash: the short "
+          f"leg is full of what\n   fell hardest, so the rebound is where it "
+          f"loses, not the fall.")
+
+    ov = study["overlap"]
+    print(f"\n   On the overlap  {ov['first']} to {ov['last']}, "
+          f"{ov['n_months']} months:")
+    print(f"\n{'sleeve':<10} {'ann return':>11} {'ann vol':>9} {'sharpe':>8}"
+          f"   {'corr w/ statarb':>15} {'corr w/ volcarry':>16}")
+    for name, p in ov["sleeves"].items():
+        corr = ov["correlation"][name]
+        print(f"{name:<10} {p['ann_return']:>10.2%} {p['ann_vol']:>9.2%} "
+              f"{p['sharpe']:>8.2f}   {corr['statarb']:>15.3f} "
+              f"{corr['volcarry']:>16.3f}")
+    rho = ov["correlation"]["xsmom"]["statarb"]
+    print(f"\n   {rho:+.2f} against statarb is the number to notice. The "
+          f"pairs book is long the\n   lagging leg and short the leading "
+          f"one; momentum is the reverse. On one universe\n   they are "
+          f"opposite sides of the same trade, and the correlation says how "
+          f"much.")
+
+    dr = study["diversification_ratio"]
+    print(f"\n   diversification ratio, equal weight:   "
+          f"{dr['two_sleeves_equal']:.2f} with two sleeves, "
+          f"{dr['three_sleeves_equal']:.2f} with three")
+    print(f"   diversification ratio, inverse vol:    "
+          f"{dr['three_sleeves_inverse_vol']:.2f} with three")
+    print(f"   Equal weight gets WORSE with the third sleeve because the "
+          f"sleeve is ten times\n   as volatile as the other two, so 1/N is "
+          f"not a third each - it is the momentum\n   sleeve with a small "
+          f"hedge on. Size it by risk and the ratio goes the other way, "
+          f"past the\n   {dr['ceiling_three']:.2f} that three uncorrelated "
+          f"sleeves could reach. Only negative correlation\n   gets a book "
+          f"above that line, and the {rho:+.2f} is what gets it there.")
+
+    wf = study["walk_forward"]
+    ref = study["two_sleeve_reference"]
+    print(f"\n   Allocated out of sample, {wf['months_traded']} months, the "
+          f"same walk-forward as section 2:")
+    print(f"\n{'scheme':<14} {'ann return':>11} {'ann vol':>9} {'sharpe':>8} "
+          f"{'2-sleeve':>9}   {'w statarb':>9} {'w volcarry':>10} {'w xsmom':>8}")
+    rows = sorted(wf["schemes"].items(), key=lambda kv: -kv[1]["sharpe"])
+    for name, r in rows:
+        w = r["mean_weight"]
+        print(f"{name:<14} {r['ann_return']:>10.2%} {r['ann_vol']:>9.2%} "
+              f"{r['sharpe']:>8.2f} {ref[name]['sharpe']:>9.2f}   "
+              f"{w['statarb']:>9.0%} {w['volcarry']:>10.0%} {w['xsmom']:>8.1%}")
+    ew, iv = wf["schemes"]["equal weight"], wf["schemes"]["inverse vol"]
+    print(f"\n   Equal weight goes from {ref['equal weight']['sharpe']:.2f} to "
+          f"{ew['sharpe']:.2f} and its volatility from "
+          f"{ref['equal weight']['ann_vol']:.2%} to {ew['ann_vol']:.2%}.")
+    print(f"   That is the first clean loss for 1/N in this repository, and "
+          f"it is not a\n   subtle one. 1/N only ever beat the optimizer "
+          f"among things of similar scale;\n   hand it one stream ten "
+          f"times the size of the others and it is not diversified,\n   it is "
+          f"concentrated. Inverse vol - which is 1/N after scaling - holds "
+          f"{iv['mean_weight']['xsmom']:.1%} in it\n   and is back to "
+          f"{iv['sharpe']:.2f}.")
+    hrp, rp = wf["schemes"]["HRP"], wf["schemes"]["risk parity"]
+    print(f"\n   HRP finally has something to cluster, and look at what it "
+          f"does with it: {hrp['mean_weight']['xsmom']:.1%},\n   against "
+          f"risk parity's {rp['mean_weight']['xsmom']:.1%}. The tree puts "
+          f"momentum in a cluster of its own, which\n   is right, and then "
+          f"splits capital between clusters by inverse variance alone -\n   "
+          f"the correlation that made the split is not used at the step "
+          f"that sizes it.\n   Risk parity reads the whole matrix and takes "
+          f"the hedge; HRP reads it and then\n   forgets it. That is the "
+          f"method's known blind spot, and this is the first panel\n   in "
+          f"the repository where it had anything to be blind to.")
+    print(f"\n   Mean-variance puts {wf['schemes']['max Sharpe']['mean_weight']['xsmom']:.1%} "
+          f"in the sleeve, for the same reason it puts almost\n   nothing in "
+          f"statarb: it does not make money, and that is the one thing "
+          f"mean-variance\n   can see. A sleeve with no return cannot "
+          f"diversify a return. It can only\n   diversify risk, and the "
+          f"risk-based four all find the same answer about how\n   much of "
+          f"it to take for that: a few percent.")
+
+
 # ---------- reporting ----------
 
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
@@ -745,6 +968,8 @@ def main() -> None:
     print_spread_sensitivity(spreads)
     comovement = spread_comovement(lookback=lookback)
     print_spread_comovement(comovement)
+    third = third_sleeve_study(lookback=lookback)
+    print_third_sleeve(third)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -758,7 +983,8 @@ def main() -> None:
                    "window_bias": bias,
                    "lookback_sensitivity": sens,
                    "spread_sensitivity": spreads,
-                   "spread_comovement": comovement}, fh, indent=1,
+                   "spread_comovement": comovement,
+                   "third_sleeve": third}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to

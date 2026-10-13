@@ -337,11 +337,163 @@ What this still does not settle:
   reason option spreads do. That is the next version of this section, and it
   is the one place the two repositories' corrections would actually meet.
 
+### 8. A third sleeve, so that "allocation" is more than one number
+
+Reproduce with: `python -m sleeves.xsmom.momentum`, then `python multi_strategy.py`
+
+Every section above has been criticised in its own caveats for the same thing:
+two sleeves is not a portfolio. With two, every allocator chooses one number,
+the covariance matrix has one off-diagonal entry, and the difference between
+risk parity and inverse volatility is nearly definitional. Including HRP at all
+was fair game — a clustering algorithm with two things to cluster is not
+clustering.
+
+`sleeves/xsmom/` is the cheapest third stream this repository could build.
+Cross-sectional momentum, Jegadeesh-Titman 12-1: rank every name on its return
+from twelve months ago to one month ago, long the top fifth, short the bottom
+fifth, equal weight inside each leg, one dollar against one dollar, rebalanced
+monthly. Costs are the same `src/costs.py` bookkeeping as everywhere else —
+drifted book, 10 bps a side — and momentum turns over 53% of the book a month,
+so that is a third of the gross return. The universe is the same 102 names the
+pairs scan screens, which is deliberate and is the point of the section.
+
+**On its own, over 2014-02 to 2025-12 (143 months), it earns almost nothing.**
+
+| | ann. return | ann. vol | Sharpe | worst month | turnover / month | beta to the universe |
+|---|---|---|---|---|---|---|
+| plain, gross | +2.57% | 15.89% | 0.16 | −18.87% | 52.6% | −0.30 |
+| **plain, net** | **+1.30%** | **15.89%** | **0.08** | **−18.95%** | 52.6% | −0.30 |
+| sector-neutral, net | +1.12% | 11.10% | 0.10 | −9.08% | 53.9% | −0.11 |
+
+That is the known fact about momentum in mega-caps and it is worth stating
+rather than tuning around: the anomaly lives in small and mid caps, and on a
+hundred of the largest names a twelve-month signal is one bet a year. By
+calendar year the sleeve goes +2, +12, −13, +10, +14, −10, +13, −15, +10, −15,
++12, −4 percent. The sign flips nine times in eleven steps.
+
+Its three worst months are the check that it is the real thing:
+
+| month | xsmom | universe, that month | universe, prior 3 months |
+|---|---|---|---|
+| 2023-01 | −19.0% | +6.5% | +13.2% |
+| 2020-11 | −13.8% | +14.3% | +2.6% |
+| 2021-02 | −11.3% | +4.7% | +17.3% |
+
+Every one is a rally. Momentum does not lose in a crash; it loses in the month
+the crash reverses, because by then the short leg is full of whatever fell
+hardest, which is whatever bounces hardest. Daniel and Moskowitz call it a
+momentum crash, it is the one risk the strategy is famous for, and the sleeve
+built here has the scar in the same place. November 2020 is the vaccine
+announcement; January 2023 is the junk rally after 2022.
+
+A word on the universe, because it cuts an unusual way here. These are the
+S&P 100 constituents as of 2025, so every name survived to the end of the
+sample — survivorship bias. For a long-only strategy that flatters the result.
+For a momentum short leg it does the opposite: the leg is a bet that last
+year's losers keep losing, and in a universe where every loser recovered enough
+to still be in the index a decade later, that bet is fighting the sample. The
+figure above is more likely an understatement than an overstatement. It is
+still a caveat.
+
+**On the overlap, 2021-02 to 2024-11, 46 months:**
+
+| sleeve | ann. return | ann. vol | Sharpe | corr. w/ statarb | corr. w/ volcarry |
+|---|---|---|---|---|---|
+| `statarb` | −0.67% | 1.53% | −0.44 | | +0.029 |
+| `volcarry` | +4.44% | 1.66% | 2.68 | +0.029 | |
+| `xsmom` | −2.98% | 18.36% | −0.16 | **−0.461** | −0.146 |
+
+**−0.46 against statarb is the number to notice.** The pairs book is long the
+lagging leg of a pair and short the leading leg; momentum is long the leaders
+and short the laggards. On one universe they are opposite sides of the same
+trade — a bet on relative performance, with the sign flipped — and the
+correlation says how far that goes: nearly half of the stat-arb sleeve's
+variance is explainable as a short-momentum position. That is a fact about the
+pairs sleeve that nothing in notes/statarb.md could have shown, because that
+file never had a momentum series to regress against.
+
+Diversification ratio, which is where the vol mismatch starts to matter:
+
+| weights | two sleeves | three sleeves |
+|---|---|---|
+| equal | 1.39 | **1.23** |
+| inverse volatility | | **2.21** |
+
+Equal weight gets *worse* with the third sleeve. The sleeve is ten times as
+volatile as the other two, so 1/N is not a third each — it is the momentum
+sleeve with a small hedge attached. Size by risk instead and the ratio goes to
+2.21, which is past the √3 = 1.73 that three *uncorrelated* sleeves could ever
+reach. Only negative correlation gets a book over that line, and the −0.46 is
+what gets it there.
+
+**Allocated out of sample — the same 24-month walk-forward as section 1, 22
+months traded, three columns:**
+
+| scheme | ann. return | ann. vol | Sharpe | Sharpe, 2 sleeves | w statarb | w volcarry | w xsmom |
+|---|---|---|---|---|---|---|---|
+| max Sharpe | 3.24% | 1.29% | **2.52** | 2.55 | 2% | 98% | 0.3% |
+| inverse vol | 1.63% | 1.02% | 1.60 | 1.51 | 42% | 55% | 3.4% |
+| HRP | 1.54% | 1.02% | 1.50 | 1.49 | 37% | 63% | 0.3% |
+| risk parity | 1.46% | 1.05% | 1.39 | 1.51 | 46% | 50% | 3.9% |
+| min variance | 1.40% | 1.06% | 1.32 | 1.48 | 40% | 58% | 1.6% |
+| equal weight | 3.20% | 4.64% | **0.69** | 1.50 | 33% | 33% | 33.3% |
+
+Three things in that table.
+
+**Equal weight loses, cleanly, for the first time in this repository.** 1.50
+to 0.69, with the volatility going from 0.89% to 4.64%. Every earlier table
+here said 1/N beats the optimizer, and every one of them was a table of things
+at similar scale — five ETFs, fifty stocks, two sleeves under 2% vol. Hand it
+one stream ten times the size of the others and it is not diversified, it is
+concentrated. Inverse volatility, which is exactly 1/N after scaling, holds
+3.4% in the sleeve and is back to 1.60. So the standing result survives, with
+its missing condition now written down: equal weighting beats optimization
+among things of comparable risk, and the moment they are not, "equal" has to
+mean equal risk rather than equal dollars.
+
+**HRP finally has something to cluster, and look at what it does with it.**
+0.3% in momentum, against risk parity's 3.9%. The tree puts momentum in a
+cluster of its own, which is right — it is the one sleeve negatively
+correlated with the others. Then recursive bisection splits capital between
+the two clusters by inverse cluster variance *alone*. The correlation that
+built the tree is not used at the step that sizes the branches, so the hedge
+the −0.46 offers is never taken. Risk parity reads the whole matrix and takes
+it; HRP reads it, orders by it, and then forgets it. That is the method's
+known blind spot (`src/hrp.py` says as much about the split rule), and this is
+the first panel in the repository where it had anything to be blind to.
+
+**Mean-variance puts 0.3% in it, for the same reason it puts 2% in statarb.**
+The sleeve does not make money, and that is the one thing mean-variance can
+see and the risk-based four cannot. A sleeve with no return cannot diversify a
+return. It can only diversify risk, and the risk-based four all land on the
+same answer for how much of it to take for that: a few percent. Which is why
+the headline from section 1 does not move — 2.55 to 2.52 — and why, honestly,
+the third sleeve changed the *allocation* result less than it changed what the
+repository knows about its other two sleeves.
+
+What this does not settle:
+
+- **It is still not a portfolio.** Three sleeves where two of them earn
+  nothing is a volatility sleeve with two hedges on. The interesting version
+  of this study needs sleeves that *all* make money, so the allocator has to
+  trade off returns against each other rather than just decline to fund the
+  broken ones.
+- **22 months, still.** The overlap is set by the stat-arb sleeve's start date
+  and a third sleeve with 143 months of history does nothing to extend it.
+- **The momentum sleeve is the textbook version and nothing more.** No
+  volatility scaling, no skip of the crash months, no dynamic weighting of
+  the two legs — all of which are documented fixes for exactly the crash
+  pattern above. They were left out so the sleeve measures the anomaly and not
+  the engineering on top of it.
+
 ### What this does not establish
 
-- **Two sleeves is not a portfolio.** The interesting version of this study has
-  eight or ten weakly correlated sleeves, where the covariance matters as much
-  as the means. With two, "allocation" is one number.
+- ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
+  third sleeve — cross-sectional momentum on the same universe — gives the
+  covariance something to do, and what it mostly does is show that the pairs
+  sleeve is half a short-momentum position (correlation −0.46) and that 1/N
+  loses the moment the sleeves are not at comparable scale. Three sleeves where
+  two earn nothing is still not the eight-or-ten-sleeve book this study wants.
 - **22 out-of-sample months.** Everything in section 1 rests on fewer than two
   years. Section 5 is the only reason to take it at all seriously, and it is a
   weak reason.

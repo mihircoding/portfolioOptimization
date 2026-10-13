@@ -289,3 +289,54 @@ def test_a_big_enough_cost_eventually_makes_mean_variance_fund_the_other_sleeve(
     assert heavy["max Sharpe"]["weight_on_statarb"] > 0.8
     assert (heavy["max Sharpe"]["weight_on_statarb"]
             > base["max Sharpe"]["weight_on_statarb"] + 0.5)
+
+
+# ---------- section 9, the third sleeve ----------
+
+from multi_strategy import (three_sleeve_panel, weighted_diversification_ratio,
+                            xsmom_monthly)
+
+
+def test_weighted_ratio_agrees_with_equal_weight_version():
+    p = panel()
+    w = np.ones(2) / 2
+    assert weighted_diversification_ratio(p, w) == pytest.approx(
+        diversification_ratio(p))
+
+
+def test_negative_correlation_can_beat_the_sqrt_n_ceiling():
+    p = panel(rho=-0.6, n=600)
+    assert weighted_diversification_ratio(p, np.ones(2) / 2) > np.sqrt(2)
+
+
+def test_mismatched_scale_makes_equal_weight_the_big_sleeve():
+    """Equal weight on a 1% sleeve and a 10% sleeve is a 10% sleeve."""
+    p = panel(vol_a=0.004, vol_b=0.04, n=600)
+    w = np.ones(2) / 2
+    book = (p * w).sum(axis=1)
+    big = p["volcarry"] * 0.5
+    assert book.corr(big) > 0.98
+    assert weighted_diversification_ratio(p, w) < 1.15
+
+
+def test_xsmom_monthly_reads_the_net_column(tmp_path):
+    idx = pd.date_range("2020-01-15", periods=3, freq="MS")
+    frame = pd.DataFrame({"gross": [0.02, 0.01, 0.0], "net": [0.01, 0.0, -0.01],
+                          "turnover": 0.5}, index=idx)
+    from sleeves.xsmom.momentum import write_results
+    path = tmp_path / "x.json"
+    write_results(frame, str(path))
+    s = xsmom_monthly(str(path))
+    assert s.name == "xsmom"
+    assert list(s.values) == [0.01, 0.0, -0.01]
+    assert all(d.is_month_end for d in s.index)
+
+
+def test_three_sleeve_panel_joins_on_the_month(monkeypatch):
+    two = panel(n=12)
+    extra = pd.Series(0.001, index=two.index[2:], name="xsmom")
+    monkeypatch.setattr("multi_strategy.sleeve_panel", lambda **k: two)
+    monkeypatch.setattr("multi_strategy.xsmom_monthly", lambda: extra)
+    three = three_sleeve_panel()
+    assert list(three.columns) == ["statarb", "volcarry", "xsmom"]
+    assert len(three) == 10
