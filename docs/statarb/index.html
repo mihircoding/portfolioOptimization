@@ -96,8 +96,12 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 <div class="wrap">
   <div class="tagline">Statistical arbitrage across 4,950 pairs</div>
   <h1>Pairs Trading Lab</h1>
-  <p class="lede">A cointegration screen run across every pair in the S&amp;P 100, then traded on data it was never selected on. <strong style="color:var(--ink)">930 of 4,950 pairs passed the statistical test. Out of sample they averaged a Sharpe ratio of &minus;0.009.</strong></p>
+  <p class="lede">Take every pair of stocks in the S&amp;P 100, test which ones move together closely enough to bet on, then trade the ones that pass on years of data the test never saw. <strong style="color:var(--ink)">930 of 4,950 pairs passed. Out of sample they averaged a Sharpe ratio of &minus;0.009, which is to say nothing.</strong></p>
   <p style="font-size:14px;margin:-4px 0 16px"><a href="../">&larr; Alpha to Allocation</a> &middot; the stat-arb sleeve</p>
+  <div class="note blue" style="max-width:70ch">
+    <p><strong>In plain English.</strong> Pairs trading is the idea that two stocks which usually move together will keep doing so, so when they drift apart you buy the one that fell behind, sell the one that ran ahead, and wait for them to meet again. The hard part is picking pairs that are really linked rather than ones that happened to line up in the past. There is a standard statistical test for that, and this page checks whether it earns its keep.</p>
+    <p>I ran the test on every pair, kept the ones that passed, and traded them for five years they were not selected on. They made nothing. Then I did the thing nobody does and traded the 4,020 pairs the test rejected, under the same rules. They did about as well. Re-picking the pairs every quarter, tightening the test, and fixing a flaw in the test itself (its advertised 5% false-alarm rate is closer to 15%) did not change the answer. The honest result is that the screen does not rank, and the page leads with that instead of the one pair that happened to work.</p>
+  </div>
   <div class="links">
     <a class="btn primary" href="#explorer">Explore the data</a>
     <a class="btn" href="#control">The control group</a>
