@@ -407,10 +407,12 @@ still a caveat.
 lagging leg of a pair and short the leading leg; momentum is long the leaders
 and short the laggards. On one universe they are opposite sides of the same
 trade — a bet on relative performance, with the sign flipped — and the
-correlation says how far that goes: nearly half of the stat-arb sleeve's
-variance is explainable as a short-momentum position. That is a fact about the
-pairs sleeve that nothing in notes/statarb.md could have shown, because that
-file never had a momentum series to regress against.
+correlation says how far that goes: a fifth of the stat-arb sleeve's
+variance is explainable as a short-momentum position (r² = 0.21 — this
+paragraph first said "nearly half", which was the correlation read as a share;
+section 9 has the regression). That is a fact about the pairs sleeve that
+nothing in notes/statarb.md could have shown, because that file never had a
+momentum series to regress against.
 
 Diversification ratio, which is where the vol mismatch starts to matter:
 
@@ -486,12 +488,113 @@ What this does not settle:
   pattern above. They were left out so the sleeve measures the anomaly and not
   the engineering on top of it.
 
+### 9. The −0.46 in return units
+
+Reproduce with: `python multi_strategy.py` (section 10 of the printout)
+
+Section 8 found a −0.46 correlation between the stat-arb and momentum sleeves
+and said nearly half of the stat-arb variance was a short-momentum position.
+That sentence read a correlation as a variance share, and they are not the
+same number. The share of one series' variance that another explains is the
+correlation *squared*: −0.46 is 21%, a fifth and not a half. The sentence in
+section 8 is corrected rather than deleted, and this section is the
+regression that should have been there in the first place, so the claim has a
+standard error attached to it.
+
+Everything below is OLS on the 46-month overlap, monthly and non-overlapping,
+classical standard errors. "Hedged" is the sleeve minus its beta times the
+factor — what a desk that neutralized the exposure would have been left with.
+
+**Stat-arb on momentum.**
+
+| | beta | t | alpha / yr | t | R² | Sharpe | hedged Sharpe |
+|---|---|---|---|---|---|---|---|
+| statarb on xsmom | −0.038 | −3.4 | −0.79% | −1.1 | 0.21 | −0.44 | −0.58 |
+
+The beta is four cents: a dollar of stat-arb carries four cents short of the
+momentum book. That sounds like nothing until it is set against a sleeve
+running at 1.5% volatility, where four cents of an 18%-vol factor is a fifth of
+everything that moves. The t-statistic of −3.4 says the tilt is real on 46
+months, which was the one part of section 8 that was right.
+
+**Hedging it would have made the sleeve worse, not better.** Volatility drops
+from 1.53% to 1.36%, which is what removing a fifth of the variance should do,
+and the Sharpe goes from −0.44 to −0.58. The sleeve was earning money from the
+tilt. Over 2021–24 momentum lost 3% a year on these names, and a book that was
+short it collected about 0.11% a year for the privilege — small, but the
+stat-arb sleeve's whole return over the window is −0.67% a year, so the tilt
+was the least bad thing in it. Take it out and what is left is a cleaner
+series with less return. That is the general lesson about hedging a factor
+exposure: it only helps if the factor was pure noise to you. If you were being
+paid for it, however accidentally, the hedge costs exactly what it was paying.
+
+**Market beta of all three, on the equal-weight universe.** Every sleeve is
+market-neutral on paper — a dollar long against a dollar short, or an option
+delta-hedged every day. This is the check that the paper is right. The factor
+is the equal-weight average of the 102 names rather than SPY, because the
+books cannot hold anything outside those names and a beta to an index with
+400 other stocks in it would mix "is the book neutral" with "do these names
+track the index".
+
+| sleeve | beta | t | alpha / yr | t | R² | Sharpe | market-hedged |
+|---|---|---|---|---|---|---|---|
+| statarb | +0.029 | +2.1 | −1.14% | −1.4 | 0.09 | −0.44 | −0.78 |
+| volcarry | +0.034 | +2.3 | +3.90% | +4.6 | 0.11 | +2.68 | +2.49 |
+| xsmom | **−0.473** | −3.0 | +4.59% | +0.5 | 0.17 | −0.16 | +0.27 |
+
+Two of the three are what the paper says. The volatility sleeve's beta of
+0.03 is the short call being short the market on the way down whatever the
+delta said at the open — and its alpha is 3.9% a year at a t of 4.6, which is
+the variance risk premium surviving a market factor. The stat-arb beta of 0.03
+is small and, as the next table shows, is not really its own.
+
+**The momentum book is dollar-neutral and half a dollar short the market.**
+A beta of −0.47 with a t of −3.0, on a book built to be a dollar long against
+a dollar short. This is the known thing about momentum and it is worth being
+able to explain: the signal ranks on trailing returns, so after a drawdown the
+short leg fills with the names that fell hardest, which are the high-beta
+names, and the long leg fills with whatever held up, which are the low-beta
+names. Dollar-neutral then means beta-negative, and the size of it moves with
+the cycle (Grundy and Martin 2001 is the reference). On 2021–24, a window the
+market spent mostly going up, that is where the sleeve's −3% a year went:
+hedge the market out and the Sharpe goes from −0.16 to +0.27. Which is also
+the mechanical content of section 8's "momentum crash" table — the three
+worst months were all rallies, and a book half a dollar short the market
+loses in a rally by construction.
+
+**Both factors at once.**
+
+| sleeve | β market | t | β xsmom | t | alpha / yr | t | R² |
+|---|---|---|---|---|---|---|---|
+| statarb | +0.013 | +0.9 | −0.034 | −2.7 | −0.98% | −1.3 | 0.23 |
+| volcarry | +0.033 | +2.1 | −0.001 | −0.1 | +3.90% | +4.6 | 0.11 |
+
+The stat-arb sleeve's market beta goes from 0.029 (t 2.1) to 0.013 (t 0.9)
+once momentum is in the regression. Its market exposure was never its own: it
+was short a book that was short the market, which nets to a small long. The
+volatility sleeve has no momentum exposure at all (t −0.1) and keeps its market
+beta, so the two sleeves' small positive betas have different causes even
+though they are the same size — one is a hedge-timing residual, the other is
+a factor exposure once removed.
+
+What this changes in the earlier sections: the correlation in section 8 was
+real and the inference drawn from it was overstated by a factor of two and a
+half. The allocator tables are unaffected — they read the covariance matrix,
+and the covariance matrix was always right about the size of the comovement.
+What was wrong was the sentence describing it. And the "what this does not
+settle" list in section 8 gets one more entry, because it is now measurable:
+the momentum sleeve as built has a market beta of −0.47, and a desk would
+beta-hedge it before allocating to it, which would change the panel the
+allocators see. Whether that helps or hurts the three-sleeve table is the next
+thing to run.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
   third sleeve — cross-sectional momentum on the same universe — gives the
   covariance something to do, and what it mostly does is show that the pairs
-  sleeve is half a short-momentum position (correlation −0.46) and that 1/N
+  sleeve carries a short-momentum position (correlation −0.46; section 9
+  puts it at a fifth of the variance, not the half this bullet first said) and that 1/N
   loses the moment the sleeves are not at comparable scale. Three sleeves where
   two earn nothing is still not the eight-or-ten-sleeve book this study wants.
 - **22 out-of-sample months.** Everything in section 1 rests on fewer than two

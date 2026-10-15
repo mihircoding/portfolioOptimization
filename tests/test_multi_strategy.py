@@ -340,3 +340,105 @@ def test_three_sleeve_panel_joins_on_the_month(monkeypatch):
     three = three_sleeve_panel()
     assert list(three.columns) == ["statarb", "volcarry", "xsmom"]
     assert len(three) == 10
+
+
+# ---------- 10. the -0.46 in return units ----------
+
+from multi_strategy import factor_exposure_study, regress
+
+
+def factor(n=MONTHS, mean=0.0, vol=0.05, seed=1, name="x") -> pd.Series:
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2020-01-31", periods=n, freq="ME")
+    return pd.Series(rng.normal(mean, vol, size=n), index=idx, name=name)
+
+
+def test_regress_recovers_a_known_alpha_and_beta():
+    x = factor(n=600)
+    noise = factor(n=600, vol=0.001, seed=2)
+    y = 0.002 + 0.3 * x + noise
+    r = regress(y.rename("y"), x.to_frame())
+    assert r["beta"]["x"] == pytest.approx(0.3, abs=0.01)
+    assert r["alpha_monthly"] == pytest.approx(0.002, abs=0.0002)
+    assert r["alpha_ann"] == pytest.approx(12 * r["alpha_monthly"])
+    assert r["n_months"] == 600
+
+
+def test_one_factor_r2_is_the_correlation_squared():
+    """The thing section 9 got wrong: -0.46 of correlation is 0.21 of variance."""
+    x = factor(n=400)
+    y = -0.4 * x + factor(n=400, vol=0.03, seed=3)
+    r = regress(y.rename("y"), x.to_frame())
+    assert r["r2"] == pytest.approx(y.corr(x) ** 2, abs=1e-9)
+    assert r["r2"] < abs(y.corr(x))
+
+
+def test_the_tstat_grows_with_the_sample_at_fixed_correlation():
+    def fit(n):
+        x = factor(n=n)
+        y = (-0.4 * x + factor(n=n, vol=0.03, seed=3)).rename("y")
+        return regress(y, x.to_frame())
+
+    assert abs(fit(1000)["beta_t"]["x"]) > abs(fit(40)["beta_t"]["x"])
+
+
+def test_hedged_equals_raw_when_the_sleeve_has_no_exposure():
+    x = factor(n=200)
+    y = factor(n=200, mean=0.003, vol=0.004, seed=5)
+    # make y exactly orthogonal to x so the fitted beta is zero, not just small
+    y = y - (y.cov(x) / x.var()) * x
+    r = regress(y.rename("y"), x.to_frame())
+    assert r["beta"]["x"] == pytest.approx(0.0, abs=1e-12)
+    assert r["hedged"]["sharpe"] == pytest.approx(r["raw"]["sharpe"])
+
+
+def test_hedging_a_zero_mean_tilt_raises_the_sharpe():
+    """Comovement with a factor that earns nothing is pure variance."""
+    x = factor(n=400, mean=0.0, vol=0.05)
+    y = 0.003 + factor(n=400, vol=0.004, seed=5) - 0.05 * x
+    r = regress(y.rename("y"), x.to_frame())
+    assert r["hedged"]["ann_vol"] < r["raw"]["ann_vol"]
+    assert r["hedged"]["sharpe"] > r["raw"]["sharpe"]
+
+
+def test_hedging_a_paid_tilt_takes_the_return_with_it():
+    """Short a factor that lost money over the window, and the tilt was income.
+
+    This is the real-panel case: momentum lost over 2021-24, the stat-arb
+    sleeve was short it, and hedging the tilt makes the sleeve worse.
+    """
+    x = factor(n=400, mean=-0.01, vol=0.05)
+    y = 0.0005 + factor(n=400, vol=0.004, seed=5) - 0.05 * x
+    r = regress(y.rename("y"), x.to_frame())
+    assert r["hedged"]["ann_return"] < r["raw"]["ann_return"]
+    assert r["hedged"]["ann_return"] == pytest.approx(
+        r["raw"]["ann_return"] - 12 * r["beta"]["x"] * float(x.mean()), rel=1e-6)
+
+
+def test_two_factors_split_a_shared_exposure():
+    """A sleeve short momentum, where momentum is itself short the market,
+    shows a market beta on its own that disappears once momentum is in the
+    regression. That is the pattern the real stat-arb sleeve has."""
+    mkt = factor(n=2000, vol=0.04, seed=7, name="market")
+    mom = (-0.5 * mkt + factor(n=2000, vol=0.04, seed=8)).rename("xsmom")
+    y = (0.001 - 0.04 * mom + factor(n=2000, vol=0.004, seed=9)).rename("y")
+    alone = regress(y, mkt.to_frame())
+    both = regress(y, pd.concat([mkt, mom], axis=1))
+    assert alone["beta"]["market"] > 0.01
+    assert abs(both["beta"]["market"]) < 0.005
+    assert both["beta"]["xsmom"] == pytest.approx(-0.04, abs=0.005)
+
+
+def test_factor_exposure_study_reports_the_variance_share_as_r_squared():
+    two = panel(n=48, rho=0.0)
+    mom = factor(n=48, vol=0.05, seed=11, name="xsmom")
+    three = pd.concat([two, mom], axis=1)
+    mkt = factor(n=48, vol=0.04, seed=12, name="market")
+    study = factor_exposure_study(panel=three, market=mkt)
+    rho = three["statarb"].corr(three["xsmom"])
+    cv = study["correlation_vs_variance_share"]
+    assert cv["correlation"] == pytest.approx(rho)
+    assert cv["variance_share"] == pytest.approx(rho ** 2)
+    assert set(study["on_market"]) == {"statarb", "volcarry", "xsmom"}
+    assert study["statarb_on_xsmom"]["r2"] == pytest.approx(rho ** 2)
+    assert set(study["on_market_and_xsmom"]["statarb"]["beta"]) == {"market", "xsmom"}

@@ -54,8 +54,10 @@ The third sleeve was added because two is not a portfolio, and the first thing
 it showed was about the other two. Cross-sectional momentum on the pairs
 universe has a correlation of **−0.46** with the pairs sleeve — long the
 leaders and short the laggards is the pairs trade with the sign flipped, and
-nearly half of the stat-arb book's variance is a short-momentum position it
-never knew it had. The second thing: equal weighting, which had won every table
+a fifth of the stat-arb book's variance is a short-momentum position it never
+knew it had (beta −0.04, t −3.4; the regression is section 9 of RESULTS.md,
+along with the finding that the dollar-neutral momentum book is half a dollar
+short the market). The second thing: equal weighting, which had won every table
 in this repository, loses by 0.8 of Sharpe the moment one sleeve is ten times
 the scale of the others. 1/N only ever meant equal *risk*; the earlier tables
 just never contained anything that could tell the difference.
@@ -66,11 +68,11 @@ window contains no 2008 and no March 2020, which inflates the volatility sleeve'
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-284 tests.
+293 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 284 passed
+python -m pytest -q                 # 293 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

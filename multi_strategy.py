@@ -775,6 +775,172 @@ def print_third_sleeve(study: dict) -> None:
           f"it to take for that: a few percent.")
 
 
+# ---------- 10. what the -0.46 is worth in return units ----------
+
+def market_monthly() -> pd.Series:
+    """Equal-weight monthly return of the 102-name universe, as the market.
+
+    The three sleeves all trade inside this list, so the average of the list
+    is the market they can be long or short. SPY would be the conventional
+    choice and is not used, on purpose: the pairs and momentum books cannot
+    hold anything outside these names, and a beta to an index that includes
+    400 other stocks would mix "is the book market-neutral" with "do these
+    102 names track the index". The equal-weight average of what the books
+    can actually hold is the cleaner question.
+    """
+    from sleeves.xsmom.momentum import load_universe, monthly_prices
+
+    market = monthly_prices(load_universe()).pct_change(fill_method=None).mean(axis=1)
+    market.index = market.index.to_period("M").to_timestamp("M")
+    return market.rename("market")
+
+
+def regress(y: pd.Series, factors: pd.DataFrame) -> dict:
+    """OLS of one sleeve on one or more factors, with the usual table.
+
+    Plain least squares with classical standard errors. The sleeves are
+    monthly and non-overlapping, so there is no induced autocorrelation to
+    correct for, and with 46 observations a Newey-West bandwidth would be a
+    bigger judgement call than the thing it corrects. The t-statistics are
+    read with that sample size in mind.
+
+    Returns alpha both monthly and annualized, every beta with its t, the
+    R-squared, and the Sharpe of the sleeve with its factor exposure hedged
+    out: y minus beta times each factor, which is what the sleeve would have
+    earned if a desk had neutralized it. That last number is the point of
+    the exercise. A correlation says two things move together; the hedged
+    Sharpe says whether removing the comovement would have helped.
+    """
+    frame = pd.concat([y, factors], axis=1).dropna()
+    yv = frame.iloc[:, 0].to_numpy(dtype=float)
+    X = np.column_stack([np.ones(len(frame)), frame.iloc[:, 1:].to_numpy(dtype=float)])
+    n, k = X.shape
+    coef, *_ = np.linalg.lstsq(X, yv, rcond=None)
+    resid = yv - X @ coef
+    dof = n - k
+    s2 = float(resid @ resid) / dof if dof > 0 else float("nan")
+    cov = s2 * np.linalg.inv(X.T @ X)
+    se = np.sqrt(np.diag(cov))
+    tstats = coef / se
+    ss_tot = float(((yv - yv.mean()) ** 2).sum())
+    r2 = 1.0 - float(resid @ resid) / ss_tot if ss_tot > 0 else 0.0
+
+    hedged = yv - X[:, 1:] @ coef[1:]
+    hedged_series = pd.Series(hedged, index=frame.index)
+    names = list(factors.columns)
+    return {
+        "n_months": int(n),
+        "alpha_monthly": float(coef[0]),
+        "alpha_ann": float(coef[0]) * MONTHS_PER_YEAR,
+        "alpha_t": float(tstats[0]),
+        "beta": {f: float(b) for f, b in zip(names, coef[1:])},
+        "beta_t": {f: float(t) for f, t in zip(names, tstats[1:])},
+        "r2": float(r2),
+        "raw": performance(frame.iloc[:, 0]),
+        "hedged": performance(hedged_series),
+    }
+
+
+def factor_exposure_study(panel: pd.DataFrame | None = None,
+                          market: pd.Series | None = None) -> dict:
+    """Each sleeve regressed on the market, and on the momentum sleeve.
+
+    Section 9 found a -0.46 correlation between the stat-arb and momentum
+    sleeves and called nearly half of the stat-arb variance a momentum bet.
+    That was a correlation read as a variance share, and the two are not the
+    same number: the share of variance one factor explains is the correlation
+    SQUARED, so -0.46 is a fifth, not a half. This section puts the regression
+    on the page so the claim is a number with a standard error instead of a
+    sentence.
+
+    Three things come out of it.
+
+    The beta, in return units. A correlation of -0.46 between a 1.5%-vol
+    sleeve and an 18%-vol sleeve is a beta of -0.04: a dollar of stat-arb is
+    four cents short of momentum. Small in dollars, large as a share of a very
+    quiet book.
+
+    What hedging it would have done. The hedged Sharpe is the sleeve minus
+    its beta times the factor. If the comovement is pure noise, hedging it
+    removes variance and leaves return, and the Sharpe goes up. If the sleeve
+    has been earning something FROM the tilt, hedging takes that away too.
+    Over this window momentum lost money, so a short-momentum tilt was a
+    small source of return, and taking it out makes the stat-arb sleeve look
+    worse, not better.
+
+    Market beta, for all three. Every sleeve here is market-neutral on paper:
+    long and short legs of equal size, or an option delta-hedged daily. The
+    regression on the equal-weight universe is the check that the paper is
+    right, and the only one of the three where the answer is interesting is
+    the one that is short volatility, because a short call is short the
+    market on the way down whatever the hedge says at the open.
+    """
+    if panel is None:
+        panel = three_sleeve_panel()
+    if market is None:
+        market = market_monthly()
+    market = market.reindex(panel.index)
+
+    out: dict = {"n_months": int(len(panel)),
+                 "window": {"first": str(panel.index[0].date()),
+                            "last": str(panel.index[-1].date())}}
+    out["on_market"] = {c: regress(panel[c], market.to_frame())
+                        for c in panel.columns}
+    out["statarb_on_xsmom"] = regress(panel["statarb"],
+                                      panel[["xsmom"]])
+    out["volcarry_on_xsmom"] = regress(panel["volcarry"],
+                                       panel[["xsmom"]])
+    two = pd.concat([market, panel["xsmom"]], axis=1)
+    out["on_market_and_xsmom"] = {c: regress(panel[c], two)
+                                  for c in ("statarb", "volcarry")}
+    rho = float(panel["statarb"].corr(panel["xsmom"]))
+    out["correlation_vs_variance_share"] = {
+        "correlation": rho,
+        "variance_share": rho * rho,
+        "section_9_said": "nearly half",
+    }
+    return out
+
+
+def print_factor_exposures(study: dict) -> None:
+    cv = study["correlation_vs_variance_share"]
+    print(f"\n10. THE -0.46 IN RETURN UNITS")
+    print(f"   Section 9 read a correlation of {cv['correlation']:+.2f} as "
+          f"\"nearly half\" of the stat-arb variance.")
+    print(f"   The variance share is the correlation squared: "
+          f"{cv['variance_share']:.0%}. A fifth, not a half.")
+
+    r = study["statarb_on_xsmom"]
+    print(f"\n   statarb on xsmom, {r['n_months']} months:")
+    print(f"     beta {r['beta']['xsmom']:+.3f}  (t = {r['beta_t']['xsmom']:+.1f})"
+          f"   alpha {r['alpha_ann']:+.2%} a year  (t = {r['alpha_t']:+.1f})"
+          f"   R2 {r['r2']:.2f}")
+    print(f"     Sharpe raw {r['raw']['sharpe']:+.2f} at {r['raw']['ann_vol']:.2%} vol"
+          f"  ->  momentum-hedged {r['hedged']['sharpe']:+.2f} at "
+          f"{r['hedged']['ann_vol']:.2%} vol")
+    print(f"     Hedging the tilt cuts the vol and cuts the return by more. "
+          f"The short-momentum\n     position was earning money this window "
+          f"because momentum was losing it.")
+
+    print(f"\n   Market beta of each sleeve, on the equal-weight universe:")
+    print(f"\n{'sleeve':>10} {'beta':>8} {'t':>6} {'alpha/yr':>10} {'t':>6} "
+          f"{'R2':>6} {'Sharpe':>8} {'hedged':>8}")
+    for name, r in study["on_market"].items():
+        print(f"{name:>10} {r['beta']['market']:>+8.3f} "
+              f"{r['beta_t']['market']:>+6.1f} {r['alpha_ann']:>+10.2%} "
+              f"{r['alpha_t']:>+6.1f} {r['r2']:>6.2f} "
+              f"{r['raw']['sharpe']:>+8.2f} {r['hedged']['sharpe']:>+8.2f}")
+
+    print(f"\n   Both factors at once:")
+    print(f"\n{'sleeve':>10} {'b_mkt':>8} {'t':>6} {'b_mom':>8} {'t':>6} "
+          f"{'alpha/yr':>10} {'t':>6} {'R2':>6}")
+    for name, r in study["on_market_and_xsmom"].items():
+        print(f"{name:>10} {r['beta']['market']:>+8.3f} "
+              f"{r['beta_t']['market']:>+6.1f} {r['beta']['xsmom']:>+8.3f} "
+              f"{r['beta_t']['xsmom']:>+6.1f} {r['alpha_ann']:>+10.2%} "
+              f"{r['alpha_t']:>+6.1f} {r['r2']:>6.2f}")
+
+
 # ---------- reporting ----------
 
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
@@ -970,6 +1136,8 @@ def main() -> None:
     print_spread_comovement(comovement)
     third = third_sleeve_study(lookback=lookback)
     print_third_sleeve(third)
+    exposures = factor_exposure_study()
+    print_factor_exposures(exposures)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -984,7 +1152,8 @@ def main() -> None:
                    "lookback_sensitivity": sens,
                    "spread_sensitivity": spreads,
                    "spread_comovement": comovement,
-                   "third_sleeve": third}, fh, indent=1,
+                   "third_sleeve": third,
+                   "factor_exposures": exposures}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to
