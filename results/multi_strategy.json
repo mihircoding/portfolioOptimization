@@ -835,5 +835,267 @@
    "variance_share": 0.21224350627889604,
    "section_9_said": "nearly half"
   }
+ },
+ "hedged_momentum": {
+  "beta_window_months": 36,
+  "full_window_beta": -0.47282981037928506,
+  "full_window_beta_t": -3.0128799991236312,
+  "trailing_beta": {
+   "first": "2021-02-28",
+   "last": "2024-11-30",
+   "mean": -0.39857063550992344,
+   "min": -0.6719502838460885,
+   "max": -0.24453026460737096,
+   "share_of_months_negative": 1.0,
+   "at_overlap_start": -0.24453026460737096,
+   "at_overlap_end": -0.5070170204971396,
+   "at_crash_months": {
+    "2023-01": -0.3581211099445299,
+    "2020-11": -0.045629853310584195,
+    "2021-02": -0.24453026460737096
+   }
+  },
+  "sleeve_full_history": {
+   "months": 107,
+   "first": "2017-02",
+   "last": "2025-12",
+   "raw": {
+    "ann_return": 0.01848996125801779,
+    "ann_vol": 0.1696008424144601,
+    "sharpe": 0.10902045647175007,
+    "worst_month": -0.18952893991637867,
+    "hit_rate": 0.5327102803738317
+   },
+   "hedged": {
+    "ann_return": 0.0663927399499779,
+    "ann_vol": 0.1673260416944254,
+    "sharpe": 0.3967866524400656,
+    "worst_month": -0.1662757195552899,
+    "hit_rate": 0.5514018691588785
+   }
+  },
+  "overlap": {
+   "n_months": 46,
+   "raw": {
+    "ann_return": -0.02980971675260005,
+    "ann_vol": 0.18364304460020908,
+    "sharpe": -0.16232423513504585,
+    "worst_month": -0.18952893991637867,
+    "hit_rate": 0.4782608695652174
+   },
+   "hedged": {
+    "ann_return": 0.038498055662760586,
+    "ann_vol": 0.17523092818790856,
+    "sharpe": 0.21969897700637223,
+    "worst_month": -0.1662757195552899,
+    "hit_rate": 0.5217391304347826
+   },
+   "market_beta_after_hedge": -0.09093874962521659,
+   "correlation_raw": {
+    "statarb": {
+     "statarb": 0.9999999999999998,
+     "volcarry": 0.029119425413409228,
+     "xsmom": -0.460698932361359
+    },
+    "volcarry": {
+     "statarb": 0.029119425413409228,
+     "volcarry": 0.9999999999999998,
+     "xsmom": -0.1460383584177881
+    },
+    "xsmom": {
+     "statarb": -0.46069893236135895,
+     "volcarry": -0.1460383584177881,
+     "xsmom": 0.9999999999999999
+    }
+   },
+   "correlation_hedged": {
+    "statarb": {
+     "statarb": 0.9999999999999998,
+     "volcarry": 0.029119425413409228,
+     "xsmom": -0.39188079226775047
+    },
+    "volcarry": {
+     "statarb": 0.029119425413409228,
+     "volcarry": 0.9999999999999998,
+     "xsmom": -0.08449175714629763
+    },
+    "xsmom": {
+     "statarb": -0.3918807922677504,
+     "volcarry": -0.08449175714629763,
+     "xsmom": 1.0
+    }
+   },
+   "statarb_hedged_corr": -0.39188079226775047
+  },
+  "walk_forward_raw": {
+   "months_traded": 22,
+   "first": "2023-02-28",
+   "last": "2024-11-30",
+   "schemes": {
+    "equal weight": {
+     "ann_return": 0.03199610274435586,
+     "ann_vol": 0.046377259360376594,
+     "sharpe": 0.6899093043797326,
+     "worst_month": -0.02554437554427065,
+     "hit_rate": 0.5,
+     "mean_weight": {
+      "statarb": 0.3333,
+      "volcarry": 0.3333,
+      "xsmom": 0.3333
+     },
+     "weight_on_statarb": 0.33333333333333326
+    },
+    "inverse vol": {
+     "ann_return": 0.016296067321749704,
+     "ann_vol": 0.010213899343027204,
+     "sharpe": 1.5954795298501407,
+     "worst_month": -0.005329664464801216,
+     "hit_rate": 0.8181818181818182,
+     "mean_weight": {
+      "statarb": 0.4186,
+      "volcarry": 0.5478,
+      "xsmom": 0.0336
+     },
+     "weight_on_statarb": 0.41856405049914686
+    },
+    "risk parity": {
+     "ann_return": 0.014556867435657542,
+     "ann_vol": 0.01050655461534141,
+     "sharpe": 1.3855034279650502,
+     "worst_month": -0.006607160708618536,
+     "hit_rate": 0.7727272727272727,
+     "mean_weight": {
+      "statarb": 0.458,
+      "volcarry": 0.5032,
+      "xsmom": 0.0389
+     },
+     "weight_on_statarb": 0.4579801825291321
+    },
+    "HRP": {
+     "ann_return": 0.015354993970826791,
+     "ann_vol": 0.010225485446257761,
+     "sharpe": 1.501639609339651,
+     "worst_month": -0.005000913572337292,
+     "hit_rate": 0.6363636363636364,
+     "mean_weight": {
+      "statarb": 0.3709,
+      "volcarry": 0.6265,
+      "xsmom": 0.0026
+     },
+     "weight_on_statarb": 0.37093176486758583
+    },
+    "min variance": {
+     "ann_return": 0.013956855565476742,
+     "ann_vol": 0.010589014446279566,
+     "sharpe": 1.3180504792285426,
+     "worst_month": -0.005667962809507681,
+     "hit_rate": 0.7727272727272727,
+     "mean_weight": {
+      "statarb": 0.3992,
+      "volcarry": 0.5845,
+      "xsmom": 0.0163
+     },
+     "weight_on_statarb": 0.3992405225932376
+    },
+    "max Sharpe": {
+     "ann_return": 0.032393991776496225,
+     "ann_vol": 0.012870689867755603,
+     "sharpe": 2.5168807662479327,
+     "worst_month": -0.008250074255935097,
+     "hit_rate": 0.8181818181818182,
+     "mean_weight": {
+      "statarb": 0.015,
+      "volcarry": 0.9817,
+      "xsmom": 0.0033
+     },
+     "weight_on_statarb": 0.014986944809582022
+    }
+   }
+  },
+  "walk_forward_hedged": {
+   "months_traded": 22,
+   "first": "2023-02-28",
+   "last": "2024-11-30",
+   "schemes": {
+    "equal weight": {
+     "ann_return": 0.06576219260874688,
+     "ann_vol": 0.05054824670712366,
+     "sharpe": 1.3009787063391687,
+     "worst_month": -0.02173476694746571,
+     "hit_rate": 0.6818181818181818,
+     "mean_weight": {
+      "statarb": 0.3333,
+      "volcarry": 0.3333,
+      "xsmom": 0.3333
+     },
+     "weight_on_statarb": 0.33333333333333326
+    },
+    "inverse vol": {
+     "ann_return": 0.020180383116706918,
+     "ann_vol": 0.010617554065643324,
+     "sharpe": 1.900662147980706,
+     "worst_month": -0.0052913497425355095,
+     "hit_rate": 0.8636363636363636,
+     "mean_weight": {
+      "statarb": 0.4171,
+      "volcarry": 0.546,
+      "xsmom": 0.037
+     },
+     "weight_on_statarb": 0.41706609714714027
+    },
+    "risk parity": {
+     "ann_return": 0.01893587221353695,
+     "ann_vol": 0.01098257114000759,
+     "sharpe": 1.724174783130416,
+     "worst_month": -0.006354337236426802,
+     "hit_rate": 0.8636363636363636,
+     "mean_weight": {
+      "statarb": 0.451,
+      "volcarry": 0.508,
+      "xsmom": 0.041
+     },
+     "weight_on_statarb": 0.45102132401349554
+    },
+    "HRP": {
+     "ann_return": 0.015706042915433486,
+     "ann_vol": 0.010220969999077569,
+     "sharpe": 1.5366489596242763,
+     "worst_month": -0.004987268202823409,
+     "hit_rate": 0.6818181818181818,
+     "mean_weight": {
+      "statarb": 0.3706,
+      "volcarry": 0.6262,
+      "xsmom": 0.0032
+     },
+     "weight_on_statarb": 0.3706143052083153
+    },
+    "min variance": {
+     "ann_return": 0.015222175668696103,
+     "ann_vol": 0.010492584253276833,
+     "sharpe": 1.45075562904746,
+     "worst_month": -0.005099122282535097,
+     "hit_rate": 0.7272727272727273,
+     "mean_weight": {
+      "statarb": 0.3881,
+      "volcarry": 0.5993,
+      "xsmom": 0.0126
+     },
+     "weight_on_statarb": 0.3880738169710879
+    },
+    "max Sharpe": {
+     "ann_return": 0.03288109402947011,
+     "ann_vol": 0.012724657980531259,
+     "sharpe": 2.5840454085114293,
+     "worst_month": -0.008214309091394749,
+     "hit_rate": 0.8636363636363636,
+     "mean_weight": {
+      "statarb": 0.0206,
+      "volcarry": 0.9734,
+      "xsmom": 0.006
+     },
+     "weight_on_statarb": 0.02057992128287019
+    }
+   }
+  }
  }
 }

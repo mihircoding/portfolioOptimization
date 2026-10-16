@@ -941,6 +941,189 @@ def print_factor_exposures(study: dict) -> None:
               f"{r['alpha_t']:>+6.1f} {r['r2']:>6.2f}")
 
 
+# ---------- 11. beta-hedge the momentum sleeve before it goes in ----------
+
+BETA_WINDOW_MONTHS = 36   # trailing window the hedge ratio is estimated on
+
+
+def trailing_beta(y: pd.Series, factor: pd.Series,
+                  window: int = BETA_WINDOW_MONTHS) -> pd.Series:
+    """The OLS beta of y on the factor, using only months before each date.
+
+    Section 10 measured the momentum sleeve's market beta at -0.47 on the
+    full 46-month overlap. That is the number a desk would like to hedge with
+    and cannot, because it was not known until the window was over. The
+    hedge ratio a desk actually has at the start of a month is whatever the
+    trailing window said the month before, so that is what this returns: the
+    beta at date t is fitted on the `window` months ending at t-1 and is NaN
+    until there are that many. Nothing in it has seen month t.
+    """
+    frame = pd.concat([y, factor], axis=1).dropna()
+    yv = frame.iloc[:, 0]
+    fv = frame.iloc[:, 1]
+    cov = yv.rolling(window).cov(fv)
+    var = fv.rolling(window).var()
+    beta = (cov / var).shift(1)
+    return beta.reindex(y.index).rename("beta")
+
+
+def beta_hedged(y: pd.Series, factor: pd.Series,
+                window: int = BETA_WINDOW_MONTHS) -> pd.DataFrame:
+    """y with its trailing beta to the factor taken out, month by month.
+
+    hedged_t = y_t - beta_{t-1} * factor_t. The months before the first
+    full window are dropped rather than carried through unhedged, because a
+    series that is hedged for most of its life and not for the start is
+    neither thing. The beta is kept alongside so the write-up can show the
+    path the hedge ratio actually took.
+    """
+    beta = trailing_beta(y, factor, window)
+    frame = pd.concat([y.rename("raw"), factor.rename("factor"), beta], axis=1)
+    frame = frame.dropna()
+    frame["hedged"] = frame["raw"] - frame["beta"] * frame["factor"]
+    return frame
+
+
+def hedged_momentum_study(lookback: int = LOOKBACK_MONTHS,
+                          window: int = BETA_WINDOW_MONTHS) -> dict:
+    """The three-sleeve table again, with the momentum sleeve beta-hedged.
+
+    Section 10 ended with a measurable question: the momentum book as built
+    carries a market beta of -0.47, a desk would hedge it before allocating
+    to it, and hedging changes the panel the allocators see. This runs that.
+
+    The hedge has to be out of sample or the exercise is circular. The -0.47
+    is a full-window number, so it is replaced with the trailing 36-month
+    beta re-estimated every month on the sleeve's own prior history, which
+    goes back to 2014 and so is available before the overlap starts. The
+    full-window beta is reported next to the trailing path to show how far
+    apart the hedge a desk could run and the hedge the regression suggests
+    actually are.
+
+    Three things are then compared raw against hedged: the sleeve on its own
+    history, the overlap correlation matrix, and the walk-forward table.
+    Hedging an exposure that lost money over the window should raise the
+    sleeve's Sharpe, and whether that moves the allocators depends on whether
+    they look at returns at all.
+    """
+    full = xsmom_monthly()
+    market = market_monthly()
+    hedge = beta_hedged(full, market, window)
+    hedged_full = hedge["hedged"].rename("xsmom")
+
+    raw_panel = three_sleeve_panel()
+    hedged_panel = pd.concat([raw_panel[list(SLEEVES)], hedged_full],
+                             axis=1).dropna()
+    # same months on both sides, so the two walk-forwards are comparable
+    raw_panel = raw_panel.loc[hedged_panel.index]
+    in_window = hedge.loc[hedged_panel.index]
+
+    full_window = regress(raw_panel["xsmom"], market.reindex(raw_panel.index)
+                          .to_frame())
+    raw_wf = walk_forward(raw_panel, lookback=lookback)
+    hedged_wf = walk_forward(hedged_panel, lookback=lookback)
+
+    crash_months = [row["month"] for row in momentum_crashes(full)]
+    beta_at_crashes = {m: float(hedge.loc[f"{m}", "beta"].iloc[0])
+                       for m in crash_months if m in
+                       hedge.index.strftime("%Y-%m")}
+
+    return {
+        "beta_window_months": int(window),
+        "full_window_beta": full_window["beta"]["market"],
+        "full_window_beta_t": full_window["beta_t"]["market"],
+        "trailing_beta": {
+            "first": str(in_window.index[0].date()),
+            "last": str(in_window.index[-1].date()),
+            "mean": float(in_window["beta"].mean()),
+            "min": float(in_window["beta"].min()),
+            "max": float(in_window["beta"].max()),
+            "share_of_months_negative": float((in_window["beta"] < 0).mean()),
+            "at_overlap_start": float(in_window["beta"].iloc[0]),
+            "at_overlap_end": float(in_window["beta"].iloc[-1]),
+            "at_crash_months": beta_at_crashes,
+        },
+        "sleeve_full_history": {
+            "months": int(len(hedge)),
+            "first": f"{hedge.index[0]:%Y-%m}",
+            "last": f"{hedge.index[-1]:%Y-%m}",
+            "raw": performance(hedge["raw"]),
+            "hedged": performance(hedge["hedged"]),
+        },
+        "overlap": {
+            "n_months": int(len(hedged_panel)),
+            "raw": performance(raw_panel["xsmom"]),
+            "hedged": performance(hedged_panel["xsmom"]),
+            "market_beta_after_hedge": regress(
+                hedged_panel["xsmom"],
+                market.reindex(hedged_panel.index).to_frame())["beta"]["market"],
+            "correlation_raw": {a: {b: float(raw_panel[a].corr(raw_panel[b]))
+                                    for b in raw_panel.columns}
+                                for a in raw_panel.columns},
+            "correlation_hedged": {a: {b: float(hedged_panel[a].corr(hedged_panel[b]))
+                                       for b in hedged_panel.columns}
+                                   for a in hedged_panel.columns},
+            "statarb_hedged_corr": float(raw_panel["statarb"].corr(hedged_panel["xsmom"])),
+        },
+        "walk_forward_raw": raw_wf,
+        "walk_forward_hedged": hedged_wf,
+    }
+
+
+def print_hedged_momentum(study: dict) -> None:
+    tb = study["trailing_beta"]
+    print(f"\n11. BETA-HEDGE THE MOMENTUM SLEEVE BEFORE IT GOES IN")
+    print(f"   Full-window beta to the market, the one section 10 reported: "
+          f"{study['full_window_beta']:+.2f} (t {study['full_window_beta_t']:+.1f}).")
+    print(f"   Trailing {study['beta_window_months']}-month beta a desk "
+          f"could actually have run, over the same {study['overlap']['n_months']} months:")
+    print(f"     mean {tb['mean']:+.2f}, range {tb['min']:+.2f} to "
+          f"{tb['max']:+.2f}, negative in {tb['share_of_months_negative']:.0%} "
+          f"of months,")
+    print(f"     {tb['at_overlap_start']:+.2f} at the start of the window and "
+          f"{tb['at_overlap_end']:+.2f} at the end.")
+    if tb["at_crash_months"]:
+        parts = ", ".join(f"{m}: {b:+.2f}" for m, b in tb["at_crash_months"].items())
+        print(f"     Hedge ratio going into the sleeve's worst months: {parts}")
+
+    fh = study["sleeve_full_history"]
+    print(f"\n   The sleeve on its own history, {fh['first']} to {fh['last']} "
+          f"({fh['months']} months):")
+    print(f"{'':>14} {'ret/yr':>8} {'vol':>8} {'Sharpe':>8} {'worst mo':>10}")
+    for name in ("raw", "hedged"):
+        r = fh[name]
+        print(f"{name:>14} {r['ann_return']:>+8.2%} {r['ann_vol']:>8.2%} "
+              f"{r['sharpe']:>+8.2f} {r['worst_month']:>+10.2%}")
+
+    ov = study["overlap"]
+    print(f"\n   On the overlap ({ov['n_months']} months):")
+    for name in ("raw", "hedged"):
+        r = ov[name]
+        print(f"{name:>14} {r['ann_return']:>+8.2%} {r['ann_vol']:>8.2%} "
+              f"{r['sharpe']:>+8.2f} {r['worst_month']:>+10.2%}")
+    print(f"   Market beta of the hedged sleeve, measured after the fact: "
+          f"{ov['market_beta_after_hedge']:+.2f}.")
+    print(f"   Correlation with statarb: {ov['correlation_raw']['statarb']['xsmom']:+.2f} "
+          f"raw, {ov['correlation_hedged']['statarb']['xsmom']:+.2f} hedged; "
+          f"with volcarry: {ov['correlation_raw']['volcarry']['xsmom']:+.2f} raw, "
+          f"{ov['correlation_hedged']['volcarry']['xsmom']:+.2f} hedged.")
+
+    print(f"\n   Walk-forward, {lookback_label(study)} months traded, "
+          f"raw momentum sleeve against hedged:")
+    print(f"\n{'scheme':>14} {'Sharpe raw':>11} {'hedged':>8} {'vol raw':>9} "
+          f"{'hedged':>8} {'w(xsmom) raw':>13} {'hedged':>8}")
+    for name in study["walk_forward_raw"]["schemes"]:
+        a = study["walk_forward_raw"]["schemes"][name]
+        b = study["walk_forward_hedged"]["schemes"][name]
+        print(f"{name:>14} {a['sharpe']:>+11.2f} {b['sharpe']:>+8.2f} "
+              f"{a['ann_vol']:>9.2%} {b['ann_vol']:>8.2%} "
+              f"{a['mean_weight']['xsmom']:>13.2f} {b['mean_weight']['xsmom']:>8.2f}")
+
+
+def lookback_label(study: dict) -> int:
+    return int(study["walk_forward_raw"]["months_traded"])
+
+
 # ---------- reporting ----------
 
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
@@ -1138,6 +1321,8 @@ def main() -> None:
     print_third_sleeve(third)
     exposures = factor_exposure_study()
     print_factor_exposures(exposures)
+    hedged = hedged_momentum_study(lookback=lookback)
+    print_hedged_momentum(hedged)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -1153,7 +1338,8 @@ def main() -> None:
                    "spread_sensitivity": spreads,
                    "spread_comovement": comovement,
                    "third_sleeve": third,
-                   "factor_exposures": exposures}, fh, indent=1,
+                   "factor_exposures": exposures,
+                   "hedged_momentum": hedged}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to

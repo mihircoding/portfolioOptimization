@@ -585,8 +585,122 @@ What was wrong was the sentence describing it. And the "what this does not
 settle" list in section 8 gets one more entry, because it is now measurable:
 the momentum sleeve as built has a market beta of −0.47, and a desk would
 beta-hedge it before allocating to it, which would change the panel the
-allocators see. Whether that helps or hurts the three-sleeve table is the next
-thing to run.
+allocators see. Section 10 runs that.
+
+### 10. Beta-hedge the momentum sleeve before it goes in
+
+Reproduce with: `python multi_strategy.py` (section 11 of the printout)
+
+Section 9 ended on a measurable question. The momentum book as built carries
+a market beta of −0.47, a desk would hedge that before allocating to the
+sleeve, and the hedge changes the panel every allocator above has been
+looking at. This section runs it.
+
+**The hedge has to be out of sample, and that rules out the −0.47.** It is a
+full-window number: fitted on the same 46 months it would then be used to
+hedge, which is the look-ahead the walk-forward in section 1 was built to
+avoid. What a desk has at the start of a month is the beta the trailing
+window said last month. So the hedge ratio here is a 36-month OLS beta on
+the sleeve's own prior history, re-estimated every month, shifted one month
+so nothing it uses is a return it is about to be applied to. The momentum
+sleeve runs from 2014, so the first full window closes in early 2017 and a
+ratio exists for every month of the overlap. `trailing_beta` is the
+function, and the test that matters is the one that changes the last month
+of the data and checks no earlier beta moves.
+
+| | |
+|---|---|
+| full-window beta, section 9 | −0.47 (t −3.0) |
+| trailing 36-month beta, mean over the overlap | −0.40 |
+| range | −0.24 to −0.67 |
+| at the start of the window / at the end | −0.24 / −0.51 |
+| months with a negative hedge ratio | 46 of 46 |
+
+The ratio a desk could have run was never the one the regression reports.
+It starts at half the full-window figure and ends above it, and the only
+thing stable about it is the sign — negative in every one of the 46 months,
+which is the Grundy–Martin mechanism from section 9 showing up as a fact
+about the path rather than an average. Hedging with −0.47 throughout would
+have been a backtest hedging with a number it did not have yet.
+
+**What the hedge does to the sleeve.**
+
+| | ret / yr | vol | Sharpe | worst month |
+|---|---|---|---|---|
+| own history, 2017-02 to 2025-12, raw | +1.85% | 16.96% | +0.11 | −18.95% |
+| same, hedged | **+6.64%** | 16.73% | **+0.40** | −16.63% |
+| overlap, 46 months, raw | −2.98% | 18.36% | −0.16 | −18.95% |
+| overlap, hedged | **+3.85%** | 17.52% | **+0.22** | −16.63% |
+
+The return moves and the volatility does not, which is what hedging a factor
+that *lost* money over the window should do: the sleeve was short a market
+that went up, the short was costing it about 7% a year, and taking the short
+out gives that back without taking much variance with it (the market
+explained 17% of the sleeve's variance, so the vol can only fall by about
+that much in the limit). On the overlap the sleeve goes from a losing
+strategy to one with a Sharpe of 0.22, which is roughly what the literature
+says mega-cap momentum earns net of costs — nothing to run a book on, but
+not the negative number the allocators have been shown since section 8.
+
+**The hedge is a trailing indicator, and the worst months show it.** The
+beta measured on the hedged sleeve after the fact is −0.09, not zero. A
+36-month window lags a beta that moves with the cycle, and it lags most
+exactly when it matters: the ratio going into the sleeve's three worst
+months was −0.36 (January 2023), −0.05 (November 2020) and −0.24 (February
+2021). The November 2020 hedge was a twentieth of the full-window figure,
+because the window ending October 2020 was mostly a bull market in which
+the book's short leg was not yet full of high-beta names. The beta the
+sleeve has in a crash reversal is built *during* the drawdown that precedes
+it, and a trailing window cannot see a drawdown that has just started. The
+worst month improves from −18.95% to −16.63%, which is the hedge helping
+with a ratio a quarter of the size it should have been.
+
+**What it does to the correlation matrix.** Stat-arb against momentum goes
+from −0.46 to −0.39 once momentum is hedged, and volatility-carry against
+momentum from −0.15 to −0.08. A sixth of the comovement between the pairs
+book and the momentum book was the two of them sharing a market exposure
+with opposite signs, not the relative-performance bet the write-up
+describes. The rest of it — the −0.39 — is that bet, and it survives.
+
+**And what it does to the allocators, which is the question.** Same 22
+months, same 24-month window, the only change is the third column of the
+panel.
+
+| scheme | Sharpe, raw | hedged | vol, raw | hedged | weight on xsmom, raw | hedged |
+|---|---|---|---|---|---|---|
+| equal weight | +0.69 | **+1.30** | 4.64% | 5.05% | 0.33 | 0.33 |
+| inverse vol | +1.60 | +1.90 | 1.02% | 1.06% | 0.03 | 0.04 |
+| risk parity | +1.39 | +1.72 | 1.05% | 1.10% | 0.04 | 0.04 |
+| HRP | +1.50 | +1.54 | 1.02% | 1.02% | 0.00 | 0.00 |
+| min variance | +1.32 | +1.45 | 1.06% | 1.05% | 0.02 | 0.01 |
+| max Sharpe | +2.52 | +2.58 | 1.29% | 1.27% | 0.00 | 0.01 |
+
+Equal weight gains 0.6 of Sharpe and nobody else gains more than 0.3, and
+the reason is the weight column: equal weight is the only scheme holding a
+third of the momentum sleeve, so it is the only scheme whose P&L the hedge
+can move much. The risk-based four hold 0–4% of it, because a 17%-vol
+stream next to two 1.5%-vol streams gets a 17-to-1 haircut whatever its
+return is, and their improvement is that small position earning +4% instead
+of −3%. Max Sharpe does not move at all — 0.3% of the book before, 0.6%
+after — and that is the finding. Mean-variance was already ignoring the
+momentum sleeve, and it goes on ignoring it once hedged, because a
+0.22-Sharpe sleeve does not earn a seat next to a 2.7-Sharpe sleeve at any
+weight the covariance can justify. Hedging turned the sleeve from "loses
+money" into "earns a little", and a little is not enough.
+
+So the section 1 story is intact. The optimizer wins here because it reads
+returns and the risk-based schemes do not, and the hedge, which changed the
+returns of the sleeve the optimizer was already not holding, changed the
+risk-based schemes more than it changed the optimizer. Equal weight is the
+allocator the hedge rescued, from 0.69 to 1.30, and it is still last among
+the six.
+
+Two things this does not charge for. A desk short-hedging with index futures
+pays financing on the short and a roll every quarter, which the hedged series
+does not; and the hedge instrument here is the equal-weight average of the
+102 names, which is not tradable — a real hedge would be an index future
+whose beta to this basket is not one, so the residual beta of −0.09 would be
+larger in practice.
 
 ### What this does not establish
 
@@ -612,6 +726,10 @@ thing to run.
   constant spread is the regime-dependent one. What is still not matched: the
   SHARE hedge's bid-ask is still a constant, and equity spreads widen for the
   same reason option spreads do.
+- **The hedge in section 10 is free and the instrument is not tradable.**
+  No financing on the short, no roll, and the factor is the equal-weight
+  universe rather than a future on it. Both make the hedged sleeve look a
+  little better than a desk would find it.
 - **Nothing here is levered to a common risk target.** Both sleeves run at
   under 2% volatility, so the combined book earns 3.5% a year at 1.3% vol. A
   real book would lever that, and leverage changes which risks matter.

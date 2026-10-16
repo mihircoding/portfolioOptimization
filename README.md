@@ -62,17 +62,24 @@ in this repository, loses by 0.8 of Sharpe the moment one sleeve is ten times
 the scale of the others. 1/N only ever meant equal *risk*; the earlier tables
 just never contained anything that could tell the difference.
 
+Hedging that market beta out of the momentum sleeve — with a trailing
+36-month ratio, since the −0.47 was not known until the window was over —
+turns it from a losing sleeve into a 0.22-Sharpe one, and the optimizer still
+does not want it (section 10). The hedge rescued equal weight, from 0.69 to
+1.30, and moved max Sharpe by 0.06, because mean-variance was already not
+holding the sleeve and a little return is not enough to change that.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-293 tests.
+301 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 293 passed
+python -m pytest -q                 # 301 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

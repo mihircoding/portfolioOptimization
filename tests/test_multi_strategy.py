@@ -442,3 +442,114 @@ def test_factor_exposure_study_reports_the_variance_share_as_r_squared():
     assert set(study["on_market"]) == {"statarb", "volcarry", "xsmom"}
     assert study["statarb_on_xsmom"]["r2"] == pytest.approx(rho ** 2)
     assert set(study["on_market_and_xsmom"]["statarb"]["beta"]) == {"market", "xsmom"}
+
+
+# ---------- 11. beta-hedge the momentum sleeve before it goes in ----------
+
+from multi_strategy import beta_hedged, hedged_momentum_study, trailing_beta
+
+
+def test_trailing_beta_is_nan_until_the_window_is_full():
+    x = factor(n=60)
+    y = (0.5 * x + factor(n=60, vol=0.01, seed=2)).rename("y")
+    beta = trailing_beta(y, x, window=36)
+    # 35 months of history give no estimate; the 36th gives the first one,
+    # which is used on the 37th month, so 36 NaNs in all
+    assert beta.isna().sum() == 36
+    assert beta.iloc[36:].notna().all()
+
+
+def test_trailing_beta_recovers_a_constant_beta():
+    x = factor(n=400)
+    y = (-0.4 * x + factor(n=400, vol=0.001, seed=2)).rename("y")
+    beta = trailing_beta(y, x, window=36).dropna()
+    assert beta.mean() == pytest.approx(-0.4, abs=0.01)
+    assert beta.std() < 0.02
+
+
+def test_trailing_beta_never_sees_the_month_it_is_used_on():
+    """Change the last month of the data and no earlier beta may move.
+
+    This is the whole point of the trailing estimate. The full-window beta in
+    section 10 was fitted on the months it would then have been used to hedge.
+    """
+    x = factor(n=100)
+    y = (0.3 * x + factor(n=100, vol=0.01, seed=2)).rename("y")
+    before = trailing_beta(y, x, window=24)
+    y2 = y.copy()
+    y2.iloc[-1] += 0.5
+    x2 = x.copy()
+    x2.iloc[-1] -= 0.5
+    after = trailing_beta(y2, x2, window=24)
+    pd.testing.assert_series_equal(before, after)
+
+
+def test_trailing_beta_lags_a_change_in_the_true_beta():
+    """A beta that flips at month 200 is still reported as the old one at
+    month 201, and only reaches the new one a window later. That lag is why
+    the hedged sleeve keeps a residual market beta after the fact."""
+    x = factor(n=400)
+    noise = factor(n=400, vol=0.001, seed=2)
+    true = pd.Series(np.where(np.arange(400) < 200, 0.5, -0.5), index=x.index)
+    y = (true * x + noise).rename("y")
+    beta = trailing_beta(y, x, window=36)
+    assert beta.iloc[200] == pytest.approx(0.5, abs=0.02)
+    assert beta.iloc[236] == pytest.approx(-0.5, abs=0.02)
+    assert 0.5 > beta.iloc[218] > -0.5
+
+
+def test_beta_hedged_removes_a_constant_exposure():
+    x = factor(n=400, mean=0.01)
+    y = (0.002 - 0.4 * x + factor(n=400, vol=0.002, seed=2)).rename("y")
+    out = beta_hedged(y, x, window=36)
+    assert list(out.columns) == ["raw", "factor", "beta", "hedged"]
+    assert len(out) == 400 - 36
+    assert abs(out["hedged"].corr(out["factor"])) < 0.1
+    assert abs(y.corr(x)) > 0.9
+
+
+def test_beta_hedged_arithmetic_is_raw_minus_beta_times_factor():
+    x = factor(n=80)
+    y = factor(n=80, vol=0.03, seed=4).rename("y")
+    out = beta_hedged(y, x, window=12)
+    recomputed = out["raw"] - out["beta"] * out["factor"]
+    pd.testing.assert_series_equal(out["hedged"], recomputed, check_names=False)
+
+
+def test_hedging_a_losing_factor_raises_the_sleeves_return():
+    """The real case: momentum was short a market that went up. Take the
+    short out and the sleeve keeps its own return without the drag."""
+    x = factor(n=400, mean=0.01, vol=0.04)
+    y = (0.001 - 0.5 * x + factor(n=400, vol=0.03, seed=2)).rename("y")
+    out = beta_hedged(y, x, window=36)
+    assert out["hedged"].mean() > out["raw"].mean()
+    assert performance(out["hedged"])["sharpe"] > performance(out["raw"])["sharpe"]
+
+
+def test_hedged_momentum_study_runs_both_panels_on_the_same_months(monkeypatch):
+    n = 120
+    idx = pd.date_range("2014-01-31", periods=n, freq="ME")
+    rng = np.random.default_rng(21)
+    market = pd.Series(rng.normal(0.008, 0.03, n), index=idx, name="market")
+    xsmom = (0.004 - 0.5 * market + rng.normal(0.0, 0.02, n)).rename("xsmom")
+    two = panel(n=60).set_index(idx[-60:])
+    three = pd.concat([two, xsmom], axis=1).dropna()
+    monkeypatch.setattr("multi_strategy.xsmom_monthly", lambda: xsmom)
+    monkeypatch.setattr("multi_strategy.market_monthly", lambda: market)
+    monkeypatch.setattr("multi_strategy.three_sleeve_panel", lambda **k: three)
+    monkeypatch.setattr("multi_strategy.momentum_crashes",
+                        lambda s, n=3: [{"month": f"{d:%Y-%m}"}
+                                        for d in s.nsmallest(n).index])
+    study = hedged_momentum_study(lookback=24, window=36)
+    raw = study["walk_forward_raw"]
+    hedged = study["walk_forward_hedged"]
+    assert raw["months_traded"] == hedged["months_traded"]
+    assert raw["first"] == hedged["first"]
+    assert study["overlap"]["n_months"] == 60
+    assert study["full_window_beta"] == pytest.approx(-0.5, abs=0.2)
+    assert abs(study["overlap"]["market_beta_after_hedge"]) < 0.15
+    assert study["trailing_beta"]["share_of_months_negative"] == 1.0
+    # a worst month before the first full window has no hedge ratio to report
+    crashes = study["trailing_beta"]["at_crash_months"]
+    assert 1 <= len(crashes) <= 3
+    assert all(b < 0 for b in crashes.values())
