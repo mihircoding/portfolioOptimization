@@ -1126,6 +1126,200 @@ def lookback_label(study: dict) -> int:
 
 # ---------- reporting ----------
 
+# ---------- 12. lever every sleeve to the same risk ----------
+
+VOL_TARGET = 0.10        # annualized vol each sleeve is scaled to before allocation
+VOL_WINDOW_MONTHS = 36   # trailing window for the two sleeves that only exist monthly
+VOL_WINDOW_DAYS = 63     # trailing window for the pairs book, which has daily P&L
+LEVERAGE_CAP = 5.0       # the most any sleeve is allowed in the capped variant
+
+
+def trailing_vol(returns: pd.Series, window: int,
+                 periods_per_year: int = MONTHS_PER_YEAR) -> pd.Series:
+    """Annualized rolling standard deviation, known one observation late.
+
+    The value at date t is the std of the `window` returns ending at t-1,
+    shifted for the same reason trailing_beta is: the vol a desk sizes month
+    t with is whatever the history said at the close of t-1. NaN until the
+    window is full.
+    """
+    vol = returns.rolling(window).std(ddof=1) * np.sqrt(periods_per_year)
+    return vol.shift(1).rename("vol")
+
+
+def statarb_trailing_vol(path: str = "sleeves/statarb/results/portfolio.json",
+                         window_days: int = VOL_WINDOW_DAYS) -> pd.Series:
+    """The pairs book's vol from its daily P&L, stamped on the month it sizes.
+
+    The other two sleeves only exist monthly and have history back to 2007
+    and 2014, so a 36-month window is available before the overlap starts.
+    The pairs book starts in January 2021: a 36-month window on its monthly
+    returns would close in 2024 and leave nothing to allocate. It does have
+    1,250 daily returns, though, and 63 of those pin a vol down better than
+    36 monthly ones do. The estimate at the last trading day of month t-1 is
+    the one month t is sized with.
+    """
+    with open(path) as fh:
+        equity = json.load(fh)["equity"]
+    series = pd.Series({pd.Timestamp(d): float(v) for d, v in equity}).sort_index()
+    daily = series.pct_change().dropna()
+    vol = daily.rolling(window_days).std(ddof=1) * np.sqrt(252)
+    monthly = vol.resample("ME").last()
+    monthly.index = monthly.index.to_period("M").to_timestamp("M")
+    return monthly.shift(1).rename("vol")
+
+
+def vol_targeted(y: pd.Series, vol: pd.Series, target: float = VOL_TARGET,
+                 max_leverage: float | None = None) -> pd.DataFrame:
+    """y scaled month by month to a constant forecast volatility.
+
+    scaled_t = y_t * target / vol_{t-1}. The ratio is the leverage the desk
+    runs that month, kept alongside so the write-up can show where it was
+    going into the months that mattered. Months before the first full window
+    are dropped, as in beta_hedged. A leverage cap is optional and off by
+    default, so the first pass shows what the rule asks for before anyone
+    decides what a prime broker would allow.
+    """
+    frame = pd.concat([y.rename("raw"), vol.rename("vol")], axis=1).dropna()
+    leverage = target / frame["vol"]
+    if max_leverage is not None:
+        leverage = leverage.clip(upper=max_leverage)
+    frame["leverage"] = leverage
+    frame["scaled"] = frame["raw"] * leverage
+    return frame
+
+
+def vol_target_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
+                     window: int = VOL_WINDOW_MONTHS,
+                     beta_window: int = BETA_WINDOW_MONTHS,
+                     cap: float = LEVERAGE_CAP) -> dict:
+    """The three-sleeve table again, with every sleeve levered to one vol.
+
+    The last unticked item in the limitations list. The sleeves run at 1.5%,
+    1.7% and 17% vol, and section 8 showed what that does to the one scheme
+    that does not read a covariance: equal weight was a momentum book with two
+    small positions attached. Every real multi-strategy desk sizes sleeves to
+    a risk budget before an allocator sees them, so this does that, with the
+    same discipline as the hedge: a trailing estimate, shifted a month, and
+    nothing in the scale factor has seen the return it multiplies.
+
+    The momentum sleeve goes in already beta-hedged, because section 10 is
+    where the panel was left. Both walk-forwards run on exactly the months
+    all three scaled sleeves exist, so the raw column here is not quite the
+    hedged column of section 10 - three months shorter at the start, which
+    is the daily window on the pairs book filling.
+
+    The uncapped rule asks for whatever leverage the vol says, which on a
+    1.5%-vol pairs book is 6x on an average month and more after a quiet one.
+    A prime broker has a view on that, so the walk-forward is also run with
+    every sleeve's leverage capped at `cap`, and the two are reported side by
+    side rather than picking the one that looks better.
+    """
+    market = market_monthly()
+    xsmom = beta_hedged(xsmom_monthly(), market, beta_window)["hedged"].rename("xsmom")
+    statarb = statarb_monthly()
+    statarb.index = statarb.index.to_period("M").to_timestamp("M")
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+
+    frames = {
+        "statarb": vol_targeted(statarb, statarb_trailing_vol(), target),
+        "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, window), target),
+        "xsmom": vol_targeted(xsmom, trailing_vol(xsmom, window), target),
+    }
+    scaled_panel = pd.DataFrame({n: f["scaled"] for n, f in frames.items()}).dropna()
+    raw_panel = pd.DataFrame({n: f["raw"] for n, f in frames.items()}).loc[scaled_panel.index]
+    leverage = pd.DataFrame({n: f["leverage"] for n, f in frames.items()}).loc[scaled_panel.index]
+    capped_panel = (raw_panel * leverage.clip(upper=cap)).loc[scaled_panel.index]
+
+    sleeves = {}
+    for name, frame in frames.items():
+        lev = leverage[name]
+        worst_raw = raw_panel[name].idxmin()
+        worst_scaled = scaled_panel[name].idxmin()
+        sleeves[name] = {
+            "overlap_raw": performance(raw_panel[name]),
+            "overlap_scaled": performance(scaled_panel[name]),
+            "own_history_raw": performance(frame["raw"]),
+            "own_history_scaled": performance(frame["scaled"]),
+            "own_history_months": int(len(frame)),
+            "own_history_first": f"{frame.index[0]:%Y-%m}",
+            "leverage": {"mean": float(lev.mean()), "min": float(lev.min()),
+                         "max": float(lev.max()), "last": float(lev.iloc[-1])},
+            "worst_raw_month": f"{worst_raw:%Y-%m}",
+            "leverage_into_worst_raw_month": float(lev.loc[worst_raw]),
+            "worst_scaled_month": f"{worst_scaled:%Y-%m}",
+            "leverage_into_worst_scaled_month": float(lev.loc[worst_scaled]),
+            # how far the realized vol of the scaled sleeve lands from the target
+            "realized_over_target": float(performance(scaled_panel[name])["ann_vol"] / target),
+            "share_of_months_capped": float((lev > cap).mean()),
+            "overlap_capped": performance(capped_panel[name]),
+        }
+
+    return {
+        "target": float(target),
+        "leverage_cap": float(cap),
+        "window_months": int(window),
+        "window_days_statarb": int(VOL_WINDOW_DAYS),
+        "n_months": int(len(scaled_panel)),
+        "first": str(scaled_panel.index[0].date()),
+        "last": str(scaled_panel.index[-1].date()),
+        "sleeves": sleeves,
+        "correlation_raw": {a: {b: float(raw_panel[a].corr(raw_panel[b]))
+                                for b in raw_panel.columns} for a in raw_panel.columns},
+        "correlation_scaled": {a: {b: float(scaled_panel[a].corr(scaled_panel[b]))
+                                   for b in scaled_panel.columns} for a in scaled_panel.columns},
+        "walk_forward_raw": walk_forward(raw_panel, lookback=lookback),
+        "walk_forward_scaled": walk_forward(scaled_panel, lookback=lookback),
+        "walk_forward_capped": walk_forward(capped_panel, lookback=lookback),
+    }
+
+
+def print_vol_target(study: dict) -> None:
+    print(f"\n12. LEVER EVERY SLEEVE TO {study['target']:.0%} VOL BEFORE ALLOCATING")
+    print(f"   Trailing {study['window_months']}-month vol for volcarry and xsmom, "
+          f"trailing {study['window_days_statarb']}-day vol from daily P&L for statarb, "
+          f"all shifted one month.")
+    print(f"   {study['n_months']} months, {study['first']} to {study['last']}.\n")
+    print(f"{'sleeve':>10} {'vol raw':>8} {'scaled':>8} {'Sharpe raw':>11} {'scaled':>8} "
+          f"{'worst raw':>10} {'scaled':>8} {'lev mean':>9} {'range':>13}")
+    for name, s in study["sleeves"].items():
+        a, b, lev = s["overlap_raw"], s["overlap_scaled"], s["leverage"]
+        print(f"{name:>10} {a['ann_vol']:>8.2%} {b['ann_vol']:>8.2%} "
+              f"{a['sharpe']:>+11.2f} {b['sharpe']:>+8.2f} "
+              f"{a['worst_month']:>+10.2%} {b['worst_month']:>+8.2%} "
+              f"{lev['mean']:>9.1f}x {lev['min']:>5.1f}-{lev['max']:<5.1f}x")
+    print()
+    for name, s in study["sleeves"].items():
+        print(f"   {name}: leverage going into its worst raw month ({s['worst_raw_month']}) "
+              f"was {s['leverage_into_worst_raw_month']:.1f}x; into its worst scaled "
+              f"month ({s['worst_scaled_month']}) {s['leverage_into_worst_scaled_month']:.1f}x.")
+    print(f"\n   On each sleeve's own history, raw -> scaled Sharpe:")
+    for name, s in study["sleeves"].items():
+        print(f"     {name:>9} from {s['own_history_first']} ({s['own_history_months']} months): "
+              f"{s['own_history_raw']['sharpe']:+.2f} -> {s['own_history_scaled']['sharpe']:+.2f}")
+    cr, cs = study["correlation_raw"], study["correlation_scaled"]
+    print(f"\n   Correlations raw -> scaled: statarb/xsmom {cr['statarb']['xsmom']:+.2f} -> "
+          f"{cs['statarb']['xsmom']:+.2f}, statarb/volcarry {cr['statarb']['volcarry']:+.2f} -> "
+          f"{cs['statarb']['volcarry']:+.2f}, volcarry/xsmom {cr['volcarry']['xsmom']:+.2f} -> "
+          f"{cs['volcarry']['xsmom']:+.2f}.")
+
+    raw, scaled = study["walk_forward_raw"], study["walk_forward_scaled"]
+    capped = study["walk_forward_capped"]
+    print(f"\n   Walk-forward, {raw['months_traded']} months traded, raw sleeves against "
+          f"levered, and levered with a {study['leverage_cap']:.0f}x cap:")
+    print(f"\n{'scheme':>14} {'Sharpe raw':>11} {'scaled':>8} {'capped':>8} {'vol raw':>9} "
+          f"{'scaled':>8} {'w(statarb)':>11} {'w(volcarry)':>12} {'w(xsmom)':>9}")
+    for name in raw["schemes"]:
+        a, b, c = raw["schemes"][name], scaled["schemes"][name], capped["schemes"][name]
+        w = b["mean_weight"]
+        print(f"{name:>14} {a['sharpe']:>+11.2f} {b['sharpe']:>+8.2f} {c['sharpe']:>+8.2f} "
+              f"{a['ann_vol']:>9.2%} {b['ann_vol']:>8.2%} "
+              f"{w['statarb']:>11.2f} {w['volcarry']:>12.2f} {w['xsmom']:>9.2f}")
+    capped_share = {n: s["share_of_months_capped"] for n, s in study["sleeves"].items()}
+    print("   Months at the cap: " + ", ".join(f"{n} {v:.0%}" for n, v in capped_share.items()))
+
+
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
     print(f"\n1. THE TWO SLEEVES   {panel.index[0]:%Y-%m} to "
           f"{panel.index[-1]:%Y-%m}, {len(panel)} months")
@@ -1323,6 +1517,8 @@ def main() -> None:
     print_factor_exposures(exposures)
     hedged = hedged_momentum_study(lookback=lookback)
     print_hedged_momentum(hedged)
+    levered = vol_target_study(lookback=lookback)
+    print_vol_target(levered)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -1339,7 +1535,8 @@ def main() -> None:
                    "spread_comovement": comovement,
                    "third_sleeve": third,
                    "factor_exposures": exposures,
-                   "hedged_momentum": hedged}, fh, indent=1,
+                   "hedged_momentum": hedged,
+                   "vol_target": levered}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to

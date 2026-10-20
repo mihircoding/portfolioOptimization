@@ -702,6 +702,135 @@ does not; and the hedge instrument here is the equal-weight average of the
 whose beta to this basket is not one, so the residual beta of −0.09 would be
 larger in practice.
 
+### 11. Lever every sleeve to the same risk, and 1/N wins
+
+Reproduce with: `python multi_strategy.py` (section 12 of the printout)
+
+The last unticked item on the list below. The sleeves run at 1.6%, 1.5% and
+17% volatility, and section 8 showed what that does to the one allocator that
+does not read a covariance: equal weight was a momentum book with two small
+positions attached, and it lost by 0.8 of Sharpe for that reason alone. Every
+multi-strategy desk sizes its sleeves to a risk budget before any allocator
+sees them. So this does that, with the same discipline as the hedge in
+section 10: each sleeve is scaled month by month to a **10% annualized vol
+target** using a trailing estimate, shifted one month, so nothing in the
+scale factor has seen the return it multiplies. `trailing_vol` and
+`vol_targeted` are the functions; the test that matters changes the last
+month of the data and checks no earlier leverage moves.
+
+The estimate is a 36-month window on the two sleeves that only exist
+monthly, which both have history back before the overlap. The pairs book
+does not — it starts in January 2021, and a 36-month window on its monthly
+returns would close in 2024 and leave nothing to allocate. It has 1,250 daily
+returns, though, and 63 of them pin a vol down better than 36 monthly ones
+do, so `statarb_trailing_vol` reads the sleeve's daily equity curve and
+stamps each month with the estimate at the close of the month before. That
+window fills in April 2021, so the panel is three months shorter than
+section 10's at the start: 43 months, 19 of them traded. The momentum sleeve
+goes in already beta-hedged, because that is where section 10 left it.
+
+**What the rule asks for, and what it does to each sleeve on its own.**
+
+| sleeve | vol, raw | scaled | Sharpe, raw | scaled | worst month, raw | scaled | leverage, mean | range |
+|---|---|---|---|---|---|---|---|---|
+| statarb | 1.57% | 8.77% | −0.53 | −0.56 | −1.17% | −7.06% | 5.7× | 3.2× to **16.2×** |
+| volcarry | 1.50% | 7.91% | **+2.56** | **+2.26** | −0.79% | −6.36% | 4.9× | 3.5× to 8.0× |
+| xsmom | 17.00% | 9.54% | +0.43 | +0.40 | −16.63% | −9.67% | 0.6× | 0.5× to 0.6× |
+
+Two things in that table before the allocators see it.
+
+The first is that the rule asks the pairs book for 16× in its quietest month.
+Nobody runs a pairs book at 16×, and the realized vol lands at 8.8% rather
+than 10% because the months the rule levers hardest are not the months that
+turn out loud. The leverage going into the sleeve's worst scaled month
+(October 2021) was 7.7×, against 4.7× going into its worst raw month: the
+scaled worst month is not the raw one, it is the one the rule walked into
+with the most leverage on.
+
+The second is that **vol-targeting costs the best sleeve 0.3 of Sharpe**, on
+the overlap (2.56 to 2.26) and on its own history since 2010 (2.45 to 2.14).
+Volatility-managed portfolios are supposed to help — the Moreira–Muir result
+is that scaling the market by inverse trailing variance raises its Sharpe,
+because vol clusters and return does not. A short-volatility sleeve is the
+case where that logic runs backwards. Its trailing vol is highest right after
+a crash, which is when the premium it sells is richest, and lowest after
+three quiet years, which is when the premium is thinnest and the next spike
+is nearest. The rule de-levers into the good months and levers into the bad
+ones, and the worst month in the sample says so. The July 2024 trade sold a
+call at a VIX of 12 on the first of the month and hedged it through a VIX of
+18 three weeks later, and the ratio going into it was **8.0×, the maximum the
+rule reached in 43 months**, because the 36-month window ending June 2024
+held nothing but quiet. The next trade, sold at 18.6 on August 1 — the
+session before the August 5 spike — broke even: that premium was priced for
+what came. The July one was not, and the rule had the sleeve at its largest
+exactly there. A vol forecast that is most confident after the quietest
+three years is most confident when it is about to be most wrong.
+
+**And what it does to the allocators.** Same 19 months, same 24-month
+estimation window, raw sleeves against levered. The third column caps every
+sleeve at 5× — a prime broker has a view on 16× — and the cap binds in 56% of
+the pairs book's months and 47% of the vol sleeve's.
+
+| scheme | Sharpe, raw | levered | capped 5× | vol, raw | levered | weight on statarb / volcarry / xsmom, levered |
+|---|---|---|---|---|---|---|
+| equal weight | +1.78 | **+2.51** | **+2.67** | 4.73% | 3.86% | 0.33 / 0.33 / 0.33 |
+| inverse vol | +2.51 | +2.22 | +2.46 | 0.86% | 4.56% | 0.29 / 0.46 / 0.24 |
+| risk parity | +2.46 | +2.23 | +2.43 | 0.85% | 4.31% | 0.31 / 0.43 / 0.26 |
+| HRP | +1.61 | +1.92 | +2.19 | 0.95% | 5.46% | 0.25 / 0.59 / 0.16 |
+| min variance | +1.75 | +1.98 | +2.20 | 0.91% | 5.00% | 0.28 / 0.53 / 0.19 |
+| max Sharpe | +2.26 | +1.94 | +2.26 | 1.26% | 8.18% | 0.04 / **0.91** / 0.05 |
+
+Equal weight goes from fourth to first and max Sharpe from third to fifth.
+Three things to say about that, in order of how much they explain.
+
+*The best sleeve was damaged by the scaling, and max Sharpe holds 91% of
+it.* Section 10 guessed the optimizer would stop concentrating in the vol
+sleeve once the others were at a comparable scale. It did not: 97% before,
+91% after, because mean-variance reads returns and the pairs sleeve still
+loses money at any scale. So max Sharpe's Sharpe is the vol sleeve's Sharpe,
+and the vol sleeve's Sharpe is what the trailing window did to it. Cap the
+leverage at 5× and the sleeve is back to 2.55 and max Sharpe is back to 2.26
+— exactly its raw number — and still fourth of six.
+
+*At equal risk, a third of a losing sleeve that hedges another is worth
+holding.* Equal weight's levered volatility is 3.86%, *lower* than its raw
+4.73%, from three sleeves that each run near 9%. Three uncorrelated sleeves
+at that scale would combine to 5.2%; the −0.41 between the pairs book and
+the momentum book takes it to 3.9%. That is the diversification section 8
+measured and no allocator except 1/N has been collecting, because the
+risk-based schemes size by the diagonal and the optimizer will not hold a
+sleeve with a negative mean whatever it hedges. The pairs sleeve lost 4.9% a
+year levered; it earned its place in the equal-weight book anyway, and the
+capped equal-weight worst month is −1.43% against max Sharpe's −3.91% at
+twice the vol.
+
+*The risk-based four became equal weight.* Inverse vol and risk parity hold
+29/46/24 and 31/43/26, which is 1/N with a tilt toward the one sleeve whose
+scaled vol came in under target. They lost Sharpe against their own raw
+columns — 2.51 to 2.22, 2.46 to 2.23 — for the same reason max Sharpe did:
+the raw versions held 40–56% of a 1.5%-vol stream, which at a common scale is
+a 46% position in the sleeve the rule damaged. A scheme that sizes by inverse
+vol on top of sleeves already sized by inverse vol is doing the same thing
+twice, and the second pass can only add the estimation noise of a second
+window.
+
+**Three months moved the table before any of this happened.** The raw column
+here is not section 10's hedged column, and the difference is instructive:
+dropping February–April 2023 from the traded months — the pairs book's daily
+window filling — moved max Sharpe from 2.58 to 2.26 and equal weight from
+1.30 to 1.78, with no change to any sleeve or any allocator. A ranking that
+reorders on three months is what the "22 out-of-sample months" caveat below
+looks like in a table, and it applies to this section as much as to the
+ones above it. The direction of the result — 1/N first at a common scale,
+last at a mismatched one — is the thing to take from it, not the second
+decimal.
+
+What this charges for and does not. The leverage is free: no financing on
+the 5× to 16× the rule asks for, no margin on the short legs, no borrow. A
+pairs book levered 6× pays for it, and a vol sleeve levered 5× is a margin
+call in the month it is levered into. The cap column is the one to read as a
+desk would, and even it is unfinanced.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
@@ -730,6 +859,12 @@ larger in practice.
   No financing on the short, no roll, and the factor is the equal-weight
   universe rather than a future on it. Both make the hedged sleeve look a
   little better than a desk would find it.
-- **Nothing here is levered to a common risk target.** Both sleeves run at
-  under 2% volatility, so the combined book earns 3.5% a year at 1.3% vol. A
-  real book would lever that, and leverage changes which risks matter.
+- ~~**Nothing here is levered to a common risk target.**~~ Done in section
+  11, and it reorders the table: at 10% vol each, equal weight goes from
+  fourth to first and max Sharpe from third to fifth, mostly because a trailing vol estimate
+  de-levers a short-vol sleeve after the crash that makes it rich and levers
+  it up after the quiet years that precede the next one — 8× going into the
+  worst month in the sample. What is still not charged: the leverage is free. No
+  financing, no margin, no borrow on 5× to 16×, and the pairs book's 16× is
+  not a number a prime broker would allow, which is why the capped column
+  exists.

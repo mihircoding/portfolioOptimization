@@ -69,17 +69,29 @@ does not want it (section 10). The hedge rescued equal weight, from 0.69 to
 1.30, and moved max Sharpe by 0.06, because mean-variance was already not
 holding the sleeve and a little return is not enough to change that.
 
+Then lever all three to the same 10% vol, on a trailing estimate shifted a
+month, and the table reorders: equal weight goes from fourth to first and max
+Sharpe from third to fifth (section 11). Part of that is 1/N finally
+collecting the −0.41 hedge between the pairs book and the momentum book at
+equal risk. The bigger part is that a trailing vol estimate is the wrong
+sizing rule for a short-volatility sleeve — it de-levers after the crash
+that makes the premium rich and levers up after the quiet years before the
+next one, and it had the vol sleeve at 8×, its maximum in the sample, going
+into the worst month. Max Sharpe held 91% of that sleeve. Cap the leverage at
+5× and every allocator improves, which is a cap doing the vol forecast's job
+better than the forecast.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-301 tests.
+311 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 301 passed
+python -m pytest -q                 # 311 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

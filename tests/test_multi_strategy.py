@@ -553,3 +553,133 @@ def test_hedged_momentum_study_runs_both_panels_on_the_same_months(monkeypatch):
     crashes = study["trailing_beta"]["at_crash_months"]
     assert 1 <= len(crashes) <= 3
     assert all(b < 0 for b in crashes.values())
+
+
+# ---------- 12. lever every sleeve to the same risk ----------
+
+from multi_strategy import (statarb_trailing_vol, trailing_vol, vol_target_study,
+                            vol_targeted)
+
+
+def test_trailing_vol_is_nan_until_the_window_is_full():
+    x = factor(n=60)
+    vol = trailing_vol(x, window=36)
+    assert vol.isna().sum() == 36
+    assert vol.iloc[36:].notna().all()
+
+
+def test_trailing_vol_recovers_a_constant_vol():
+    x = factor(n=2000, vol=0.03)
+    vol = trailing_vol(x, window=36).dropna()
+    assert vol.mean() == pytest.approx(0.03 * np.sqrt(12), rel=0.05)
+
+
+def test_trailing_vol_never_sees_the_month_it_is_used_on():
+    x = factor(n=100)
+    before = trailing_vol(x, window=24)
+    x2 = x.copy()
+    x2.iloc[-1] += 1.0
+    after = trailing_vol(x2, window=24)
+    pd.testing.assert_series_equal(before, after)
+
+
+def test_vol_targeted_lands_on_the_target_when_vol_is_constant():
+    x = factor(n=400, vol=0.03)
+    out = vol_targeted(x, trailing_vol(x, window=36), target=0.10)
+    assert list(out.columns) == ["raw", "vol", "leverage", "scaled"]
+    assert len(out) == 400 - 36
+    realized = out["scaled"].std(ddof=1) * np.sqrt(12)
+    assert realized == pytest.approx(0.10, rel=0.05)
+
+
+def test_vol_targeted_arithmetic_is_raw_times_target_over_vol():
+    x = factor(n=80, vol=0.02)
+    out = vol_targeted(x, trailing_vol(x, window=12), target=0.10)
+    pd.testing.assert_series_equal(out["leverage"], 0.10 / out["vol"], check_names=False)
+    pd.testing.assert_series_equal(out["scaled"], out["raw"] * out["leverage"],
+                                   check_names=False)
+
+
+def test_vol_targeted_leverage_cap_binds_on_a_quiet_sleeve():
+    x = factor(n=200, vol=0.004)     # 1.4% a year: asks for about 7x
+    free = vol_targeted(x, trailing_vol(x, window=36), target=0.10)
+    capped = vol_targeted(x, trailing_vol(x, window=36), target=0.10, max_leverage=3.0)
+    assert free["leverage"].min() > 3.0
+    assert (capped["leverage"] == 3.0).all()
+    assert capped["scaled"].std() < free["scaled"].std()
+
+
+def test_scaling_a_constant_vol_sleeve_leaves_its_sharpe_alone():
+    x = factor(n=400, mean=0.005, vol=0.03)
+    out = vol_targeted(x, trailing_vol(x, window=36), target=0.10)
+    assert (performance(out["scaled"])["sharpe"]
+            == pytest.approx(performance(out["raw"])["sharpe"], abs=0.05))
+
+
+def test_vol_targeting_is_still_levered_up_when_the_vol_regime_breaks():
+    """The rule sizes month t on the vol of the months before it, so the first
+    month of a vol spike is taken at the old leverage. That is why the
+    leverage going into the worst month in the write-up is the quiet-regime
+    number, and why the scaled worst month is not target / raw vol times the
+    raw worst month."""
+    rng = np.random.default_rng(3)
+    idx = pd.date_range("2000-01-31", periods=400, freq="ME")
+    vol = np.where(np.arange(400) < 200, 0.01, 0.05)
+    x = pd.Series(rng.normal(0.0, vol), index=idx, name="x")
+    out = vol_targeted(x, trailing_vol(x, window=36), target=0.10)
+    quiet = 0.10 / (0.01 * np.sqrt(12))
+    assert out["leverage"].iloc[200 - 36] == pytest.approx(quiet, rel=0.15)
+    # three years later the window is all loud and the leverage is a fifth of it
+    assert out["leverage"].iloc[236 - 36] == pytest.approx(quiet / 5, rel=0.15)
+
+
+def test_statarb_trailing_vol_stamps_the_prior_months_estimate(tmp_path):
+    days = pd.bdate_range("2021-01-04", periods=260)
+    rng = np.random.default_rng(5)
+    rets = rng.normal(0.0, 0.001, size=len(days))
+    equity = 100.0 * np.cumprod(1 + rets)
+    path = tmp_path / "portfolio.json"
+    path.write_text(pd.Series(equity, index=days).to_frame("e").reset_index()
+                    .apply(lambda r: [r["index"].strftime("%Y-%m-%d"), r["e"]], axis=1)
+                    .pipe(lambda s: '{"equity": ' + s.to_json(orient="values") + "}"))
+    vol = statarb_trailing_vol(str(path), window_days=63)
+    assert vol.index.is_month_end.all()
+    # the 63rd daily return lands on 1 April, so the first full window closes
+    # in April and the first month it can size is May
+    assert vol.dropna().index[0] == pd.Timestamp("2021-05-31")
+    daily = pd.Series(equity, index=days).pct_change().dropna()
+    april = daily.loc[:"2021-04-30"].iloc[-63:].std(ddof=1) * np.sqrt(252)
+    assert vol.loc["2021-05-31"] == pytest.approx(april)
+    # and nothing from May is in May's number
+    assert vol.loc["2021-05-31"] != pytest.approx(
+        daily.loc[:"2021-05-31"].iloc[-63:].std(ddof=1) * np.sqrt(252))
+
+
+def test_vol_target_study_runs_both_panels_on_the_same_months(monkeypatch):
+    n = 120
+    idx = pd.date_range("2014-01-31", periods=n, freq="ME")
+    rng = np.random.default_rng(21)
+    market = pd.Series(rng.normal(0.008, 0.03, n), index=idx, name="market")
+    xsmom = (0.004 - 0.5 * market + rng.normal(0.0, 0.02, n)).rename("xsmom")
+    two = panel(n=60).set_index(idx[-60:])
+    days = pd.bdate_range(idx[-60] - pd.offsets.MonthBegin(1), idx[-1])
+    daily_vol = pd.Series(0.004 * np.sqrt(12 / 252), index=days)   # ~1.4% a year, flat
+    monkeypatch.setattr("multi_strategy.xsmom_monthly", lambda: xsmom)
+    monkeypatch.setattr("multi_strategy.market_monthly", lambda: market)
+    monkeypatch.setattr("multi_strategy.statarb_monthly", lambda: two["statarb"])
+    monkeypatch.setattr("multi_strategy.volcarry_monthly", lambda **k: two["volcarry"])
+    monkeypatch.setattr("multi_strategy.statarb_trailing_vol",
+                        lambda **k: (daily_vol * np.sqrt(252)).resample("ME").last().shift(1))
+    study = vol_target_study(lookback=24, target=0.10, window=24, beta_window=36)
+    raw, scaled = study["walk_forward_raw"], study["walk_forward_scaled"]
+    assert raw["months_traded"] == scaled["months_traded"]
+    assert raw["first"] == scaled["first"]
+    for name, s in study["sleeves"].items():
+        assert 0.6 < s["realized_over_target"] < 1.6, name
+        assert s["leverage"]["min"] > 0
+    # equal weight was a momentum book with two small positions attached; at a
+    # common scale it is a third of each by risk, not only by capital
+    ew_raw = raw["schemes"]["equal weight"]["ann_vol"]
+    ew_scaled = scaled["schemes"]["equal weight"]["ann_vol"]
+    assert ew_scaled > 2 * ew_raw
+    assert 0.04 < ew_scaled < 0.10      # three ~10% sleeves, not all correlated
