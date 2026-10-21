@@ -683,3 +683,154 @@ def test_vol_target_study_runs_both_panels_on_the_same_months(monkeypatch):
     ew_scaled = scaled["schemes"]["equal weight"]["ann_vol"]
     assert ew_scaled > 2 * ew_raw
     assert 0.04 < ew_scaled < 0.10      # three ~10% sleeves, not all correlated
+
+
+# ---------- 13. size the vol sleeve on the vol it sells ----------
+
+from multi_strategy import (implied_sizing_study, implied_vol_forecast,
+                            leverage_alignment, volcarry_implied)
+
+
+def _implied_sleeve(n=120, seed=3):
+    """A sleeve whose monthly return scales with the vol it sold: r = k * iv * z."""
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2007-01-31", periods=n, freq="ME")
+    iv = pd.Series(rng.uniform(0.10, 0.40, n), index=idx, name="implied")
+    z = pd.Series(rng.normal(0.0, 1.0, n), index=idx)
+    return (0.02 * iv * z).rename("volcarry"), iv
+
+
+def test_implied_forecast_is_nan_until_there_is_history_to_fit_on():
+    r, iv = _implied_sleeve()
+    vol = implied_vol_forecast(r, iv, min_months=36)
+    assert vol.iloc[:36].isna().all()
+    assert vol.iloc[36:].notna().all()
+
+
+def test_implied_forecast_recovers_the_ratio_when_it_is_exact():
+    # r^2 = k^2 iv^2 every month, so the expanding ratio is k^2 from the first
+    # month and the forecast is sqrt(12) * k * iv_t exactly
+    idx = pd.date_range("2007-01-31", periods=48, freq="ME")
+    iv = pd.Series(np.linspace(0.10, 0.40, 48), index=idx)
+    r = pd.Series(0.05 * iv.to_numpy() * np.where(np.arange(48) % 2 == 0, 1, -1), index=idx)
+    vol = implied_vol_forecast(r, iv, min_months=12).dropna()
+    expected = np.sqrt(12) * 0.05 * iv.loc[vol.index]
+    assert np.allclose(vol, expected)
+
+
+def test_implied_forecast_never_sees_the_month_it_sizes():
+    r, iv = _implied_sleeve()
+    before = implied_vol_forecast(r, iv)
+    bumped = r.copy()
+    bumped.iloc[-1] = 0.5      # a catastrophe in the last month
+    after = implied_vol_forecast(bumped, iv)
+    # nothing earlier moves, and neither does the last month's own forecast,
+    # because the ratio it uses was closed before the month began
+    pd.testing.assert_series_equal(before, after)
+
+
+def test_implied_forecast_moves_with_this_months_implied_and_the_leverage_against_it():
+    r, iv = _implied_sleeve()
+    doubled = iv.copy()
+    doubled.iloc[-1] *= 2
+    base = implied_vol_forecast(r, iv)
+    high = implied_vol_forecast(r, doubled)
+    assert high.iloc[-1] == pytest.approx(2 * base.iloc[-1])
+    pd.testing.assert_series_equal(base.iloc[:-1], high.iloc[:-1])
+    lev_base = vol_targeted(r, base, 0.10)["leverage"].iloc[-1]
+    lev_high = vol_targeted(r, high, 0.10)["leverage"].iloc[-1]
+    assert lev_high == pytest.approx(lev_base / 2)
+
+
+def test_implied_sizing_lands_nearer_the_target_than_trailing_when_vol_is_known():
+    # the sleeve's vol genuinely is proportional to implied here, so the rule
+    # that reads implied should hit the target and the one that reads the last
+    # three years should miss it by the dispersion of implied
+    r, iv = _implied_sleeve(n=240)
+    on_implied = vol_targeted(r, implied_vol_forecast(r, iv), 0.10)["scaled"]
+    on_trailing = vol_targeted(r, trailing_vol(r, 36), 0.10)["scaled"]
+    common = on_implied.index.intersection(on_trailing.index)
+    miss_implied = abs(performance(on_implied.loc[common])["ann_vol"] - 0.10)
+    miss_trailing = abs(performance(on_trailing.loc[common])["ann_vol"] - 0.10)
+    assert miss_implied < miss_trailing
+
+
+def test_leverage_alignment_is_negative_when_the_rule_sees_the_big_months_coming():
+    r, iv = _implied_sleeve(n=240)
+    seen = vol_targeted(r, implied_vol_forecast(r, iv), 0.10)
+    # a constant forecast has no view at all, so nothing to correlate with
+    flat = vol_targeted(r, pd.Series(0.05, index=r.index), 0.10)
+    assert leverage_alignment(seen) < -0.2
+    assert abs(leverage_alignment(flat)) < 1e-12 or np.isnan(leverage_alignment(flat))
+
+
+def test_volcarry_implied_stamps_each_sale_on_its_month_end(tmp_path):
+    detail = pd.DataFrame({
+        "implied": [0.12, 0.18, 0.33],
+        "half_spread": 0.07, "spread_cost": 0.01, "premium": 1.0, "pnl": 0.4,
+    }, index=pd.to_datetime(["2020-01-02", "2020-02-03", "2020-03-02"]))
+    detail.index.name = "date"
+    path = tmp_path / "detail.csv"
+    detail.to_csv(path)
+    implied = volcarry_implied(cache=str(path))
+    assert list(implied.index) == list(pd.to_datetime(["2020-01-31", "2020-02-29", "2020-03-31"]))
+    assert implied.loc["2020-03-31"] == pytest.approx(0.33)
+
+
+def test_vol_target_study_sizes_the_vol_sleeve_on_the_forecast_it_is_handed(monkeypatch):
+    n = 120
+    idx = pd.date_range("2014-01-31", periods=n, freq="ME")
+    rng = np.random.default_rng(21)
+    market = pd.Series(rng.normal(0.008, 0.03, n), index=idx, name="market")
+    xsmom = (0.004 - 0.5 * market + rng.normal(0.0, 0.02, n)).rename("xsmom")
+    two = panel(n=60).set_index(idx[-60:])
+    days = pd.bdate_range(idx[-60] - pd.offsets.MonthBegin(1), idx[-1])
+    daily_vol = pd.Series(0.004 * np.sqrt(12 / 252), index=days)
+    monkeypatch.setattr("multi_strategy.xsmom_monthly", lambda: xsmom)
+    monkeypatch.setattr("multi_strategy.market_monthly", lambda: market)
+    monkeypatch.setattr("multi_strategy.statarb_monthly", lambda: two["statarb"])
+    monkeypatch.setattr("multi_strategy.volcarry_monthly", lambda **k: two["volcarry"])
+    monkeypatch.setattr("multi_strategy.statarb_trailing_vol",
+                        lambda **k: (daily_vol * np.sqrt(252)).resample("ME").last().shift(1))
+    # 2% a year, flat, on the months the trailing rule would also have sized
+    handed = pd.Series(0.02, index=idx[-60:][24:], name="vol")
+    study = vol_target_study(lookback=24, target=0.10, window=24, beta_window=36,
+                             volcarry_vol=handed)
+    lev = study["sleeves"]["volcarry"]["leverage"]
+    assert lev["min"] == pytest.approx(5.0) and lev["max"] == pytest.approx(5.0)
+    # and the other two sleeves were sized exactly as before
+    default = vol_target_study(lookback=24, target=0.10, window=24, beta_window=36)
+    for name in ("statarb", "xsmom"):
+        assert study["sleeves"][name]["leverage"] == default["sleeves"][name]["leverage"]
+
+
+def test_implied_sizing_study_runs_both_allocator_panels_on_the_same_months(monkeypatch):
+    n = 120
+    idx = pd.date_range("2014-01-31", periods=n, freq="ME")
+    rng = np.random.default_rng(8)
+    market = pd.Series(rng.normal(0.008, 0.03, n), index=idx, name="market")
+    xsmom = (0.004 - 0.5 * market + rng.normal(0.0, 0.02, n)).rename("xsmom")
+    volcarry, iv = _implied_sleeve(n=n, seed=4)
+    volcarry.index = idx
+    iv.index = idx
+    statarb = pd.Series(rng.normal(0.0, 0.004, 60), index=idx[-60:], name="statarb")
+    days = pd.bdate_range(idx[-60] - pd.offsets.MonthBegin(1), idx[-1])
+    daily_vol = pd.Series(0.004 * np.sqrt(12 / 252), index=days)
+    monkeypatch.setattr("multi_strategy.xsmom_monthly", lambda: xsmom)
+    monkeypatch.setattr("multi_strategy.market_monthly", lambda: market)
+    monkeypatch.setattr("multi_strategy.statarb_monthly", lambda: statarb)
+    monkeypatch.setattr("multi_strategy.volcarry_monthly", lambda **k: volcarry)
+    monkeypatch.setattr("multi_strategy.volcarry_implied", lambda **k: iv)
+    monkeypatch.setattr("multi_strategy.statarb_trailing_vol",
+                        lambda **k: (daily_vol * np.sqrt(252)).resample("ME").last().shift(1))
+    levered = vol_target_study(lookback=24, target=0.10, window=36, beta_window=36)
+    study = implied_sizing_study(levered, lookback=24, target=0.10, window=36)
+    tr, im = study["walk_forward_trailing"], study["walk_forward_implied"]
+    assert tr["months_traded"] == im["months_traded"]
+    assert tr["first"] == im["first"]
+    assert study["sleeve"]["trailing"]["own_history"]["sharpe"] != study["sleeve"]["implied"]["own_history"]["sharpe"]
+    # the trailing column is section 11's number, not a re-estimate of it
+    assert tr == levered["walk_forward_scaled"]
+    # and both rules are reported on one set of months
+    assert set(study["sleeve"]["trailing"]["leverage_into_worst_months"]) == \
+        set(study["sleeve"]["implied"]["leverage_into_worst_months"])

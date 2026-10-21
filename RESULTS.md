@@ -831,6 +831,119 @@ pairs book levered 6× pays for it, and a vol sleeve levered 5× is a margin
 call in the month it is levered into. The cap column is the one to read as a
 desk would, and even it is unfinanced.
 
+### 12. Size the vol sleeve on the vol it sells, and the trailing rule's loss comes back — in one month
+
+Reproduce with: `python multi_strategy.py` (section 13 of the printout)
+
+Section 11 ended on a diagnosis: a trailing estimate is the wrong sizing
+signal for a short-volatility sleeve, because it is lowest after the quiet
+years that precede a spike and highest after the crash that makes the
+premium rich. The obvious test is to size on the vol the sleeve is actually
+selling. The call goes on at the first session of the month at a known
+implied vol, so that number is the one thing about month *t* a desk has in
+hand on day one — no window, no shift, no argument about lookahead.
+`volcarry_implied` reads it off the trade log and `implied_vol_forecast`
+turns it into a forecast of the sleeve's own vol:
+
+    var_t = β_{t−1} · implied_t²
+
+with β the ratio of the sleeve's summed squared returns to its summed squared
+implieds over every month before *t* — an expanding regression through the
+origin, so the ratio at *t* has not seen month *t*, and the only thing about
+month *t* in the forecast is the implied. The sleeve's P&L is vega times the
+gap between the vol sold and the vol that happened, so its scale should move
+with the level of vol, and the ratio is what says by how much. It needs 36
+months to fit, which puts its first forecast in January 2010, where the
+36-month trailing rule's is, so the two run on the same 179 months.
+
+**On the sleeve's own history, 2010–2024.** Both rules target 10%, both
+uncapped; the capped column is the 5× cap of section 11. The last three
+columns are the leverage each rule had on going into the sleeve's three
+worst raw months.
+
+| rule | Sharpe | capped 5× | vol | leverage, mean | range | corr(leverage, \|return\|) | Mar 2020 | Aug 2011 | Feb 2018 |
+|---|---|---|---|---|---|---|---|---|---|
+| none | +2.45 | | 1.87% | | | | | | |
+| trailing 36-month | +2.14 | +2.37 | 10.81% | 5.5× | 2.9× to 10.4× | −0.15 | **6.0×** | 3.1× | 6.4× |
+| implied, expanding β | **+2.66** | **+2.67** | 7.72% | 5.0× | 1.4× to 8.8× | **−0.41** | **2.5×** | 3.5× | 6.2× |
+
+The prediction was that sizing on implied would put the Sharpe back above
+2.5 at a constant risk. It does: 2.66, against 2.14 on trailing and 2.45
+unsized, so the rule a desk would run beats the rule section 11 ran by half
+a point of Sharpe over fifteen years, and beats no rule at all. The
+correlation column is the mechanism. A sizing rule exists to be small in
+the big months, so that number should be negative, and the implied rule's
+is nearly three times the trailing rule's: it anticipates the big months
+and the trailing rule remembers them.
+
+Then the last three columns say where the half point came from, and it is
+one month. The March 2020 trade sold a call on March 2 at an implied of 33
+— the week of February 24 had already happened — and lost 2.7% raw, the
+worst month in the sample. The trailing window ending February 2020 held
+three quiet years and had the sleeve at 6.0×; the implied rule read the 33
+and had it at 2.5×. That is the difference between a −16.2% month and a
+−7.0% one, and it is most of the difference between 2.14 and 2.66. Take
+2020 out and the two rules are 2.52 and 2.91, with the unsized sleeve at
+2.85 between them: the implied rule still wins, by less, and the trailing
+rule still loses to not sizing at all.
+
+The other two columns are the limit of the method. August 2011 was sold at
+24 after the debt-ceiling week, and both rules had it at 3×. February 2018
+was sold at 13 on the first of the month and the VIX tripled on the fifth;
+both rules had it at 6×, because an implied of 13 is a quiet market and
+nothing about the morning of February 1 said otherwise. **The implied rule
+knows about a crash that has started. It does not know about one that has
+not**, and neither does anything else that is known on day one. The same
+holds for July 2024, section 11's worst month on the overlap: sold at 12,
+the implied rule had it at 6.9× against the trailing rule's 8.0×. Less, not
+little.
+
+One more number in that table to be honest about: the implied rule's
+realized vol is 7.7%, not 10%. The ratio is a ratio of two sums of squares,
+so it is dominated by the months that have the most of them, and 2008 sits
+in every expanding window from 2010 on. In a quiet year the forecast runs
+hot and the sleeve is undersized by a quarter. The rule got the Sharpe
+right and the level wrong, and the level is what the allocators see.
+
+**On the overlap, and what the allocators make of it.** The 19 traded
+months are all after April 2021, and nothing in them is March 2020.
+
+| | raw | trailing | implied | trailing, capped | implied, capped |
+|---|---|---|---|---|---|
+| volcarry Sharpe, overlap | +2.56 | +2.26 | +2.42 | +2.55 | +2.55 |
+| volcarry vol, overlap | 1.50% | 7.91% | 6.53% | | |
+
+| scheme | Sharpe: trailing | implied | trailing, capped 5× | implied, capped 5× | weight on volcarry, implied |
+|---|---|---|---|---|---|
+| equal weight | +2.51 | +2.51 | **+2.67** | +2.60 | 0.33 |
+| inverse vol | +2.22 | +2.26 | +2.46 | +2.41 | 0.49 |
+| risk parity | +2.23 | +2.25 | +2.43 | +2.37 | 0.46 |
+| HRP | +1.92 | +1.97 | +2.19 | +2.12 | 0.65 |
+| min variance | +1.98 | +2.02 | +2.20 | +2.14 | 0.59 |
+| max Sharpe | +1.94 | +1.99 | +2.26 | +2.23 | 0.92 |
+
+Uncapped, every allocator gains 0.04 or 0.05 from the better sizing rule,
+which is the sleeve's 2.26 going to 2.42 passed through whatever weight it
+holds. Capped, every allocator *loses* 0.03 to 0.07, and the reason is the
+level, not the Sharpe: with the cap on, the sleeve's Sharpe is 2.55 under
+either rule, but the implied rule runs it at 6.5% vol where the trailing
+rule ran it at 7.9%, so a third of it is a smaller position in the best
+sleeve and equal weight collects less of it. On these 19 months a 5× cap on
+a trailing estimate already delivered everything implied sizing delivers,
+because the months that separate the two rules are not in the sample. The
+ranking is untouched: 1/N first, max Sharpe at 92% in the sleeve.
+
+What to take from this, in order. The rule a desk would run is the implied
+one; it is worth half a point of Sharpe on the sleeve over fifteen years and
+all of it is in the one month the overlap does not contain. The rule's
+failure mode is the one every sizing rule has — it cannot see a spike from a
+quiet market — and it shares that with the cap, which is why the cap did as
+well. And the thing the implied rule gets wrong, the level, is a one-number
+calibration problem (a β that forgets 2008 would fix it and would also have
+been at 6× into March 2020), which is the kind of trade-off a vol desk
+argues about and this study now has a table for. The leverage is still
+free: no financing, no margin, no borrow, on either rule.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
@@ -864,7 +977,11 @@ desk would, and even it is unfinanced.
   fourth to first and max Sharpe from third to fifth, mostly because a trailing vol estimate
   de-levers a short-vol sleeve after the crash that makes it rich and levers
   it up after the quiet years that precede the next one — 8× going into the
-  worst month in the sample. What is still not charged: the leverage is free. No
+  worst month in the sample. Section 12 sizes that sleeve on the implied vol
+  it sells instead, which is known on day one, and gets the half point of
+  Sharpe back on the sleeve's own history — in March 2020, which the overlap
+  does not contain, so the allocators barely move. What is still not charged:
+  the leverage is free. No
   financing, no margin, no borrow on 5× to 16×, and the pairs book's 16× is
   not a number a prime broker would allow, which is why the capped column
   exists.

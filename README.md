@@ -81,17 +81,27 @@ into the worst month. Max Sharpe held 91% of that sleeve. Cap the leverage at
 5× and every allocator improves, which is a cap doing the vol forecast's job
 better than the forecast.
 
+So size that sleeve on the vol it actually sells — the implied vol of the
+call, known the morning it goes on — and the half point of Sharpe comes back
+on the sleeve's own history: 2.66 against 2.14 on trailing (section 12).
+Nearly all of it is March 2020, where the implied rule read a 33 and had the
+sleeve at 2.5× while the trailing window, full of quiet years, had it at 6×.
+The rule still cannot see a spike from a quiet market — February 2018 was
+sold at 13 and both rules were at 6× — and the 19 months the allocators are
+tested on contain no 2020, so there a 5× cap on the trailing estimate already
+delivered everything implied sizing does.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-311 tests.
+320 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 311 passed
+python -m pytest -q                 # 320 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

@@ -1192,7 +1192,8 @@ def vol_targeted(y: pd.Series, vol: pd.Series, target: float = VOL_TARGET,
 def vol_target_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
                      window: int = VOL_WINDOW_MONTHS,
                      beta_window: int = BETA_WINDOW_MONTHS,
-                     cap: float = LEVERAGE_CAP) -> dict:
+                     cap: float = LEVERAGE_CAP,
+                     volcarry_vol: pd.Series | None = None) -> dict:
     """The three-sleeve table again, with every sleeve levered to one vol.
 
     The last unticked item in the limitations list. The sleeves run at 1.5%,
@@ -1214,6 +1215,12 @@ def vol_target_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET
     A prime broker has a view on that, so the walk-forward is also run with
     every sleeve's leverage capped at `cap`, and the two are reported side by
     side rather than picking the one that looks better.
+
+    volcarry_vol : a vol forecast for the vol sleeve to size on instead of
+        its trailing estimate, on the same month-end index and already
+        shifted so that the value at t was known before t. Section 12 passes
+        the implied one; the other two sleeves are sized as above either way,
+        so the only thing that differs between the two runs is that forecast.
     """
     market = market_monthly()
     xsmom = beta_hedged(xsmom_monthly(), market, beta_window)["hedged"].rename("xsmom")
@@ -1224,7 +1231,8 @@ def vol_target_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET
 
     frames = {
         "statarb": vol_targeted(statarb, statarb_trailing_vol(), target),
-        "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, window), target),
+        "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, window)
+                                 if volcarry_vol is None else volcarry_vol, target),
         "xsmom": vol_targeted(xsmom, trailing_vol(xsmom, window), target),
     }
     scaled_panel = pd.DataFrame({n: f["scaled"] for n, f in frames.items()}).dropna()
@@ -1318,6 +1326,182 @@ def print_vol_target(study: dict) -> None:
               f"{w['statarb']:>11.2f} {w['volcarry']:>12.2f} {w['xsmom']:>9.2f}")
     capped_share = {n: s["share_of_months_capped"] for n, s in study["sleeves"].items()}
     print("   Months at the cap: " + ", ".join(f"{n} {v:.0%}" for n, v in capped_share.items()))
+
+
+# ---------- 13. size the vol sleeve on the vol it sells ----------
+
+IMPLIED_FIT_MIN_MONTHS = 36   # months of history before the implied rule forecasts anything
+
+
+def volcarry_implied(**kwargs) -> pd.Series:
+    """The implied vol the sleeve sold each month, stamped on the month it sizes.
+
+    volcarry_detail keeps the implied vol of the call sold on the first
+    session of each month. That number is known the morning the trade goes
+    on, so stamping it on the month it belongs to is not a shift that needs
+    arguing about: the vol sold in month t is the one thing about month t a
+    desk does know on day one.
+    """
+    detail = volcarry_detail(**kwargs)
+    implied = detail["implied"].copy()
+    implied.index = implied.index.to_period("M").to_timestamp("M")
+    return implied.rename("implied")
+
+
+def implied_vol_forecast(returns: pd.Series, implied: pd.Series,
+                         min_months: int = IMPLIED_FIT_MIN_MONTHS) -> pd.Series:
+    """The sleeve's vol for month t, forecast from the implied vol it sells in t.
+
+    The sleeve's monthly return is a short call's hedged P&L, and that P&L is
+    vega times the gap between the vol sold and the vol that happened, so
+    its scale moves with the level of vol. The forecast uses that:
+
+        var_t = beta_{t-1} * implied_t^2
+
+    with beta the ratio of the sleeve's summed squared returns to the summed
+    squared implieds over every month before t - an expanding regression
+    through the origin, so beta at t has not seen month t and the only thing
+    about month t in the forecast is the implied, which was known on day
+    one. Annualized the same way trailing_vol is, so the two forecasts are
+    the same quantity and vol_targeted can take either. NaN until there are
+    `min_months` of history to fit on, which on this sleeve means the
+    forecast starts in 2010, where the 36-month trailing rule's does.
+
+    The fit is expanding rather than rolling on purpose. A ratio of two sums
+    of squares is dominated by the months with the most of them, and a
+    36-month window that happens to contain 2008 or 2020 fits a different
+    sleeve from one that does not. Everything since 2007 is a better estimate
+    of how this P&L scales with vol than the last three years are, and the
+    rule has no business forgetting the one crash it has seen.
+    """
+    frame = pd.concat([returns.rename("r"), implied.rename("iv")], axis=1).dropna()
+    beta = ((frame["r"] ** 2).cumsum() / (frame["iv"] ** 2).cumsum()).shift(1)
+    beta.iloc[:min_months] = np.nan
+    forecast = np.sqrt(MONTHS_PER_YEAR * beta) * frame["iv"]
+    return forecast.rename("vol")
+
+
+def leverage_alignment(frame: pd.DataFrame) -> float:
+    """Correlation between the leverage a rule chose and the size of the move
+    it chose it for. A sizing rule exists to be small in the big months, so
+    this should be negative, and the more negative the better the rule
+    anticipated rather than remembered."""
+    return float(frame["leverage"].corr(frame["raw"].abs()))
+
+
+def implied_sizing_study(levered: dict, lookback: int = LOOKBACK_MONTHS,
+                         target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
+                         cap: float = LEVERAGE_CAP,
+                         min_months: int = IMPLIED_FIT_MIN_MONTHS) -> dict:
+    """Section 11's finding was that a trailing estimate is the wrong sizing
+    signal for a short-vol sleeve. This sizes it on implied instead, which is
+    the premium being sold and is known before the month starts, and reruns
+    the sleeve on its own and the allocators on top of it.
+
+    `levered` is the section 11 study, so the trailing-rule column of every
+    table here is that section's number and not a re-estimate of it.
+    """
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    implied = volcarry_implied()
+
+    rules = {
+        "trailing": vol_targeted(volcarry, trailing_vol(volcarry, window), target),
+        "implied": vol_targeted(volcarry, implied_vol_forecast(volcarry, implied, min_months), target),
+    }
+    # Same months for both, so the own-history columns are comparable: the
+    # trailing rule's first forecast and the implied rule's land on the same
+    # month on this sleeve, but a different min_months would move one.
+    common = rules["trailing"].index.intersection(rules["implied"].index)
+    rules = {name: frame.loc[common] for name, frame in rules.items()}
+    overlap_start = pd.Timestamp(levered["first"])
+
+    worst = volcarry.loc[common].nsmallest(3).index
+    sleeve = {}
+    for name, frame in rules.items():
+        on_overlap = frame.loc[overlap_start:]
+        capped = frame["raw"] * frame["leverage"].clip(upper=cap)
+        sleeve[name] = {
+            "own_history": performance(frame["scaled"]),
+            "own_history_capped": performance(capped),
+            # the one year that separates the two rules, left out, so the
+            # write-up can say how much of the gap is that year
+            "own_history_ex_2020": performance(frame["scaled"][frame.index.year != 2020]),
+            "overlap": performance(on_overlap["scaled"]),
+            "overlap_capped": performance(capped.loc[overlap_start:]),
+            "leverage": {"mean": float(frame["leverage"].mean()),
+                         "min": float(frame["leverage"].min()),
+                         "max": float(frame["leverage"].max())},
+            "realized_over_target": float(performance(frame["scaled"])["ann_vol"] / target),
+            "alignment": leverage_alignment(frame),
+            "leverage_into_worst_months": {f"{d:%Y-%m}": float(frame["leverage"].loc[d])
+                                           for d in worst},
+            "share_of_months_capped": float((frame["leverage"] > cap).mean()),
+        }
+    raw = performance(volcarry.loc[common])
+    forecasts = pd.DataFrame({n: f["vol"] for n, f in rules.items()})
+
+    with_implied = vol_target_study(lookback=lookback, target=target, window=window,
+                                    cap=cap, volcarry_vol=rules["implied"]["vol"])
+    return {
+        "target": float(target),
+        "leverage_cap": float(cap),
+        "min_months": int(min_months),
+        "n_months": int(len(common)),
+        "first": f"{common[0]:%Y-%m}",
+        "last": f"{common[-1]:%Y-%m}",
+        "worst_months": [f"{d:%Y-%m}" for d in worst],
+        "raw_own_history": raw,
+        "raw_own_history_ex_2020": performance(volcarry.loc[common][common.year != 2020]),
+        "raw_overlap": performance(volcarry.loc[overlap_start:]),
+        "forecast_correlation": float(forecasts["trailing"].corr(forecasts["implied"])),
+        "sleeve": sleeve,
+        "walk_forward_trailing": levered["walk_forward_scaled"],
+        "walk_forward_trailing_capped": levered["walk_forward_capped"],
+        "walk_forward_implied": with_implied["walk_forward_scaled"],
+        "walk_forward_implied_capped": with_implied["walk_forward_capped"],
+        "volcarry_on_overlap": with_implied["sleeves"]["volcarry"],
+    }
+
+
+def print_implied_sizing(study: dict) -> None:
+    print(f"\n13. SIZE THE VOL SLEEVE ON THE VOL IT SELLS")
+    print(f"   Implied vol at the sale, times an expanding ratio fitted on the months "
+          f"before, against the trailing {VOL_WINDOW_MONTHS}-month rule of section 12.")
+    print(f"   {study['n_months']} months, {study['first']} to {study['last']}; "
+          f"the two forecasts correlate {study['forecast_correlation']:+.2f}.\n")
+    raw = study["raw_own_history"]
+    print(f"{'rule':>10} {'Sharpe':>7} {'capped':>7} {'ret':>8} {'vol':>7} "
+          f"{'lev mean':>9} {'range':>12} {'corr(lev,|r|)':>14} "
+          + " ".join(f"{m:>8}" for m in study["worst_months"]))
+    print(f"{'none':>10} {raw['sharpe']:>+7.2f} {'':>7} {raw['ann_return']:>8.2%} "
+          f"{raw['ann_vol']:>7.2%}")
+    for name, s in study["sleeve"].items():
+        own, lev = s["own_history"], s["leverage"]
+        print(f"{name:>10} {own['sharpe']:>+7.2f} {s['own_history_capped']['sharpe']:>+7.2f} "
+              f"{own['ann_return']:>8.2%} {own['ann_vol']:>7.2%} "
+              f"{lev['mean']:>8.1f}x {lev['min']:>5.1f}-{lev['max']:<5.1f}x "
+              f"{s['alignment']:>+14.2f} "
+              + " ".join(f"{v:>7.1f}x" for v in s["leverage_into_worst_months"].values()))
+    print(f"   Without 2020: raw {study['raw_own_history_ex_2020']['sharpe']:+.2f}, "
+          + ", ".join(f"{n} {s['own_history_ex_2020']['sharpe']:+.2f}"
+                      for n, s in study["sleeve"].items()) + ".")
+    ov = study["raw_overlap"]
+    print(f"   On the overlap: raw {ov['sharpe']:+.2f}, "
+          + ", ".join(f"{n} {s['overlap']['sharpe']:+.2f} (capped {s['overlap_capped']['sharpe']:+.2f})"
+                      for n, s in study["sleeve"].items()) + ".")
+
+    tr, im = study["walk_forward_trailing"], study["walk_forward_implied"]
+    trc, imc = study["walk_forward_trailing_capped"], study["walk_forward_implied_capped"]
+    print(f"\n   Walk-forward, {im['months_traded']} months traded, the vol sleeve sized on "
+          f"trailing against implied, uncapped and capped at {study['leverage_cap']:.0f}x:")
+    print(f"\n{'scheme':>14} {'trailing':>9} {'implied':>8} {'tr capped':>10} {'im capped':>10} "
+          f"{'w(volcarry) tr':>15} {'im':>6}")
+    for name in im["schemes"]:
+        print(f"{name:>14} {tr['schemes'][name]['sharpe']:>+9.2f} {im['schemes'][name]['sharpe']:>+8.2f} "
+              f"{trc['schemes'][name]['sharpe']:>+10.2f} {imc['schemes'][name]['sharpe']:>+10.2f} "
+              f"{tr['schemes'][name]['mean_weight']['volcarry']:>15.2f} "
+              f"{im['schemes'][name]['mean_weight']['volcarry']:>6.2f}")
 
 
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
@@ -1519,6 +1703,8 @@ def main() -> None:
     print_hedged_momentum(hedged)
     levered = vol_target_study(lookback=lookback)
     print_vol_target(levered)
+    implied = implied_sizing_study(levered, lookback=lookback)
+    print_implied_sizing(implied)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -1536,7 +1722,8 @@ def main() -> None:
                    "third_sleeve": third,
                    "factor_exposures": exposures,
                    "hedged_momentum": hedged,
-                   "vol_target": levered}, fh, indent=1,
+                   "vol_target": levered,
+                   "implied_sizing": implied}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to

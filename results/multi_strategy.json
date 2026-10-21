@@ -1550,5 +1550,533 @@
     }
    }
   }
+ },
+ "implied_sizing": {
+  "target": 0.1,
+  "leverage_cap": 5.0,
+  "min_months": 36,
+  "n_months": 179,
+  "first": "2010-01",
+  "last": "2024-11",
+  "worst_months": [
+   "2020-03",
+   "2011-08",
+   "2018-02"
+  ],
+  "raw_own_history": {
+   "ann_return": 0.045861430627452744,
+   "ann_vol": 0.018743148580463224,
+   "sharpe": 2.4468370631845735,
+   "worst_month": -0.0269697994637291,
+   "hit_rate": 0.8044692737430168
+  },
+  "raw_own_history_ex_2020": {
+   "ann_return": 0.04624114362617004,
+   "ann_vol": 0.01621175656573684,
+   "sharpe": 2.852321612322972,
+   "worst_month": -0.0135925315586402,
+   "hit_rate": 0.8143712574850299
+  },
+  "raw_overlap": {
+   "ann_return": 0.03837566395433113,
+   "ann_vol": 0.01497821241369149,
+   "sharpe": 2.562099060582969,
+   "worst_month": -0.0079100927754407,
+   "hit_rate": 0.7441860465116279
+  },
+  "forecast_correlation": 0.5391199966988626,
+  "sleeve": {
+   "trailing": {
+    "own_history": {
+     "ann_return": 0.23168582715090572,
+     "ann_vol": 0.10807178701864968,
+     "sharpe": 2.1438141585548527,
+     "worst_month": -0.16218825468621081,
+     "hit_rate": 0.8044692737430168
+    },
+    "own_history_capped": {
+     "ann_return": 0.19640490571966945,
+     "ann_vol": 0.08282162684425133,
+     "sharpe": 2.371420523880979,
+     "worst_month": -0.1348489973186455,
+     "hit_rate": 0.8044692737430168
+    },
+    "own_history_ex_2020": {
+     "ann_return": 0.24269366883845478,
+     "ann_vol": 0.09614677406416967,
+     "sharpe": 2.524199810141084,
+     "worst_month": -0.07148059180156872,
+     "hit_rate": 0.8143712574850299
+    },
+    "overlap": {
+     "ann_return": 0.1784919558899698,
+     "ann_vol": 0.07911941754156991,
+     "sharpe": 2.2559816722132573,
+     "worst_month": -0.06361407532525075,
+     "hit_rate": 0.7441860465116279
+    },
+    "overlap_capped": {
+     "ann_return": 0.1600635172369971,
+     "ann_vol": 0.06287852142858202,
+     "sharpe": 2.545599253932818,
+     "worst_month": -0.0395504638772035,
+     "hit_rate": 0.7441860465116279
+    },
+    "leverage": {
+     "mean": 5.491229775693368,
+     "min": 2.8866816425303936,
+     "max": 10.388511846609022
+    },
+    "realized_over_target": 1.0807178701864968,
+    "alignment": -0.15400586260007257,
+    "leverage_into_worst_months": {
+     "2020-03": 6.013698948868088,
+     "2011-08": 3.072238119641244,
+     "2018-02": 6.353052127080408
+    },
+    "share_of_months_capped": 0.6424581005586593
+   },
+   "implied": {
+    "own_history": {
+     "ann_return": 0.2057509599943229,
+     "ann_vol": 0.07723033654844637,
+     "sharpe": 2.6641209813355653,
+     "worst_month": -0.0695311414202582,
+     "hit_rate": 0.8044692737430168
+    },
+    "own_history_capped": {
+     "ann_return": 0.18671456320851804,
+     "ann_vol": 0.06980293583512709,
+     "sharpe": 2.6748812349316293,
+     "worst_month": -0.06702818994563729,
+     "hit_rate": 0.8044692737430168
+    },
+    "own_history_ex_2020": {
+     "ann_return": 0.21351410680192,
+     "ann_vol": 0.07337780901026777,
+     "sharpe": 2.909791252721145,
+     "worst_month": -0.0695311414202582,
+     "hit_rate": 0.8143712574850299
+    },
+    "overlap": {
+     "ann_return": 0.1580561063693926,
+     "ann_vol": 0.06532702223799532,
+     "sharpe": 2.4194598338429154,
+     "worst_month": -0.05471308335027364,
+     "hit_rate": 0.7441860465116279
+    },
+    "overlap_capped": {
+     "ann_return": 0.15487035779358888,
+     "ann_vol": 0.0607301459334689,
+     "sharpe": 2.550139727364602,
+     "worst_month": -0.0395504638772035,
+     "hit_rate": 0.7441860465116279
+    },
+    "leverage": {
+     "mean": 4.962989683246059,
+     "min": 1.4088846112992912,
+     "max": 8.80940413185792
+    },
+    "realized_over_target": 0.7723033654844637,
+    "alignment": -0.4057425851974348,
+    "leverage_into_worst_months": {
+     "2020-03": 2.485305463089615,
+     "2011-08": 3.4500397859183503,
+     "2018-02": 6.1797888736646645
+    },
+    "share_of_months_capped": 0.4748603351955307
+   }
+  },
+  "walk_forward_trailing": {
+   "months_traded": 19,
+   "first": "2023-05-31",
+   "last": "2024-11-30",
+   "schemes": {
+    "equal weight": {
+     "ann_return": 0.09699346680836221,
+     "ann_vol": 0.03857018605633949,
+     "sharpe": 2.5147264435458987,
+     "worst_month": -0.020818254180608693,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.3333,
+      "volcarry": 0.3333,
+      "xsmom": 0.3333
+     },
+     "weight_on_statarb": 0.33333333333333326
+    },
+    "inverse vol": {
+     "ann_return": 0.10152596374684072,
+     "ann_vol": 0.04563564283142391,
+     "sharpe": 2.224707650593928,
+     "worst_month": -0.03132594891813205,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.293,
+      "volcarry": 0.4629,
+      "xsmom": 0.2441
+     },
+     "weight_on_statarb": 0.29301078468725655
+    },
+    "risk parity": {
+     "ann_return": 0.09637104902944116,
+     "ann_vol": 0.04314920328608151,
+     "sharpe": 2.233437507304503,
+     "worst_month": -0.028802331881988864,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.3148,
+      "volcarry": 0.43,
+      "xsmom": 0.2552
+     },
+     "weight_on_statarb": 0.3148278415454334
+    },
+    "HRP": {
+     "ann_return": 0.10466309567323424,
+     "ann_vol": 0.05464437985178618,
+     "sharpe": 1.9153496838488338,
+     "worst_month": -0.0428538263238136,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2474,
+      "volcarry": 0.5877,
+      "xsmom": 0.1649
+     },
+     "weight_on_statarb": 0.24743386237275175
+    },
+    "min variance": {
+     "ann_return": 0.09914922365596472,
+     "ann_vol": 0.04998600932427447,
+     "sharpe": 1.9835394942763585,
+     "worst_month": -0.03791359610320829,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2754,
+      "volcarry": 0.5314,
+      "xsmom": 0.1931
+     },
+     "weight_on_statarb": 0.27544820414705634
+    },
+    "max Sharpe": {
+     "ann_return": 0.1591765040958908,
+     "ann_vol": 0.08184589062824069,
+     "sharpe": 1.9448319625343218,
+     "worst_month": -0.05920839180646104,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.0386,
+      "volcarry": 0.9144,
+      "xsmom": 0.047
+     },
+     "weight_on_statarb": 0.03856399527832397
+    }
+   }
+  },
+  "walk_forward_trailing_capped": {
+   "months_traded": 19,
+   "first": "2023-05-31",
+   "last": "2024-11-30",
+   "schemes": {
+    "equal weight": {
+     "ann_return": 0.08155135518793881,
+     "ann_vol": 0.03054411077911462,
+     "sharpe": 2.6699534904680156,
+     "worst_month": -0.014266332252855363,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.3333,
+      "volcarry": 0.3333,
+      "xsmom": 0.3333
+     },
+     "weight_on_statarb": 0.33333333333333326
+    },
+    "inverse vol": {
+     "ann_return": 0.08319600534917396,
+     "ann_vol": 0.033789305468496796,
+     "sharpe": 2.462199331878577,
+     "worst_month": -0.018994290095921813,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.3123,
+      "volcarry": 0.4629,
+      "xsmom": 0.2247
+     },
+     "weight_on_statarb": 0.31233189504763187
+    },
+    "risk parity": {
+     "ann_return": 0.07929596893343523,
+     "ann_vol": 0.032631105344903724,
+     "sharpe": 2.4300730268035355,
+     "worst_month": -0.017558832391734825,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.3328,
+      "volcarry": 0.4307,
+      "xsmom": 0.2365
+     },
+     "weight_on_statarb": 0.3328176028893046
+    },
+    "HRP": {
+     "ann_return": 0.08647750737033061,
+     "ann_vol": 0.03957387374501033,
+     "sharpe": 2.185217144208283,
+     "worst_month": -0.0253129418349307,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.2735,
+      "volcarry": 0.5848,
+      "xsmom": 0.1417
+     },
+     "weight_on_statarb": 0.2735116556133378
+    },
+    "min variance": {
+     "ann_return": 0.08131218892641003,
+     "ann_vol": 0.037017984328853705,
+     "sharpe": 2.196559061780983,
+     "worst_month": -0.022865942605814465,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2994,
+      "volcarry": 0.5301,
+      "xsmom": 0.1704
+     },
+     "weight_on_statarb": 0.2994396558558319
+    },
+    "max Sharpe": {
+     "ann_return": 0.13657682309977587,
+     "ann_vol": 0.06053877538788806,
+     "sharpe": 2.2560222307883135,
+     "worst_month": -0.039097302666879066,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.0177,
+      "volcarry": 0.943,
+      "xsmom": 0.0394
+     },
+     "weight_on_statarb": 0.01767693051823478
+    }
+   }
+  },
+  "walk_forward_implied": {
+   "months_traded": 19,
+   "first": "2023-05-31",
+   "last": "2024-11-30",
+   "schemes": {
+    "equal weight": {
+     "ann_return": 0.08126009671943946,
+     "ann_vol": 0.032403034374524645,
+     "sharpe": 2.5077928128646607,
+     "worst_month": -0.017851256855616324,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.3333,
+      "volcarry": 0.3333,
+      "xsmom": 0.3333
+     },
+     "weight_on_statarb": 0.33333333333333326
+    },
+    "inverse vol": {
+     "ann_return": 0.08665899210783978,
+     "ann_vol": 0.03828887111906253,
+     "sharpe": 2.2632945180955115,
+     "worst_month": -0.027894179567382424,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2764,
+      "volcarry": 0.4932,
+      "xsmom": 0.2304
+     },
+     "weight_on_statarb": 0.2764189539696663
+    },
+    "risk parity": {
+     "ann_return": 0.08275721973864268,
+     "ann_vol": 0.03678462182463183,
+     "sharpe": 2.2497776416781465,
+     "worst_month": -0.025863474812782172,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2978,
+      "volcarry": 0.4612,
+      "xsmom": 0.241
+     },
+     "weight_on_statarb": 0.29775962590453087
+    },
+    "HRP": {
+     "ann_return": 0.09235359549668413,
+     "ann_vol": 0.046933076750772254,
+     "sharpe": 1.9677720254120037,
+     "worst_month": -0.0385387840687121,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2124,
+      "volcarry": 0.6455,
+      "xsmom": 0.1421
+     },
+     "weight_on_statarb": 0.21244310956042162
+    },
+    "min variance": {
+     "ann_return": 0.08736681555211066,
+     "ann_vol": 0.0433024910786616,
+     "sharpe": 2.017593292575329,
+     "worst_month": -0.0344190419197732,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2439,
+      "volcarry": 0.5865,
+      "xsmom": 0.1696
+     },
+     "weight_on_statarb": 0.24392313355368114
+    },
+    "max Sharpe": {
+     "ann_return": 0.1269402509309675,
+     "ann_vol": 0.06369549415371767,
+     "sharpe": 1.9929235594690566,
+     "worst_month": -0.05080542259878156,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.0366,
+      "volcarry": 0.9204,
+      "xsmom": 0.0431
+     },
+     "weight_on_statarb": 0.036574914708527716
+    }
+   }
+  },
+  "walk_forward_implied_capped": {
+   "months_traded": 19,
+   "first": "2023-05-31",
+   "last": "2024-11-30",
+   "schemes": {
+    "equal weight": {
+     "ann_return": 0.07708201990561112,
+     "ann_vol": 0.029631087047295404,
+     "sharpe": 2.60139021503252,
+     "worst_month": -0.014266332252855363,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.3333,
+      "volcarry": 0.3333,
+      "xsmom": 0.3333
+     },
+     "weight_on_statarb": 0.33333333333333326
+    },
+    "inverse vol": {
+     "ann_return": 0.07835894707122239,
+     "ann_vol": 0.03256424324655392,
+     "sharpe": 2.4062879790555134,
+     "worst_month": -0.019676160174235697,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2993,
+      "volcarry": 0.4855,
+      "xsmom": 0.2152
+     },
+     "weight_on_statarb": 0.2993025071679777
+    },
+    "risk parity": {
+     "ann_return": 0.07491982974622294,
+     "ann_vol": 0.03163941410982896,
+     "sharpe": 2.3679272152814193,
+     "worst_month": -0.018325224549153137,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.3195,
+      "volcarry": 0.4547,
+      "xsmom": 0.2258
+     },
+     "weight_on_statarb": 0.31954068776725975
+    },
+    "HRP": {
+     "ann_return": 0.08191895491953409,
+     "ann_vol": 0.03858966326763863,
+     "sharpe": 2.1228211905189514,
+     "worst_month": -0.026544066967104724,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2461,
+      "volcarry": 0.6282,
+      "xsmom": 0.1257
+     },
+     "weight_on_statarb": 0.24610329407378373
+    },
+    "min variance": {
+     "ann_return": 0.07717333485243272,
+     "ann_vol": 0.036116560436376406,
+     "sharpe": 2.136785284091011,
+     "worst_month": -0.023962576259400667,
+     "hit_rate": 0.8947368421052632,
+     "mean_weight": {
+      "statarb": 0.2736,
+      "volcarry": 0.5724,
+      "xsmom": 0.154
+     },
+     "weight_on_statarb": 0.2736307669357472
+    },
+    "max Sharpe": {
+     "ann_return": 0.12512843177010186,
+     "ann_vol": 0.055989856216475196,
+     "sharpe": 2.2348410984717337,
+     "worst_month": -0.03835456667346418,
+     "hit_rate": 0.8421052631578947,
+     "mean_weight": {
+      "statarb": 0.0199,
+      "volcarry": 0.9411,
+      "xsmom": 0.039
+     },
+     "weight_on_statarb": 0.019891318769504566
+    }
+   }
+  },
+  "volcarry_on_overlap": {
+   "overlap_raw": {
+    "ann_return": 0.03837566395433113,
+    "ann_vol": 0.01497821241369149,
+    "sharpe": 2.562099060582969,
+    "worst_month": -0.0079100927754407,
+    "hit_rate": 0.7441860465116279
+   },
+   "overlap_scaled": {
+    "ann_return": 0.1580561063693926,
+    "ann_vol": 0.06532702223799532,
+    "sharpe": 2.4194598338429154,
+    "worst_month": -0.05471308335027364,
+    "hit_rate": 0.7441860465116279
+   },
+   "own_history_raw": {
+    "ann_return": 0.045861430627452744,
+    "ann_vol": 0.018743148580463224,
+    "sharpe": 2.4468370631845735,
+    "worst_month": -0.0269697994637291,
+    "hit_rate": 0.8044692737430168
+   },
+   "own_history_scaled": {
+    "ann_return": 0.2057509599943229,
+    "ann_vol": 0.07723033654844637,
+    "sharpe": 2.6641209813355653,
+    "worst_month": -0.0695311414202582,
+    "hit_rate": 0.8044692737430168
+   },
+   "own_history_months": 179,
+   "own_history_first": "2010-01",
+   "leverage": {
+    "mean": 4.61860026226256,
+    "min": 2.430700961302411,
+    "max": 6.916869991733488,
+    "last": 3.8495015609395424
+   },
+   "worst_raw_month": "2024-07",
+   "leverage_into_worst_raw_month": 6.916869991733488,
+   "worst_scaled_month": "2024-07",
+   "leverage_into_worst_scaled_month": 6.916869991733488,
+   "realized_over_target": 0.6532702223799531,
+   "share_of_months_capped": 0.32558139534883723,
+   "overlap_capped": {
+    "ann_return": 0.15487035779358888,
+    "ann_vol": 0.0607301459334689,
+    "sharpe": 2.550139727364602,
+    "worst_month": -0.0395504638772035,
+    "hit_rate": 0.7441860465116279
+   }
+  }
  }
 }
