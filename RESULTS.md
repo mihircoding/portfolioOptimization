@@ -942,7 +942,157 @@ well. And the thing the implied rule gets wrong, the level, is a one-number
 calibration problem (a β that forgets 2008 would fix it and would also have
 been at 6× into March 2020), which is the kind of trade-off a vol desk
 argues about and this study now has a table for. The leverage is still
-free: no financing, no margin, no borrow, on either rule.
+free: no financing, no margin, no borrow, on either rule. Section 13
+charges it.
+
+### 13. Charge the leverage, and the sleeve that pays is the one with a cash leg
+
+Reproduce with: `python multi_strategy.py` (section 14 of the printout)
+
+Sections 11 and 12 both end on the same sentence: the leverage is free. This
+charges it, sleeve by sleeve, the way the account would, and reruns every
+table on the net returns. Nothing about the sizing changes — the leverage a
+month runs at is exactly what those two sections chose — so the only new
+thing in any number below is what that leverage cost.
+
+What each sleeve actually holds had to come first, because financing is
+charged on positions and the sleeves report returns. `statarb_occupancy`
+recomputes the pairs book's positions from the committed scan: each pair in
+a position is half a dollar long and half a dollar short per dollar of its
+capital, the book gives every pair 1/930, so the gross exposure at 1× is
+the share of pairs with a position on, which averages 48% — the book is
+half in cash by construction, which is a good part of why its vol is 1.6%.
+The momentum sleeve is a dollar against a dollar. The vol sleeve is short a
+call and long delta of stock against it, and `atm_call_delta` reads that
+off the implied at the sale: 0.51 on average.
+
+Then the charge, which is two different things. **A long/short book's
+shorts fund its longs.** In a prime-brokerage account the short proceeds
+sit against the long debit and Fed funds cancels; the desk pays the
+broker's spread on each leg and the borrow fee on the shorts, and none of
+it depends on the level of rates. `long_short_financing` charges 50bp a
+side and 50bp of general-collateral borrow, scaled by the leverage. **The
+vol sleeve's hedge is a margin loan.** Delta times leverage dollars of
+stock on one dollar of capital, and everything past the first dollar is a
+debit balance at Fed funds plus the spread. `margin_loan_financing` is
+zero until the hedge outgrows the capital — 2× on a half-delta call — and
+then has the rate in it. FRED's monthly Fed funds is the rate.
+
+**On each sleeve's own history, the trailing rule of section 11.** Legs are
+per dollar of capital at 1×; gross is leverage times both; the margin line
+is 6.7× gross, which is a 15% portfolio-margin requirement.
+
+| sleeve | legs, long / short | gross, mean | max | months over 6.7× | financing, a year | capped 5× | Sharpe, gross | net | capped, gross | net | Fed funds, mean |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| statarb | 0.24 / 0.24 | 2.6× | 8.1× | 2% | 1.92% | 1.62% | −0.36 | −0.59 | −0.34 | −0.56 | 3.45% |
+| volcarry | 0.51 / — | 2.8× | 5.3× | 0% | **3.31%** | 2.36% | +2.14 | +1.81 | +2.37 | +2.06 | 1.21% |
+| xsmom | 1.00 / 1.00 | 1.1× | 1.4× | 0% | 0.85% | 0.85% | +0.31 | +0.23 | +0.31 | +0.23 | 2.77% |
+
+The prediction going in was that the pairs book, at 6× on average and 16×
+at the extreme, would be the sleeve that hurt. It is not, and the legs
+column says why: 6× of a book that is 48% invested is 2.6× gross, a quarter
+of a dollar short per dollar of capital, and the borrow on that is small
+change. Its 16× month is 8× gross — a lot, but a hedged book at 8× gross is
+a margin conversation, not an impossibility, and it happens in 2% of
+months. **The sleeve that pays is the one with a cash leg.** The vol
+sleeve's hedge at 5× is two and a half dollars of SPY on one dollar of
+capital, and the dollar and a half it borrows costs whatever Fed funds
+costs. Since 2010 that averaged 1.2%, so on the sleeve's own history the
+loan is 3.3% a year and the Sharpe goes from 2.14 to 1.81. On the months
+the allocators are scored on, it is a different number.
+
+**The overlap, and the months that are traded.** The 43-month overlap
+averaged a 3.2% rate; the 19 traded months, May 2023 to November 2024,
+averaged **5.2%**, the highest in the sample. Capped at 5×:
+
+| sleeve, 19 traded months | Sharpe, gross | net | return, gross | net | vol | financing, a year |
+|---|---|---|---|---|---|---|
+| statarb | −0.05 | −0.28 | −0.4% | −2.0% | 7.4% | 1.7% |
+| volcarry | **+2.24** | **+0.90** | 14.8% | 6.0% | 6.7% | **8.8%** |
+| xsmom | +0.97 | +0.88 | 8.2% | 7.4% | 8.5% | 0.8% |
+
+Eight and a half points of a fifteen-point return. The vol sleeve's Sharpe
+over the traded months goes from 2.24 to 0.90, and the momentum sleeve,
+which runs at 0.6× and borrows nothing, is now the best sleeve on the
+sample by almost nothing. A short-vol sleeve levered through its hedge is a
+carry trade funded at Fed funds, and in 2023–24 Fed funds was the premium.
+In 2010–2016 the same loan cost 0.6% and the sleeve kept most of its
+Sharpe. The sleeve did not get worse; the funding did, and the sizing rule
+had no idea.
+
+**And the allocators.** Same 19 months, same 24-month window, the trailing
+rule, gross against net, uncapped and capped at 5×.
+
+| scheme | Sharpe: gross | net | capped, gross | net | return, capped net | weight on statarb / volcarry / xsmom, net capped |
+|---|---|---|---|---|---|---|
+| equal weight | +2.51 | **+1.12** | +2.67 | **+1.42** | 4.4% | 0.33 / 0.33 / 0.33 |
+| inverse vol | +2.22 | +0.67 | +2.46 | +1.01 | | 0.31 / 0.47 / 0.22 |
+| risk parity | +2.23 | +0.67 | +2.43 | +1.00 | | 0.33 / 0.44 / 0.23 |
+| HRP | +1.92 | +0.33 | +2.19 | +0.70 | | 0.26 / 0.60 / 0.14 |
+| min variance | +1.98 | +0.39 | +2.20 | +0.72 | | 0.29 / 0.54 / 0.17 |
+| max Sharpe | +1.94 | +0.38 | +2.26 | +0.93 | 5.7% | 0.00 / **0.92** / 0.08 |
+
+Under the implied rule the same table reads 2.60 to 1.36 for equal weight
+and 2.23 to 0.86 for max Sharpe, with the ranking identical.
+
+Three things.
+
+*1/N still wins, and now by more than it did.* Equal weight 1.42 against
+max Sharpe 0.93, where the gap was 0.41 before the charge. The order of
+the six does not change. What does change is the comparison that matters
+more: before financing, the best single sleeve capped was 2.55 and equal
+weight's 2.67 beat it by a tenth; after, the best sleeve on the traded
+months is 0.90 and equal weight is 1.42. The allocation is now worth half
+a point of Sharpe over just holding the thing that works, because a third
+of the book is in the two sleeves that cost almost nothing to run. That is
+diversification across a dimension section 8 never measured: the cost of
+leverage is itself a sleeve characteristic, and the one sleeve the
+optimizer wanted is the one with the bill.
+
+*Max Sharpe holds 92% of the sleeve with the bill, on net returns.* It is
+estimating on the trailing 24 months of net returns, and for the first
+traded month those are May 2021 to April 2023, half of them at a zero rate.
+The optimizer is sizing a 2023 position on a 2021 cost of funding. Twelve
+months in, the window is all at 5% and the weight is still 92%, because the
+net sleeve at 0.9 is still the best Sharpe in the window and the optimizer
+reads Sharpe. It is right about the sleeve and wrong about the book, which
+is the same mistake as section 11's at a lower level.
+
+*The rate is most of the bill, and the broker is the rest.* The
+sensitivity below runs the implied rule, capped, with the rate on or off and
+the broker's terms at zero to four times the headline numbers.
+
+| Fed funds | spread, a side | borrow | statarb | volcarry | xsmom | equal weight | max Sharpe | risk parity |
+|---|---|---|---|---|---|---|---|---|
+| off | 0 | 0 | −0.34 | +2.67 | +0.31 | +2.60 | +2.23 | +2.37 |
+| on | 0 | 0 | −0.34 | +2.40 | +0.31 | **+1.73** | **+0.93** | +1.22 |
+| on | 25bp | 25bp | −0.45 | +2.35 | +0.27 | +1.55 | +0.92 | +1.05 |
+| on | 50bp | 50bp | −0.56 | +2.31 | +0.23 | +1.36 | +0.86 | +0.89 |
+| on | 100bp | 100bp | −0.77 | +2.22 | +0.14 | +0.99 | +0.72 | +0.56 |
+| on | 200bp | 200bp | −1.20 | +2.04 | −0.02 | +0.25 | +0.39 | −0.10 |
+
+The first row is section 12's capped column to the decimal, which is the
+check that nothing else moved. The second is the one to read: with no
+broker at all — no spread, no borrow, just the rate on the vol sleeve's
+loan — equal weight is already 1.73 and max Sharpe 0.93. Everything the
+broker charges on top is worth another 0.37 to equal weight at the
+headline terms, and at four times them the pairs book is at −1.20 and
+risk parity is under water. The sleeve columns are the sleeves' own
+histories, where the pairs book is the one that moves with the broker's
+terms — 2.6× gross, every leg charged — and the vol sleeve is the one that
+moves with the rate.
+
+What this charges and does not. The vol sleeve's premium is not credited
+against the loan (a month's premium is about 1.4% of notional, and the
+broker holds it); the hedge is the opening delta, not the path; option
+margin is a constraint and is not a charge; no interest is earned on the
+capital, by any sleeve, which is symmetric and makes every Sharpe here an
+excess-return Sharpe only if the capital would have earned nothing. The
+beta hedge in section 10 is still free. The borrow is general collateral
+at 50bp on every name; a 930-pair book has hard-to-borrow legs in it and
+the 200bp row is what that looks like if there are enough of them. And the
+margin line is one number; a real broker's is a schedule, and it is
+tighter for a short option than for the stock that hedges it.
 
 ### What this does not establish
 
@@ -980,8 +1130,13 @@ free: no financing, no margin, no borrow, on either rule.
   worst month in the sample. Section 12 sizes that sleeve on the implied vol
   it sells instead, which is known on day one, and gets the half point of
   Sharpe back on the sleeve's own history — in March 2020, which the overlap
-  does not contain, so the allocators barely move. What is still not charged:
-  the leverage is free. No
-  financing, no margin, no borrow on 5× to 16×, and the pairs book's 16× is
-  not a number a prime broker would allow, which is why the capped column
-  exists.
+  does not contain, so the allocators barely move.
+- ~~**And the leverage is free.**~~ Charged in section 13: spreads and
+  borrow on the two long/short books, a margin loan at Fed funds on the
+  vol sleeve's hedge. The pairs book's 16× turned out to be 8× gross on a
+  book that is half in cash, and it was never the sleeve that paid. The
+  vol sleeve was — its hedge is a loan, and on the traded months the loan
+  cost 8.8% a year at a 5.2% rate, taking the sleeve from 2.24 to 0.90.
+  Equal weight goes from 2.67 to 1.42 and still wins, by more. What is
+  still not charged: the section 10 hedge, option margin, and the
+  capital's own interest.

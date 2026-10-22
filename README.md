@@ -91,13 +91,23 @@ sold at 13 and both rules were at 6× — and the 19 months the allocators are
 tested on contain no 2020, so there a 5× cap on the trailing estimate already
 delivered everything implied sizing does.
 
+Then pay for the leverage (section 13). The pairs book at 6× was supposed to
+be the sleeve that hurt; it is 2.6× gross on a book that is half in cash,
+and its borrow is small change. The vol sleeve is the one with a cash leg —
+its hedge is a margin loan at Fed funds — and on the 19 traded months, at
+a 5.2% rate, the loan costs 8.8% a year and takes the sleeve from 2.24 to
+0.90. Equal weight goes from 2.67 to 1.42 and still wins, now by half a
+point over the best single sleeve rather than a tenth, because a third of
+the book is in the two sleeves that cost almost nothing to run. The rate
+alone, with no broker terms at all, is most of the bill.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-320 tests.
+329 tests.
 
 ```bash
 pip install -r requirements.txt

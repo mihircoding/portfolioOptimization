@@ -1189,6 +1189,33 @@ def vol_targeted(y: pd.Series, vol: pd.Series, target: float = VOL_TARGET,
     return frame
 
 
+def sleeve_frames(target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
+                  beta_window: int = BETA_WINDOW_MONTHS,
+                  volcarry_vol: pd.Series | None = None) -> dict:
+    """The three sleeves, each sized to `target` on its own trailing estimate.
+
+    One frame per sleeve from vol_targeted - raw, vol, leverage, scaled - on
+    the sleeve's own history. The momentum sleeve goes in beta-hedged, the
+    pairs book is sized on its daily P&L, and the vol sleeve on its trailing
+    vol unless a forecast is handed in. Sections 11, 12 and 13 all start from
+    exactly this, which is the point of it being one function: the leverage
+    a month runs at is decided here, once, and the later sections only
+    change what is done with it.
+    """
+    market = market_monthly()
+    xsmom = beta_hedged(xsmom_monthly(), market, beta_window)["hedged"].rename("xsmom")
+    statarb = statarb_monthly()
+    statarb.index = statarb.index.to_period("M").to_timestamp("M")
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    return {
+        "statarb": vol_targeted(statarb, statarb_trailing_vol(), target),
+        "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, window)
+                                 if volcarry_vol is None else volcarry_vol, target),
+        "xsmom": vol_targeted(xsmom, trailing_vol(xsmom, window), target),
+    }
+
+
 def vol_target_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
                      window: int = VOL_WINDOW_MONTHS,
                      beta_window: int = BETA_WINDOW_MONTHS,
@@ -1222,19 +1249,7 @@ def vol_target_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET
         the implied one; the other two sleeves are sized as above either way,
         so the only thing that differs between the two runs is that forecast.
     """
-    market = market_monthly()
-    xsmom = beta_hedged(xsmom_monthly(), market, beta_window)["hedged"].rename("xsmom")
-    statarb = statarb_monthly()
-    statarb.index = statarb.index.to_period("M").to_timestamp("M")
-    volcarry = volcarry_monthly()
-    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
-
-    frames = {
-        "statarb": vol_targeted(statarb, statarb_trailing_vol(), target),
-        "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, window)
-                                 if volcarry_vol is None else volcarry_vol, target),
-        "xsmom": vol_targeted(xsmom, trailing_vol(xsmom, window), target),
-    }
+    frames = sleeve_frames(target, window, beta_window, volcarry_vol)
     scaled_panel = pd.DataFrame({n: f["scaled"] for n, f in frames.items()}).dropna()
     raw_panel = pd.DataFrame({n: f["raw"] for n, f in frames.items()}).loc[scaled_panel.index]
     leverage = pd.DataFrame({n: f["leverage"] for n, f in frames.items()}).loc[scaled_panel.index]
@@ -1504,6 +1519,335 @@ def print_implied_sizing(study: dict) -> None:
               f"{im['schemes'][name]['mean_weight']['volcarry']:>6.2f}")
 
 
+# ---------- 14. charge the leverage ----------
+
+FUNDING_SPREAD_BPS = 50.0    # what a prime broker adds to Fed funds on a debit balance, and keeps back on a credit
+BORROW_FEE_BPS = 50.0        # general-collateral stock borrow, a year, on the short notional
+MARGIN_RATE = 0.15           # portfolio-margin requirement on gross: 1/0.15 = 6.7x gross is the most a hedged book carries
+# (spread and borrow multiplier, Fed funds multiplier) for the sensitivity
+# table: free leverage first, then the rate with no broker terms at all, then
+# the broker terms at half, once, twice and four times the headline numbers
+FINANCING_SETTINGS = ((0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (1.0, 1.0), (2.0, 1.0), (4.0, 1.0))
+FED_FUNDS_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS"
+
+
+def fed_funds_monthly(cache: str = "results/fed_funds.csv",
+                      url: str = FED_FUNDS_URL) -> pd.Series:
+    """Effective Fed funds, monthly average, as an annual decimal.
+
+    FRED's FEDFUNDS, on the month-end index everything else here uses. Cached
+    next to the sleeve series, so one download serves every rerun; the file
+    is a one-line fetch and is not committed. The month's own average is the rate a month's
+    financing is charged at, which is not a forecast of anything: a desk
+    knows what its debit balance cost once the statement arrives, and that is
+    the number here.
+    """
+    if os.path.exists(cache):
+        return pd.read_csv(cache, index_col=0, parse_dates=True)["fed_funds"]
+    raw = pd.read_csv(url, index_col=0, parse_dates=True)
+    series = (raw.iloc[:, 0].astype(float) / 100.0).rename("fed_funds")
+    series.index = series.index.to_period("M").to_timestamp("M")
+    os.makedirs(os.path.dirname(cache), exist_ok=True)
+    series.to_frame().to_csv(cache)
+    return series
+
+
+def statarb_occupancy(results_path: str | None = None,
+                      trading_path: str | None = None) -> pd.Series:
+    """How much of the pairs book was in a position, month by month.
+
+    The sleeve's own output is an equity curve, which says what the book
+    earned and nothing about what it held. Financing is charged on what it
+    held. Each pair in a position is half a dollar long and half a dollar
+    short per dollar of the pair's capital (scan.backtest divides the leg
+    return difference by two), and the equal-weight book gives every pair
+    1/930 of the capital, so the book's gross exposure at 1x is simply the
+    share of pairs with a position on, and the short leg is half of that.
+    This recomputes the positions from the committed scan and trading files
+    with the same lag backtest() uses - decided today, held from tomorrow -
+    and averages the share over each month's days.
+    """
+    from sleeves.statarb.scan import RESULTS, ZSCORE_WINDOW, generate_positions, rolling_zscore
+
+    results = pd.read_parquet(results_path or RESULTS / "results.parquet")
+    trading = pd.read_parquet(trading_path or RESULTS / "trading.parquet")
+    held = {}
+    for row in results.itertuples():
+        z = rolling_zscore(trading[row.a] - row.beta * trading[row.b], ZSCORE_WINDOW)
+        held[f"{row.a}/{row.b}"] = generate_positions(z).shift(1).fillna(0).abs()
+    daily = pd.DataFrame(held).mean(axis=1)
+    monthly = daily.resample("ME").mean()
+    monthly.index = monthly.index.to_period("M").to_timestamp("M")
+    return monthly.rename("occupancy")
+
+
+def atm_call_delta(implied: pd.Series, t_years: float | None = None) -> pd.Series:
+    """Delta of the at-the-money call at the sale, from the vol it was sold at.
+
+    At a zero rate, which is what the sleeve prices with, an ATM call's delta
+    is N(sigma * sqrt(T) / 2): a little over a half, more when vol is high.
+    That is how much stock the hedge buys per dollar of notional on day one.
+    The hedge then drifts with spot, and the average over the month is within
+    a few points of the opening number either way; the quantity financing
+    depends on is delta x leverage minus one, and its second decimal is not
+    where the result is.
+    """
+    from scipy.stats import norm
+
+    if t_years is None:
+        from sleeves.volcarry.hedging_study import T_YEARS
+        t_years = T_YEARS
+    delta = norm.cdf(0.5 * implied.to_numpy(dtype=float) * np.sqrt(t_years))
+    return pd.Series(delta, index=implied.index, name="delta")
+
+
+def long_short_financing(leverage: pd.Series, long: pd.Series, short: pd.Series,
+                         spread_bps: float = FUNDING_SPREAD_BPS,
+                         borrow_fee_bps: float = BORROW_FEE_BPS) -> pd.Series:
+    """Monthly financing, as a fraction of capital, on a book whose shorts fund
+    its longs.
+
+    In a prime-brokerage account the short-sale proceeds sit against the long
+    debit, so Fed funds cancels: the broker charges funds plus a spread on the
+    longs and pays funds minus a spread on the shorts, and what the desk is
+    left paying is the two spreads, on every dollar of each leg, plus the
+    borrow fee on the shorts. None of that depends on the level of rates,
+    which is why a pairs desk does not watch the Fed the way a vol desk
+    does. Scales with the leverage, because a 6x book has six times the
+    legs. `long` and `short` are the legs per dollar of capital at 1x.
+    """
+    spread = spread_bps / 10_000.0
+    fee = borrow_fee_bps / 10_000.0
+    annual = leverage * ((long + short) * spread + short * fee)
+    return (annual / MONTHS_PER_YEAR).rename("charge")
+
+
+def margin_loan_financing(leverage: pd.Series, long: pd.Series, fed_funds: pd.Series,
+                          spread_bps: float = FUNDING_SPREAD_BPS) -> pd.Series:
+    """Monthly financing on a book that buys more stock than it has capital.
+
+    The vol sleeve's short call is hedged with long stock, delta per dollar
+    of notional. At 1x the capital covers it. Levered, the hedge is delta x
+    leverage dollars of stock per dollar of capital, and everything past the
+    first dollar is a debit balance at Fed funds plus the spread. This is the
+    one sleeve whose financing has a rate in it, and it is zero until the
+    hedge outgrows the capital, which on a half-delta call is 2x. The
+    premium received and the margin on the short option are both left out:
+    the premium is a month of cash the broker holds, and option margin is a
+    constraint, not a charge.
+    """
+    borrowed = (leverage * long - 1.0).clip(lower=0.0)
+    annual = borrowed * (fed_funds + spread_bps / 10_000.0)
+    return (annual / MONTHS_PER_YEAR).rename("charge")
+
+
+def financed_frames(frames: dict, fed_funds: pd.Series, occupancy: pd.Series,
+                    delta: pd.Series, spread_bps: float = FUNDING_SPREAD_BPS,
+                    borrow_fee_bps: float = BORROW_FEE_BPS,
+                    cap: float = LEVERAGE_CAP) -> dict:
+    """Each sleeve's frame with its legs, its financing and its net return.
+
+    Adds, per sleeve: `long` and `short` (the legs per dollar of capital at
+    1x), `gross` (leverage times both legs - what a margin desk looks at),
+    `charge` and `net` (the month's financing and the scaled return after
+    it), and the same two at the leverage cap. The pairs book's legs are its
+    occupancy, split evenly; the momentum book is a dollar against a dollar
+    by construction; the vol sleeve is delta long and nothing short, and is
+    the only one charged a rate.
+    """
+    out = {}
+    for name, frame in frames.items():
+        f = frame.copy()
+        if name == "statarb":
+            occ = occupancy.reindex(f.index)
+            f["long"], f["short"] = occ / 2.0, occ / 2.0
+        elif name == "xsmom":
+            f["long"], f["short"] = 1.0, 1.0
+        else:
+            f["long"], f["short"] = delta.reindex(f.index), 0.0
+        f = f.dropna(subset=["long"])
+        for tag, lev in (("", f["leverage"]), ("_capped", f["leverage"].clip(upper=cap))):
+            if name == "volcarry":
+                charge = margin_loan_financing(lev, f["long"], fed_funds.reindex(f.index),
+                                               spread_bps)
+            else:
+                charge = long_short_financing(lev, f["long"], f["short"], spread_bps,
+                                              borrow_fee_bps)
+            f["charge" + tag] = charge
+            f["net" + tag] = f["raw"] * lev - charge
+        f["gross"] = f["leverage"] * (f["long"] + f["short"])
+        out[name] = f
+    return out
+
+
+def _financed_panels(fin: dict) -> dict:
+    common = None
+    for f in fin.values():
+        common = f.index if common is None else common.intersection(f.index)
+    return {col: pd.DataFrame({n: f[col] for n, f in fin.items()}).loc[common]
+            for col in ("scaled", "net", "net_capped")} | {
+        "scaled_capped": pd.DataFrame({n: f["raw"] * f["leverage"].clip(upper=LEVERAGE_CAP)
+                                       for n, f in fin.items()}).loc[common]}
+
+
+def financing_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
+                    window: int = VOL_WINDOW_MONTHS, beta_window: int = BETA_WINDOW_MONTHS,
+                    cap: float = LEVERAGE_CAP, spread_bps: float = FUNDING_SPREAD_BPS,
+                    borrow_fee_bps: float = BORROW_FEE_BPS, margin_rate: float = MARGIN_RATE,
+                    settings=FINANCING_SETTINGS,
+                    min_months: int = IMPLIED_FIT_MIN_MONTHS) -> dict:
+    """Sections 11 and 12 again, with the leverage paid for.
+
+    Both of those ended on the same sentence: the leverage is free. This
+    charges it, sleeve by sleeve, the way the account would - spreads and
+    borrow on the two long/short books, a margin loan at Fed funds plus a
+    spread on the vol sleeve's hedge - and reruns every table on the net
+    returns. The sizing rules are untouched, so the leverage a month runs at
+    is exactly what sections 11 and 12 chose; only what it costs is new.
+    `settings` is the sensitivity table: pairs of (broker-terms multiplier,
+    Fed funds multiplier), scaling the spread and borrow fee together and the
+    rate separately, because the first is a negotiation and the second is
+    not. (0, 0) is free leverage and must reproduce section 12's capped
+    column to the last decimal; (0, 1) is the rate with no broker at all.
+    """
+    fed_funds = fed_funds_monthly()
+    occupancy = statarb_occupancy()
+    implied = volcarry_implied()
+    delta = atm_call_delta(implied)
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    forecast = implied_vol_forecast(volcarry, implied, min_months)
+    rules = {
+        "trailing": sleeve_frames(target, window, beta_window),
+        "implied": sleeve_frames(target, window, beta_window, volcarry_vol=forecast),
+    }
+    gross_limit = 1.0 / margin_rate
+
+    out = {"spread_bps": float(spread_bps), "borrow_fee_bps": float(borrow_fee_bps),
+           "margin_rate": float(margin_rate), "gross_limit": float(gross_limit),
+           "leverage_cap": float(cap), "target": float(target), "rules": {}}
+    for rule, frames in rules.items():
+        fin = financed_frames(frames, fed_funds, occupancy, delta, spread_bps,
+                              borrow_fee_bps, cap)
+        panels = _financed_panels(fin)
+        first = panels["net"].index[0]
+        walk_forwards = {
+            "walk_forward_gross": walk_forward(panels["scaled"], lookback=lookback),
+            "walk_forward_net": walk_forward(panels["net"], lookback=lookback),
+            "walk_forward_gross_capped": walk_forward(panels["scaled_capped"], lookback=lookback),
+            "walk_forward_net_capped": walk_forward(panels["net_capped"], lookback=lookback),
+        }
+        # the months the allocators are actually scored on, which are the
+        # last `lookback` fewer than the overlap and, here, the ones with the
+        # rate at its highest
+        traded_from = pd.Timestamp(walk_forwards["walk_forward_net"]["first"])
+        sleeves = {}
+        for name, f in fin.items():
+            on_overlap = f.loc[first:]
+            traded = f.loc[traded_from:]
+            sleeves[name] = {
+                "own_history_first": f"{f.index[0]:%Y-%m}",
+                "own_history_months": int(len(f)),
+                "own_history_gross": performance(f["scaled"]),
+                "own_history_net": performance(f["net"]),
+                "own_history_gross_capped": performance(f["raw"] * f["leverage"].clip(upper=cap)),
+                "own_history_net_capped": performance(f["net_capped"]),
+                "overlap_gross": performance(on_overlap["scaled"]),
+                "overlap_net": performance(on_overlap["net"]),
+                "overlap_net_capped": performance(on_overlap["net_capped"]),
+                "drag_own_history": float(f["charge"].mean() * MONTHS_PER_YEAR),
+                "drag_own_history_capped": float(f["charge_capped"].mean() * MONTHS_PER_YEAR),
+                "drag_overlap": float(on_overlap["charge"].mean() * MONTHS_PER_YEAR),
+                "drag_overlap_capped": float(on_overlap["charge_capped"].mean() * MONTHS_PER_YEAR),
+                "traded_gross_capped": performance(traded["raw"] * traded["leverage"].clip(upper=cap)),
+                "traded_net_capped": performance(traded["net_capped"]),
+                "drag_traded_capped": float(traded["charge_capped"].mean() * MONTHS_PER_YEAR),
+                "fed_funds_mean_traded": float(fed_funds.reindex(traded.index).mean()),
+                "legs_mean": {"long": float(f["long"].mean()), "short": float(f["short"].mean())},
+                "gross_exposure": {"mean": float(f["gross"].mean()), "max": float(f["gross"].max()),
+                                   "mean_overlap": float(on_overlap["gross"].mean())},
+                "share_of_months_over_margin": float((f["gross"] > gross_limit).mean()),
+                "fed_funds_mean": float(fed_funds.reindex(f.index).mean()),
+                "fed_funds_mean_overlap": float(fed_funds.reindex(on_overlap.index).mean()),
+            }
+        out["rules"][rule] = {
+            "n_months": int(len(panels["net"])),
+            "first": f"{first:%Y-%m}", "last": f"{panels['net'].index[-1]:%Y-%m}",
+            "sleeves": sleeves,
+            **walk_forwards,
+        }
+
+    # the same charge, scaled, on the rule a desk would run (implied, capped)
+    rows = []
+    for m, rate_m in settings:
+        fin = financed_frames(rules["implied"], fed_funds * rate_m, occupancy, delta,
+                              spread_bps * m, borrow_fee_bps * m, cap)
+        panels = _financed_panels(fin)
+        wf = walk_forward(panels["net_capped"], lookback=lookback)
+        rows.append({
+            "multiplier": float(m), "rate_multiplier": float(rate_m),
+            "spread_bps": float(spread_bps * m), "borrow_fee_bps": float(borrow_fee_bps * m),
+            "sleeves": {n: {"sharpe": performance(f["net_capped"])["sharpe"],
+                            "drag": float(f["charge_capped"].mean() * MONTHS_PER_YEAR)}
+                        for n, f in fin.items()},
+            "schemes": {n: s["sharpe"] for n, s in wf["schemes"].items()},
+        })
+    out["sensitivity"] = rows
+    return out
+
+
+def print_financing(study: dict) -> None:
+    print(f"\n14. CHARGE THE LEVERAGE")
+    print(f"   {study['spread_bps']:.0f}bp funding spread each side of Fed funds, "
+          f"{study['borrow_fee_bps']:.0f}bp borrow on short stock; the vol sleeve's hedge "
+          f"is a margin loan at Fed funds + spread past 1x.")
+    print(f"   Margin line: {study['gross_limit']:.1f}x gross ({study['margin_rate']:.0%} on gross).")
+    for rule, r in study["rules"].items():
+        print(f"\n   Vol sleeve sized on {rule}; {r['n_months']} months, {r['first']} to {r['last']}.")
+        print(f"{'sleeve':>10} {'legs L/S':>11} {'gross':>6} {'max':>6} {'>margin':>8} "
+              f"{'drag':>7} {'capped':>7} {'Sharpe gross':>13} {'net':>7} "
+              f"{'capped gross':>13} {'net':>7} {'FF':>6}")
+        for name, s in r["sleeves"].items():
+            g = s["gross_exposure"]
+            print(f"{name:>10} {s['legs_mean']['long']:>5.2f}/{s['legs_mean']['short']:<5.2f} "
+                  f"{g['mean']:>5.1f}x {g['max']:>5.1f}x {s['share_of_months_over_margin']:>8.0%} "
+                  f"{s['drag_own_history']:>7.2%} {s['drag_own_history_capped']:>7.2%} "
+                  f"{s['own_history_gross']['sharpe']:>+13.2f} {s['own_history_net']['sharpe']:>+7.2f} "
+                  f"{s['own_history_gross_capped']['sharpe']:>+13.2f} "
+                  f"{s['own_history_net_capped']['sharpe']:>+7.2f} {s['fed_funds_mean']:>6.2%}")
+        print(f"   On the overlap (Fed funds averaged "
+              f"{r['sleeves']['volcarry']['fed_funds_mean_overlap']:.2%}): "
+              + ", ".join(f"{n} {s['overlap_gross']['sharpe']:+.2f} -> {s['overlap_net']['sharpe']:+.2f} "
+                          f"(drag {s['drag_overlap']:.1%}, capped {s['overlap_net_capped']['sharpe']:+.2f})"
+                          for n, s in r["sleeves"].items()) + ".")
+        g, n = r["walk_forward_gross"], r["walk_forward_net"]
+        gc, nc = r["walk_forward_gross_capped"], r["walk_forward_net_capped"]
+        print(f"   On the {n['months_traded']} traded months (Fed funds averaged "
+              f"{r['sleeves']['volcarry']['fed_funds_mean_traded']:.2%}), capped: "
+              + ", ".join(f"{nm} {sl['traded_gross_capped']['sharpe']:+.2f} -> "
+                          f"{sl['traded_net_capped']['sharpe']:+.2f} (drag {sl['drag_traded_capped']:.1%})"
+                          for nm, sl in r["sleeves"].items()) + ".")
+        print(f"\n   Walk-forward, {n['months_traded']} months traded, before and after financing:")
+        print(f"{'scheme':>14} {'gross':>7} {'net':>7} {'capped gross':>13} {'net':>7} "
+              f"{'w(statarb/volcarry/xsmom), net capped':>38}")
+        for name in n["schemes"]:
+            w = nc["schemes"][name]["mean_weight"]
+            print(f"{name:>14} {g['schemes'][name]['sharpe']:>+7.2f} {n['schemes'][name]['sharpe']:>+7.2f} "
+                  f"{gc['schemes'][name]['sharpe']:>+13.2f} {nc['schemes'][name]['sharpe']:>+7.2f} "
+                  f"{w['statarb']:>14.2f} / {w['volcarry']:.2f} / {w['xsmom']:.2f}")
+    print(f"\n   Sensitivity (implied rule, capped): broker terms scaled together, "
+          f"the rate on or off.")
+    print(f"{'FF':>4} {'spread':>7} {'borrow':>7} {'statarb':>8} {'volcarry':>9} {'xsmom':>7}   "
+          f"{'equal weight':>12} {'max Sharpe':>11} {'risk parity':>12}")
+    for row in study["sensitivity"]:
+        s = row["sleeves"]
+        print(f"{'on' if row['rate_multiplier'] else 'off':>4} "
+              f"{row['spread_bps']:>5.0f}bp {row['borrow_fee_bps']:>5.0f}bp "
+              f"{s['statarb']['sharpe']:>+8.2f} {s['volcarry']['sharpe']:>+9.2f} {s['xsmom']['sharpe']:>+7.2f}   "
+              f"{row['schemes']['equal weight']:>+12.2f} {row['schemes']['max Sharpe']:>+11.2f} "
+              f"{row['schemes']['risk parity']:>+12.2f}")
+
+
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
     print(f"\n1. THE TWO SLEEVES   {panel.index[0]:%Y-%m} to "
           f"{panel.index[-1]:%Y-%m}, {len(panel)} months")
@@ -1705,6 +2049,8 @@ def main() -> None:
     print_vol_target(levered)
     implied = implied_sizing_study(levered, lookback=lookback)
     print_implied_sizing(implied)
+    financed = financing_study(lookback=lookback)
+    print_financing(financed)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -1723,7 +2069,8 @@ def main() -> None:
                    "factor_exposures": exposures,
                    "hedged_momentum": hedged,
                    "vol_target": levered,
-                   "implied_sizing": implied}, fh, indent=1,
+                   "implied_sizing": implied,
+                   "financing": financed}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to

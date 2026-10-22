@@ -834,3 +834,172 @@ def test_implied_sizing_study_runs_both_allocator_panels_on_the_same_months(monk
     # and both rules are reported on one set of months
     assert set(study["sleeve"]["trailing"]["leverage_into_worst_months"]) == \
         set(study["sleeve"]["implied"]["leverage_into_worst_months"])
+
+
+# ---------- 13. charge the leverage ----------
+
+from multi_strategy import (atm_call_delta, fed_funds_monthly, financed_frames,
+                            financing_study, long_short_financing,
+                            margin_loan_financing, sleeve_frames, statarb_occupancy)
+
+
+def test_fed_funds_is_a_decimal_on_month_ends(tmp_path):
+    raw = tmp_path / "fredgraph.csv"
+    raw.write_text("observation_date,FEDFUNDS\n2023-01-01,4.33\n2023-02-01,4.57\n")
+    cache = tmp_path / "results" / "fed_funds.csv"
+    ff = fed_funds_monthly(cache=str(cache), url=str(raw))
+    assert list(ff.index) == list(pd.to_datetime(["2023-01-31", "2023-02-28"]))
+    assert ff.loc["2023-02-28"] == pytest.approx(0.0457)
+    # and the second call reads the cache rather than the "download"
+    raw.write_text("observation_date,FEDFUNDS\n2023-01-01,9.99\n")
+    assert fed_funds_monthly(cache=str(cache), url=str(raw)).loc["2023-01-31"] == pytest.approx(0.0433)
+
+
+def test_occupancy_is_the_share_of_pairs_with_a_position_on(tmp_path):
+    # two pairs: one whose spread never moves (never trades) and one that is
+    # pushed three sigma wide and held there, so it enters and stays in
+    days = pd.bdate_range("2021-01-04", periods=120)
+    rng = np.random.default_rng(0)
+    x = pd.Series(100.0 + rng.normal(0, 0.5, len(days)).cumsum(), index=days)
+    y = x + 10.0                                   # a constant spread
+    z = pd.Series(100.0 + rng.normal(0, 0.5, len(days)).cumsum(), index=days)
+    w = z + 10.0 + np.r_[np.zeros(60), np.full(60, 8.0)]   # a spread that blows out at day 60
+    trading = pd.DataFrame({"A": y, "B": x, "C": w, "D": z})
+    results = pd.DataFrame({"a": ["A", "C"], "b": ["B", "D"], "beta": [1.0, 1.0]})
+    trading.to_parquet(tmp_path / "trading.parquet")
+    results.to_parquet(tmp_path / "results.parquet")
+    occ = statarb_occupancy(str(tmp_path / "results.parquet"), str(tmp_path / "trading.parquet"))
+    assert occ.index.is_month_end.all()
+    assert occ.iloc[0] == pytest.approx(0.0)       # nothing in a position before the window fills
+    assert 0.0 < occ.iloc[-1] <= 0.5               # one of the two pairs is in, at most
+    assert (occ >= 0).all() and (occ <= 1).all()
+
+
+def test_atm_call_delta_is_a_little_over_a_half_and_rises_with_vol():
+    iv = pd.Series([0.10, 0.20, 0.40, 0.80])
+    delta = atm_call_delta(iv, t_years=21 / 252)
+    assert (delta > 0.5).all()
+    assert delta.is_monotonic_increasing
+    assert delta.iloc[0] == pytest.approx(0.5, abs=0.02)
+
+
+def test_long_short_financing_has_no_rate_in_it_and_scales_with_leverage():
+    idx = pd.date_range("2023-01-31", periods=3, freq="ME")
+    lev = pd.Series([1.0, 2.0, 4.0], index=idx)
+    one = pd.Series(1.0, index=idx)
+    charge = long_short_financing(lev, one, one, spread_bps=50, borrow_fee_bps=50)
+    # a dollar long and a dollar short at 1x: 50bp on each leg plus 50bp borrow
+    assert charge.iloc[0] * 12 == pytest.approx(0.0150)
+    assert charge.iloc[2] == pytest.approx(4 * charge.iloc[0])
+    assert long_short_financing(lev, one, one, 0, 0).eq(0).all()
+
+
+def test_margin_loan_is_free_until_the_hedge_outgrows_the_capital():
+    idx = pd.date_range("2023-01-31", periods=4, freq="ME")
+    lev = pd.Series([1.0, 2.0, 3.0, 3.0], index=idx)
+    delta = pd.Series(0.5, index=idx)
+    ff = pd.Series([0.05, 0.05, 0.05, 0.01], index=idx)
+    charge = margin_loan_financing(lev, delta, ff, spread_bps=50)
+    assert charge.iloc[0] == 0.0 and charge.iloc[1] == 0.0    # half a dollar of stock per dollar of capital, twice: still covered
+    assert charge.iloc[2] * 12 == pytest.approx(0.5 * 0.055)   # half a dollar borrowed at 5.5%
+    assert charge.iloc[3] < charge.iloc[2]                     # and cheaper when the rate falls
+
+
+def _frames_for(n=48, seed=5):
+    idx = pd.date_range("2020-01-31", periods=n, freq="ME")
+    rng = np.random.default_rng(seed)
+    frames = {}
+    for name, lev in (("statarb", 6.0), ("volcarry", 4.0), ("xsmom", 0.6)):
+        raw = pd.Series(rng.normal(0.002, 0.01, n), index=idx)
+        frames[name] = pd.DataFrame({"raw": raw, "vol": 0.10 / lev,
+                                     "leverage": lev, "scaled": raw * lev})
+    ff = pd.Series(0.05, index=idx)
+    occ = pd.Series(0.5, index=idx)
+    delta = pd.Series(0.5, index=idx)
+    return frames, ff, occ, delta
+
+
+def test_financed_net_is_scaled_minus_the_charge_and_the_cap_binds_on_the_charge_too():
+    frames, ff, occ, delta = _frames_for()
+    fin = financed_frames(frames, ff, occ, delta, spread_bps=50, borrow_fee_bps=50, cap=5.0)
+    for name, f in fin.items():
+        assert np.allclose(f["net"], f["scaled"] - f["charge"])
+        assert (f["charge"] >= 0).all()
+    # pairs: a quarter long, a quarter short at 1x, times 6x
+    pairs = fin["statarb"]
+    assert pairs["gross"].iloc[0] == pytest.approx(6.0 * 0.5)
+    assert pairs["charge"].iloc[0] * 12 == pytest.approx(6.0 * (0.5 * 0.005 + 0.25 * 0.005))
+    assert pairs["charge_capped"].iloc[0] * 12 == pytest.approx(5.0 * (0.5 * 0.005 + 0.25 * 0.005))
+    # vol sleeve: 0.5 x 4 = 2 dollars of stock on 1 of capital, 1 borrowed at 5.5%
+    vol = fin["volcarry"]
+    assert vol["charge"].iloc[0] * 12 == pytest.approx(1.0 * 0.055)
+    assert vol["short"].eq(0).all()
+    # momentum at 0.6x never borrows anything and pays spreads and borrow only
+    assert fin["xsmom"]["charge"].iloc[0] * 12 == pytest.approx(0.6 * (2 * 0.005 + 0.005))
+
+
+def test_the_sleeve_with_a_cash_leg_is_the_one_the_rate_touches():
+    frames, ff, occ, delta = _frames_for()
+    low = financed_frames(frames, ff * 0.0, occ, delta)
+    high = financed_frames(frames, ff * 2.0, occ, delta)
+    for name in ("statarb", "xsmom"):
+        assert np.allclose(low[name]["charge"], high[name]["charge"])
+    assert (high["volcarry"]["charge"] > low["volcarry"]["charge"]).all()
+
+
+def _patch_sleeves(monkeypatch, n=120, seed=8):
+    idx = pd.date_range("2014-01-31", periods=n, freq="ME")
+    rng = np.random.default_rng(seed)
+    market = pd.Series(rng.normal(0.008, 0.03, n), index=idx, name="market")
+    xsmom = (0.004 - 0.5 * market + rng.normal(0.0, 0.02, n)).rename("xsmom")
+    volcarry, iv = _implied_sleeve(n=n, seed=4)
+    volcarry.index = idx
+    iv.index = idx
+    statarb = pd.Series(rng.normal(0.0, 0.004, 60), index=idx[-60:], name="statarb")
+    days = pd.bdate_range(idx[-60] - pd.offsets.MonthBegin(1), idx[-1])
+    daily_vol = pd.Series(0.004 * np.sqrt(12 / 252), index=days)
+    monkeypatch.setattr("multi_strategy.xsmom_monthly", lambda: xsmom)
+    monkeypatch.setattr("multi_strategy.market_monthly", lambda: market)
+    monkeypatch.setattr("multi_strategy.statarb_monthly", lambda: statarb)
+    monkeypatch.setattr("multi_strategy.volcarry_monthly", lambda **k: volcarry)
+    monkeypatch.setattr("multi_strategy.volcarry_implied", lambda **k: iv)
+    monkeypatch.setattr("multi_strategy.statarb_trailing_vol",
+                        lambda **k: (daily_vol * np.sqrt(252)).resample("ME").last().shift(1))
+    monkeypatch.setattr("multi_strategy.fed_funds_monthly",
+                        lambda **k: pd.Series(0.04, index=idx, name="fed_funds"))
+    monkeypatch.setattr("multi_strategy.statarb_occupancy",
+                        lambda **k: pd.Series(0.45, index=idx[-60:], name="occupancy"))
+
+
+def test_vol_target_study_still_sizes_exactly_as_it_did_before_the_refactor(monkeypatch):
+    _patch_sleeves(monkeypatch)
+    frames = sleeve_frames(target=0.10, window=36, beta_window=36)
+    study = vol_target_study(lookback=24, target=0.10, window=36, beta_window=36)
+    overlap = pd.DataFrame({n: f["scaled"] for n, f in frames.items()}).dropna().index
+    for name in ("statarb", "volcarry", "xsmom"):
+        s = study["sleeves"][name]
+        assert s["own_history_months"] == len(frames[name])
+        assert s["own_history_scaled"]["sharpe"] == pytest.approx(
+            performance(frames[name]["scaled"])["sharpe"])
+        assert s["leverage"]["mean"] == pytest.approx(
+            float(frames[name]["leverage"].loc[overlap].mean()))
+
+
+def test_free_leverage_reproduces_section_12_and_paid_leverage_costs_sharpe(monkeypatch):
+    _patch_sleeves(monkeypatch)
+    levered = vol_target_study(lookback=24, target=0.10, window=36, beta_window=36)
+    implied = implied_sizing_study(levered, lookback=24, target=0.10, window=36)
+    study = financing_study(lookback=24, target=0.10, window=36, beta_window=36,
+                            settings=((0.0, 0.0), (1.0, 1.0)))
+    free, paid = study["sensitivity"]
+    for scheme, s in implied["walk_forward_implied_capped"]["schemes"].items():
+        assert free["schemes"][scheme] == pytest.approx(s["sharpe"])
+        assert paid["schemes"][scheme] < free["schemes"][scheme]
+    rule = study["rules"]["trailing"]
+    assert rule["walk_forward_gross"] == levered["walk_forward_scaled"]
+    for name, s in rule["sleeves"].items():
+        assert s["own_history_net"]["sharpe"] < s["own_history_gross"]["sharpe"]
+        assert s["drag_own_history"] > 0
+    # a 4% rate on a vol sleeve that borrows is a charge; on the two
+    # long/short books it is not
+    assert rule["sleeves"]["volcarry"]["drag_own_history"] > rule["sleeves"]["xsmom"]["drag_own_history"]
