@@ -101,17 +101,30 @@ point over the best single sleeve rather than a tenth, because a third of
 the book is in the two sleeves that cost almost nothing to run. The rate
 alone, with no broker terms at all, is most of the bill.
 
+Max Sharpe held 92% of that sleeve on net returns, estimating on a window
+that was half zero-rate months, so the fix the textbook suggests is to
+re-charge the window at the rate known on day one before the optimizer
+sees it (section 14). It is worth a hundredth: 0.92 to 0.91 on the sleeve,
+0.93 to 0.94 on the book. The sleeve after the loan is still the only thing
+in the window that made money — the pairs book and the momentum book lost
+over those two years at −0.92 and −0.35 — and no price of funding changes
+which sleeve earned. The window has to be charged 10%, twice the 2023 peak,
+before max Sharpe holds less than half, and at 12% it finally beats equal
+weight, by being told the loan costs more than twice what it did. That is
+not a funding forecast; it is a haircut on the winning sleeve's mean, which
+is what shrinkage is.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-329 tests.
+335 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 320 passed
+python -m pytest -q                 # 335 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

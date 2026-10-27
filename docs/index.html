@@ -97,7 +97,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 <div class="wrap">
   <div class="tagline">The optimizer lost to splitting money evenly. Then it got something worth optimizing.</div>
   <h1>Alpha to Allocation</h1>
-  <p class="lede">Three trading strategies, and the system that decides how much money each one gets. Six ways of splitting the money, all tested on data the models had not seen. <strong style="color:var(--ink)">On ordinary assets, splitting evenly beat every optimizer. On trading strategies, the optimizer finally won, and not for the reason the textbook gives. Size the strategies to the same risk first and splitting evenly wins again, and it keeps winning once the leverage is paid for.</strong> 329 tests.</p>
+  <p class="lede">Three trading strategies, and the system that decides how much money each one gets. Six ways of splitting the money, all tested on data the models had not seen. <strong style="color:var(--ink)">On ordinary assets, splitting evenly beat every optimizer. On trading strategies, the optimizer finally won, and not for the reason the textbook gives. Size the strategies to the same risk first and splitting evenly wins again, and it keeps winning once the leverage is paid for, even after the optimizer is shown the bill.</strong> 335 tests.</p>
   <div class="note blue" style="max-width:70ch">
     <p><strong>In plain English.</strong> There are two halves here. The strategies: pairs trading (bet that two stocks that usually move together will come back together), selling options and hedging them (collecting the insurance premium), and momentum (buy last year's winners, sell last year's losers). And the allocator: the math that decides how much of your money goes into each one.</p>
     <p>The textbook says a clever optimizer should beat just splitting the money evenly. On stocks and ETFs it never did, in any test. On the strategies it did, because one strategy was losing money and only the optimizer that looks at returns could see that. The others only look at how bumpy each strategy is, and the losing one was the calmest. Everything below is the long version, with the numbers.</p>
@@ -321,6 +321,28 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   </table>
   <p style="margin-top:14px"><strong style="color:var(--ink)">The sleeve that pays is the one with a cash leg, and it was not the one I expected.</strong> The pairs book at 6&times; was supposed to be the problem, and it is 2.6&times; gross with a quarter of a dollar short per dollar of capital &mdash; its borrow is small change, and its 16&times; month is 8&times; gross, a margin conversation rather than an impossibility. The vol sleeve's hedge is a loan, and in 2023&ndash;24 the loan cost 8.8% of a 14.8% return. A short-vol sleeve levered through its hedge is a carry trade funded at Fed funds; in 2010&ndash;2016 the same loan cost 0.6% and the sleeve kept its Sharpe. The sleeve did not change. The funding did, and the sizing rule had no idea.</p>
   <p>Equal weight goes from 2.67 to 1.42 and still wins, now by half a point over the best sleeve on the sample rather than a tenth, because a third of the book is in the two sleeves that cost almost nothing to run &mdash; the cost of leverage turns out to be a sleeve characteristic, and the one sleeve the optimizer wanted is the one with the bill. Max Sharpe still holds 92% of it on net returns, sizing a 2023 position on a trailing window that is half zero-rate months. And the rate is most of the bill: with no broker terms at all, equal weight is already 1.73; the broker's 50bp is worth another 0.37. Not charged: option margin, the premium against the loan, interest on the capital, and the beta hedge.</p>
+
+  <h3 style="margin-top:32px">Let the optimizer see the bill</h3>
+  <p>Max Sharpe holding 92% of the sleeve with the loan looked like a pricing error: it was estimating on a 24-month window that was half zero-rate months, so the net sleeve it saw had been financed at 1.6% when the desk was about to pay 4.8%. The rate is known on day one, the way the implied vol is, so the fix is to re-charge the whole window at last month's rate before the optimizer reads it. Only the vol sleeve's charge has a rate in it, so the other two books come through as they were financed. The prediction was that max Sharpe would put the sleeve down once it could see what it cost.</p>
+  <table style="margin-top:14px">
+    <thead><tr><th>sleeve, in the first traded window (May 2021 &ndash; Apr 2023)</th><th>Sharpe, as financed (rate 1.63%)</th><th>re-charged at 4.83%</th></tr></thead>
+    <tbody>
+      <tr><td>statarb</td><td>&minus;0.92</td><td>&minus;0.92</td></tr>
+      <tr><td>volcarry</td><td>+2.43</td><td><strong>+2.02</strong></td></tr>
+      <tr><td>xsmom</td><td>&minus;0.35</td><td>&minus;0.35</td></tr>
+    </tbody>
+  </table>
+  <table style="margin-top:14px">
+    <thead><tr><th>rate the window is charged at</th><th>volcarry in the window</th><th>weight on volcarry, max Sharpe</th><th>max Sharpe, net</th><th>equal weight</th></tr></thead>
+    <tbody>
+      <tr><td>4.83%, the rate known on day one</td><td>+2.02</td><td>0.91</td><td>+0.94</td><td>+1.42</td></tr>
+      <tr><td>8%</td><td>+1.57</td><td>0.74</td><td>+0.74</td><td>+1.42</td></tr>
+      <tr><td>10%</td><td>+1.29</td><td><strong>0.51</strong></td><td>+1.16</td><td>+1.42</td></tr>
+      <tr><td>12%</td><td>+1.00</td><td>0.37</td><td><strong>+1.38</strong></td><td>+1.42</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:14px"><strong style="color:var(--ink)">It was never the bill.</strong> Re-charged at the rate the desk was about to pay, the vol sleeve goes from 2.43 to 2.02 in the window, and 2.02 is still the only positive number in it: the pairs book and the momentum book lost money over those two years, and no price of funding changes which sleeve earned. Max Sharpe goes from 0.92 to 0.91 on the sleeve and 0.93 to 0.94 on the book. Equal weight cannot move, because it never reads the window. The months the weight does come down are the months August 2024 enters the window and the sleeve's own trailing Sharpe falls from 1.5 to 0.5 &mdash; the returns moving the weight, not the funding.</p>
+  <p>So the sweep asks how dear the loan would have to be. The window has to be charged 10% &mdash; double the 2023 peak &mdash; before max Sharpe holds less than half the sleeve, and at 12% it beats equal weight for the first time on sleeves sized to one risk, by being told the loan costs more than twice what it did. That is not a funding forecast. It is a haircut on the winning sleeve's mean, which is what shrinking expected returns does, and what the allocator notes reached for on ETFs &mdash; arriving here through the back door of a financing line. The optimizer was right about the sleeve and wrong about the book, and the book is wrong because two sleeves that lost for two years are still a third each of the thing that wins.</p>
 
   <p><a href="statarb/">The stat-arb sleeve's own results &rarr;</a> &middot; <a href="volcarry/">the volatility sleeve's &rarr;</a></p>
 </div>

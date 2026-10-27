@@ -1003,3 +1003,89 @@ def test_free_leverage_reproduces_section_12_and_paid_leverage_costs_sharpe(monk
     # a 4% rate on a vol sleeve that borrows is a charge; on the two
     # long/short books it is not
     assert rule["sleeves"]["volcarry"]["drag_own_history"] > rule["sleeves"]["xsmom"]["drag_own_history"]
+
+
+# ---------- section 14: the window re-charged at today's rate ----------
+
+from multi_strategy import (_financed_panels, funding_aware_walk_forward,
+                            funding_forecast_study, repriced_window)
+
+
+def _financed_for(rate=0.05, **kw):
+    frames, ff, occ, delta = _frames_for(**kw)
+    ff = pd.Series(rate, index=ff.index)
+    return financed_frames(frames, ff, occ, delta, spread_bps=50, borrow_fee_bps=50, cap=5.0), ff
+
+
+def test_repricing_only_touches_the_sleeve_with_a_loan():
+    fin, ff = _financed_for()
+    window = fin["volcarry"].index[:24]
+    cheap = repriced_window(fin, window, 0.0, spread_bps=50, cap=5.0)
+    dear = repriced_window(fin, window, 0.10, spread_bps=50, cap=5.0)
+    for name in ("statarb", "xsmom"):
+        assert np.allclose(cheap[name], dear[name])
+        assert np.allclose(cheap[name], fin[name].loc[window, "net_capped"])
+    assert (dear["volcarry"] < cheap["volcarry"]).all()
+
+
+def test_repricing_at_the_rate_actually_paid_is_the_window_as_financed():
+    fin, ff = _financed_for(rate=0.05)
+    window = fin["volcarry"].index[:24]
+    again = repriced_window(fin, window, 0.05, spread_bps=50, cap=5.0)
+    assert np.allclose(again["volcarry"], fin["volcarry"].loc[window, "net_capped"])
+
+
+def test_as_financed_reproduces_section_13_to_the_decimal():
+    fin, ff = _financed_for()
+    net = _financed_panels(fin)["net_capped"]
+    reference = walk_forward(net, lookback=24)
+    run = funding_aware_walk_forward(fin, ff, lookback=24, lag=None)
+    assert run["months_traded"] == reference["months_traded"]
+    for scheme, s in reference["schemes"].items():
+        assert run["schemes"][scheme]["sharpe"] == pytest.approx(s["sharpe"])
+        assert run["schemes"][scheme]["mean_weight"] == s["mean_weight"]
+    # and the path it keeps averages to the mean weight walk_forward reports
+    path = run["schemes"]["max Sharpe"]["weight_path"]["volcarry"]
+    assert np.mean(path) == pytest.approx(reference["schemes"]["max Sharpe"]["mean_weight"]["volcarry"], abs=1e-3)
+
+
+def test_the_lag_only_matters_in_the_months_the_fed_moved():
+    fin, ff = _financed_for(rate=0.04)
+    runs = [funding_aware_walk_forward(fin, ff, lookback=24, lag=lag) for lag in (None, 1, 0)]
+    for scheme in runs[0]["schemes"]:
+        assert runs[0]["schemes"][scheme]["sharpe"] == pytest.approx(runs[1]["schemes"][scheme]["sharpe"])
+        assert runs[1]["schemes"][scheme]["sharpe"] == pytest.approx(runs[2]["schemes"][scheme]["sharpe"])
+    assert runs[1]["rate_priced"] == runs[2]["rate_priced"]
+
+
+def test_a_dearer_loan_in_the_window_moves_max_sharpe_off_the_sleeve_and_leaves_1n_alone():
+    fin, ff = _financed_for()
+    cheap = funding_aware_walk_forward(fin, ff, lookback=24, rate_override=0.0)
+    dear = funding_aware_walk_forward(fin, ff, lookback=24, rate_override=0.15)
+    assert (dear["schemes"]["max Sharpe"]["mean_weight"]["volcarry"]
+            < cheap["schemes"]["max Sharpe"]["mean_weight"]["volcarry"])
+    # equal weight never reads the window, so it cannot care what it was charged at
+    assert dear["schemes"]["equal weight"]["sharpe"] == pytest.approx(cheap["schemes"]["equal weight"]["sharpe"])
+    # and the month held is net of what it actually cost, whatever the window was told
+    assert all(r == pytest.approx(0.15) for r in dear["rate_priced"])
+    assert dear["rate_window_mean"] == cheap["rate_window_mean"]
+
+
+def test_funding_forecast_study_starts_from_section_13(monkeypatch):
+    _patch_sleeves(monkeypatch)
+    financed = financing_study(lookback=24, target=0.10, window=36, beta_window=36,
+                               settings=((1.0, 1.0),))
+    study = funding_forecast_study(lookback=24, target=0.10, window=36, beta_window=36,
+                                   rate_sweep=(0.0, 0.15))
+    for rule in ("trailing", "implied"):
+        base = study["rules"][rule]["runs"]["as_financed"]
+        ref = financed["rules"][rule]["walk_forward_net_capped"]
+        for scheme, s in ref["schemes"].items():
+            assert base["schemes"][scheme]["sharpe"] == pytest.approx(s["sharpe"])
+        seen = study["rules"][rule]["first_window"]
+        # a flat 4% rate: the window as financed and re-charged at it are the same window
+        for name in seen["sleeves_as_financed"]:
+            assert seen["sleeves_repriced"][name] == pytest.approx(seen["sleeves_as_financed"][name])
+        free, dear = study["rules"][rule]["rate_sweep"]
+        assert dear["volcarry_in_first_window"] < free["volcarry_in_first_window"]
+        assert dear["max_sharpe_weight_on_volcarry"] <= free["max_sharpe_weight_on_volcarry"]

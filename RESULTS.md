@@ -1094,6 +1094,126 @@ the 200bp row is what that looks like if there are enough of them. And the
 margin line is one number; a real broker's is a schedule, and it is
 tighter for a short option than for the stock that hedges it.
 
+### 14. Let the optimizer see the bill, and find it was never the bill
+
+Reproduce with: `python multi_strategy.py` (section 15 of the printout)
+
+Section 13 ended with max Sharpe holding 92% of the vol sleeve on net
+returns, and the explanation offered was that it was sizing a 2023 position
+on a 2021 cost of funding: the 24-month window it estimated on was half
+zero-rate months, so the net sleeve it saw was financed at an average of
+1.6% when the desk was about to pay 4.8%. The rate is known on day one the
+way the implied vol is — the Fed publishes it — so the obvious fix is to
+re-charge the whole window at today's rate before the optimizer sees it,
+and let it price the sleeve at the funding it is about to hold it at. The
+prediction written down was: if max Sharpe drops the sleeve once it can see
+the bill, the optimizer is finally doing what the textbook says.
+
+`repriced_window` does the re-charging. For each month in the trailing
+window it takes the leverage that month ran at and the hedge it held, and
+charges the loan at one rate: last month's average, which is the latest
+full month a desk has on the first of this one (`FUNDING_LAG_MONTHS = 1`).
+Only the vol sleeve's charge has a rate in it, so the pairs and momentum
+books come through exactly as they were financed — which is not a shortcut
+but section 13's finding restated: a desk that watches the Fed is a desk
+with a margin loan. `funding_aware_walk_forward` then runs the six
+allocators on the re-charged window and holds the month net of what it
+*actually* cost; `lag=None` hands the window over as financed and
+reproduces section 13 to the decimal, and `lag=0` prices at this month's
+own average, which the desk does not have yet, to bound what the lag costs.
+
+**What the optimizer was reading.** The first traded month is May 2023.
+Its window is May 2021 to April 2023; the rate averaged 1.63% over it,
+with 13 of the 24 months at or under 1%, and the desk was about to pay
+4.83%. The vol sleeve, capped, ran at 3.7× in that window and borrowed
+0.88 dollars per dollar of capital, so re-charging it is worth 2.7 points
+of return a year. Here is the window as max Sharpe saw it, and as it sees
+it now:
+
+| sleeve, in the window May 2021 – Apr 2023 | Sharpe, as financed (1.63%) | at today's rate (4.83%) |
+|---|---|---|
+| statarb | −0.92 | −0.92 |
+| volcarry | +2.43 | **+2.02** |
+| xsmom | −0.35 | −0.35 |
+
+That table is the result. The loan takes four tenths off the vol sleeve,
+and the vol sleeve at 2.0 is still the only thing in the window that made
+money. The other two lost, at −0.92 and −0.35, and no price of funding
+changes that. Max Sharpe was never mispricing the loan. It was reading a
+window in which one sleeve earned and two did not, and it held the one that
+earned, which is what it is for.
+
+**And so the allocators do not move.** Same 19 months, same window,
+trailing rule, capped at 5×, every Sharpe net of the rate each month
+actually paid:
+
+| scheme | Sharpe: as financed (section 13) | re-charged, last month's rate | re-charged, this month's | weight on volcarry, as financed → re-charged |
+|---|---|---|---|---|
+| equal weight | +1.42 | +1.42 | +1.42 | 0.33 → 0.33 |
+| inverse vol | +1.01 | +1.01 | +1.01 | 0.47 → 0.47 |
+| risk parity | +1.00 | +1.00 | +1.00 | 0.44 → 0.44 |
+| HRP | +0.70 | +0.71 | +0.71 | 0.60 → 0.60 |
+| min variance | +0.72 | +0.73 | +0.73 | 0.54 → 0.54 |
+| max Sharpe | +0.93 | **+0.94** | +0.95 | 0.92 → **0.91** |
+
+The textbook fix is worth a hundredth. Equal weight cannot move, because
+it never reads the window; the four risk-based schemes cannot move much,
+because the re-charge is a shift in a mean and they read only the
+covariance; and max Sharpe, the one scheme the fix was for, goes from 0.92
+to 0.91 on the sleeve and from 0.93 to 0.94 on the book. The implied rule
+reads the same: 0.86 to 0.87, 0.92 to 0.91. Pricing this month's rate
+rather than last month's adds another hundredth, and that is the whole
+cost of the one-month lag — the two differ only in the months the Fed
+moved, and the Fed moved slowly.
+
+Month by month, the weight max Sharpe put on the vol sleeve was 1.00 for
+the first nine months under both windows, and the months it did come down
+— to 0.69 in September 2024 — are the months August 2024 entered the
+window and the sleeve's own trailing Sharpe fell from 1.5 to 0.5 while the
+momentum sleeve's turned positive. That is the sleeve's returns moving the
+weight, not its funding. The funding never did.
+
+**How dear the loan would have to be.** Since the known rate does not
+move the optimizer, the next question is what rate would. This re-charges
+every window at one constant rate, whatever the Fed actually did, from
+zero to three times the 2023 peak. Not a rule anyone could run — the
+realized month is still net of the real rate — just the sweep that finds
+where the optimizer lets go:
+
+| rate the window is charged at | volcarry in the first window | weight on volcarry, max Sharpe | max Sharpe, net | equal weight |
+|---|---|---|---|---|
+| 0% | +2.69 | 0.97 | +0.92 | +1.42 |
+| 2% | +2.42 | 0.96 | +0.93 | +1.42 |
+| 5% | +2.00 | 0.92 | +0.94 | +1.42 |
+| 8% | +1.57 | 0.74 | +0.74 | +1.42 |
+| 10% | +1.29 | **0.51** | +1.16 | +1.42 |
+| 12% | +1.00 | 0.37 | **+1.38** | +1.42 |
+| 15% | +0.56 | 0.21 | +1.34 | +1.42 |
+
+The window has to be charged 10% — double the highest rate in the sample
+— before max Sharpe holds less than half the sleeve, and 12% before it
+catches equal weight. Under the implied rule it does better than catch it:
+at 12% max Sharpe reads 1.53 against equal weight's 1.36, the first time
+in this repository that mean-variance has beaten 1/N on sleeves levered to
+a common risk. It gets there by being told the loan costs 12% when the
+loan cost 5%. That is not a funding forecast. It is a haircut on the
+winning sleeve's mean, and a haircut on the winning sleeve's mean is what
+shrinking expected returns does — the fix the allocator notes reached for
+on ETFs, arriving here through the back door of a financing line. The 8%
+row, where the Sharpe falls before it rises, is nineteen months being
+nineteen months.
+
+So the honest reading of section 13's 92% is not that the optimizer was
+wrong about the cost of leverage. It was right about the sleeve and wrong
+about the book, and the book is wrong because two sleeves that lost money
+for two years are still a third each of the thing that wins. Equal weight
+holds them anyway, which is the only reason it is ahead, and no amount of
+information about the funding changes what max Sharpe does with a window
+that says they lost. The thing that would — a prior that a sleeve's two
+bad years are not its expected return — is what every shrinkage estimator
+in notes/allocator.md is, and what this section accidentally measured the
+value of.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
@@ -1139,4 +1259,9 @@ tighter for a short option than for the stock that hedges it.
   cost 8.8% a year at a 5.2% rate, taking the sleeve from 2.24 to 0.90.
   Equal weight goes from 2.67 to 1.42 and still wins, by more. What is
   still not charged: the section 10 hedge, option margin, and the
-  capital's own interest.
+  capital's own interest. Section 14 then lets the optimizer see the bill
+  before it allocates — the window re-charged at the rate known on day one
+  — and it changes nothing: max Sharpe goes from 0.92 to 0.91 on the
+  sleeve, because the sleeve after the loan is still the only thing in its
+  window that made money. The window has to be charged 10% before it holds
+  less than half.

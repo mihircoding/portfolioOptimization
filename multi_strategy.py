@@ -1848,6 +1848,245 @@ def print_financing(study: dict) -> None:
               f"{row['schemes']['risk parity']:>+12.2f}")
 
 
+# ---------- section 14: price the sleeve at today's funding, not the window's ----------
+
+FUNDING_LAG_MONTHS = 1   # the rate the allocator prices with: last month's average, the latest full month it has on day one
+# Constant rates the window is re-charged at, to find where the optimizer
+# lets go of the sleeve. The top of the range is three times the 2023 peak.
+RATE_SWEEP = (0.0, 0.02, 0.05, 0.08, 0.10, 0.12, 0.15)
+
+
+def repriced_window(fin: dict, index: pd.DatetimeIndex, rate: float,
+                    spread_bps: float = FUNDING_SPREAD_BPS,
+                    cap: float = LEVERAGE_CAP) -> pd.DataFrame:
+    """The trailing window's net returns, with every month's loan charged at `rate`.
+
+    Section 13 estimated on net returns at the rate each month actually paid,
+    so a window straddling the 2022 hikes had its first half financed at zero
+    and its second at five, and the optimizer saw a sleeve that did not exist
+    at either rate. This re-charges the whole window at one rate - the one
+    the desk knows on the morning it allocates - so the sleeve it looks at is
+    the sleeve it is about to hold. Only the vol sleeve's charge has a rate
+    in it (section 13), so the two long/short books come through exactly as
+    they were financed. That is not a shortcut, it is the finding: a desk
+    that watches the Fed is a desk with a margin loan.
+    """
+    cols = {}
+    for name, f in fin.items():
+        w = f.loc[index]
+        if name == "volcarry":
+            lev = w["leverage"].clip(upper=cap)
+            charge = margin_loan_financing(lev, w["long"], pd.Series(rate, index=index), spread_bps)
+            cols[name] = w["raw"] * lev - charge
+        else:
+            cols[name] = w["net_capped"]
+    return pd.DataFrame(cols)
+
+
+def funding_aware_walk_forward(fin: dict, fed_funds: pd.Series,
+                               lookback: int = LOOKBACK_MONTHS,
+                               lag: int | None = FUNDING_LAG_MONTHS,
+                               spread_bps: float = FUNDING_SPREAD_BPS,
+                               cap: float = LEVERAGE_CAP,
+                               rate_override: float | None = None) -> dict:
+    """walk_forward on the capped net panel, with the window re-charged at the
+    rate known on day one.
+
+    Same months, same allocators, same realized returns: the month that is
+    held is net of what it actually cost. The one thing that differs is what
+    the estimator is handed. `lag=None` hands it the window as it was
+    financed, which is section 13's allocator and must reproduce it to the
+    decimal. `lag=1` re-charges the window at last month's average rate,
+    which is the latest full month a desk has on the first of this one.
+    `lag=0` uses this month's own average, which the desk does not have yet,
+    and is here only to bound what the one-month lag costs - the two differ
+    only in the months the Fed moved.
+
+    `rate_override` re-charges every window at one constant rate instead,
+    whatever the Fed did. That is not a rule anyone could run; it is the
+    sweep that finds the rate at which the optimizer would stop wanting the
+    sleeve, which is a different question from whether it was ever charged
+    that.
+
+    Keeps the weight path, which walk_forward does not, because the question
+    this section asks is not "what was the Sharpe" but "what did max Sharpe
+    hold in the month the window finally priced the loan right".
+    """
+    panels = _financed_panels(fin)
+    net = panels["net_capped"]
+    known = fed_funds.reindex(net.index) if lag is None else fed_funds.shift(lag).reindex(net.index)
+    schemes = allocators()
+    realized = {name: [] for name in schemes}
+    weights = {name: [] for name in schemes}
+    dates, rates, window_rates = [], [], []
+
+    for i in range(lookback, len(net)):
+        window = net.index[i - lookback:i]
+        t = net.index[i]
+        if rate_override is not None:
+            rate = float(rate_override)
+            train = repriced_window(fin, window, rate, spread_bps, cap)
+        elif lag is None:
+            train = net.loc[window]
+            rate = float(fed_funds.reindex(window).mean())
+        else:
+            rate = float(known.loc[t])
+            train = repriced_window(fin, window, rate, spread_bps, cap)
+        mu, cov = estimate(train)
+        nxt = net.iloc[i].to_numpy(dtype=float)
+        dates.append(t)
+        rates.append(rate)
+        window_rates.append(float(fed_funds.reindex(window).mean()))
+        for name, fn in schemes.items():
+            w = np.asarray(fn(mu, cov), dtype=float)
+            realized[name].append(float(w @ nxt))
+            weights[name].append(w)
+
+    out = {}
+    for name in schemes:
+        series = pd.Series(realized[name], index=dates)
+        w = np.array(weights[name])
+        out[name] = {
+            **performance(series),
+            "mean_weight": dict(zip(net.columns, w.mean(axis=0).round(4))),
+            "weight_on_statarb": float(w[:, list(net.columns).index("statarb")].mean()),
+            "weight_path": {c: [round(float(x), 4) for x in w[:, j]]
+                            for j, c in enumerate(net.columns)},
+        }
+    return {"months_traded": len(dates), "first": str(dates[0].date()),
+            "last": str(dates[-1].date()), "lag_months": lag,
+            "dates": [f"{d:%Y-%m}" for d in dates],
+            "rate_priced": [round(r, 4) for r in rates],
+            "rate_window_mean": [round(r, 4) for r in window_rates],
+            "schemes": out}
+
+
+def funding_forecast_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
+                           window: int = VOL_WINDOW_MONTHS,
+                           beta_window: int = BETA_WINDOW_MONTHS,
+                           cap: float = LEVERAGE_CAP, spread_bps: float = FUNDING_SPREAD_BPS,
+                           borrow_fee_bps: float = BORROW_FEE_BPS,
+                           min_months: int = IMPLIED_FIT_MIN_MONTHS,
+                           lags=(FUNDING_LAG_MONTHS, 0),
+                           rate_sweep=RATE_SWEEP) -> dict:
+    """Section 13's allocators again, with the cost of funding treated as a
+    forecast rather than a history.
+
+    Section 13 left max Sharpe holding 92% of the vol sleeve on net returns,
+    because the trailing window it estimated on was half zero-rate months
+    and the net sleeve in that window was still the best Sharpe in it. The
+    rate is known on day one the way the implied vol is - the Fed publishes
+    it - so the window can be re-charged at today's rate before the optimizer
+    sees it. If max Sharpe drops the sleeve once it can see the bill, the
+    optimizer is finally doing what the textbook says. If it does not, that
+    is a result too, and this reports whichever it is.
+
+    Runs both sizing rules. For each: the allocator as financed (section 13,
+    reproduced), re-charged at last month's rate, and re-charged at this
+    month's (the bound). Also what the vol sleeve looked like inside the
+    first traded month's window under each, since that is the number the
+    optimizer was reading when it chose 92%. And a sweep that re-charges
+    every window at a constant rate from zero to well past anything the Fed
+    has done since 2007, to find the rate at which max Sharpe would actually
+    put the sleeve down.
+    """
+    fed_funds = fed_funds_monthly()
+    occupancy = statarb_occupancy()
+    implied = volcarry_implied()
+    delta = atm_call_delta(implied)
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    forecast = implied_vol_forecast(volcarry, implied, min_months)
+    rules = {
+        "trailing": sleeve_frames(target, window, beta_window),
+        "implied": sleeve_frames(target, window, beta_window, volcarry_vol=forecast),
+    }
+
+    out = {"lookback": int(lookback), "leverage_cap": float(cap), "lags": list(lags), "rules": {}}
+    for rule, frames in rules.items():
+        fin = financed_frames(frames, fed_funds, occupancy, delta, spread_bps,
+                              borrow_fee_bps, cap)
+        runs = {"as_financed": funding_aware_walk_forward(fin, fed_funds, lookback, None,
+                                                           spread_bps, cap)}
+        for lag in lags:
+            runs[f"repriced_lag{lag}"] = funding_aware_walk_forward(fin, fed_funds, lookback, lag,
+                                                                    spread_bps, cap)
+        # the vol sleeve as the optimizer saw it in the first traded month's
+        # window, as financed and re-charged at the rate it was about to pay
+        net = _financed_panels(fin)["net_capped"]
+        first_window = net.index[:lookback]
+        first_rate = float(fed_funds.shift(FUNDING_LAG_MONTHS).loc[net.index[lookback]])
+        seen = {
+            "window_first": f"{first_window[0]:%Y-%m}", "window_last": f"{first_window[-1]:%Y-%m}",
+            "rate_window_mean": float(fed_funds.reindex(first_window).mean()),
+            "rate_priced": first_rate,
+            "months_at_or_under_1pct": int((fed_funds.reindex(first_window) <= 0.01).sum()),
+            "sleeves_as_financed": {n: performance(net.loc[first_window, n])["sharpe"]
+                                    for n in net.columns},
+            "sleeves_repriced": {n: performance(s)["sharpe"] for n, s in
+                                 repriced_window(fin, first_window, first_rate, spread_bps, cap).items()},
+        }
+        # and month by month, what max Sharpe held and what the two windows said
+        path = {
+            "dates": runs["as_financed"]["dates"],
+            "rate_window_mean": runs["as_financed"]["rate_window_mean"],
+            "rate_priced": runs[f"repriced_lag{lags[0]}"]["rate_priced"],
+            "max_sharpe_weight_on_volcarry": {
+                k: r["schemes"]["max Sharpe"]["weight_path"]["volcarry"] for k, r in runs.items()},
+        }
+        sweep = []
+        for rate in rate_sweep:
+            run = funding_aware_walk_forward(fin, fed_funds, lookback, None, spread_bps, cap,
+                                             rate_override=rate)
+            sweep.append({
+                "rate": float(rate),
+                "volcarry_in_first_window": performance(
+                    repriced_window(fin, first_window, rate, spread_bps, cap)["volcarry"])["sharpe"],
+                "max_sharpe_weight_on_volcarry": run["schemes"]["max Sharpe"]["mean_weight"]["volcarry"],
+                "max_sharpe": run["schemes"]["max Sharpe"]["sharpe"],
+                "equal_weight": run["schemes"]["equal weight"]["sharpe"],
+            })
+        out["rules"][rule] = {"runs": runs, "first_window": seen, "path": path,
+                              "rate_sweep": sweep}
+    return out
+
+
+def print_funding_forecast(study: dict) -> None:
+    print(f"\n15. PRICE THE SLEEVE AT TODAY'S FUNDING")
+    print(f"   The window re-charged at the rate known on day one (last month's average), "
+          f"before the optimizer sees it. Capped {study['leverage_cap']:.0f}x, {study['lookback']}-month window.")
+    for rule, r in study["rules"].items():
+        seen = r["first_window"]
+        print(f"\n   Vol sleeve sized on {rule}. First traded month's window, "
+              f"{seen['window_first']} to {seen['window_last']}: the rate averaged "
+              f"{seen['rate_window_mean']:.2%} ({seen['months_at_or_under_1pct']} months at or under 1%), "
+              f"and the desk was about to pay {seen['rate_priced']:.2%}.")
+        print(f"{'sleeve in the window':>22} {'Sharpe, as financed':>20} {'at today''s rate':>16}")
+        for n in seen["sleeves_as_financed"]:
+            print(f"{n:>22} {seen['sleeves_as_financed'][n]:>+20.2f} {seen['sleeves_repriced'][n]:>+16.2f}")
+        runs = r["runs"]
+        keys = list(runs)
+        print(f"\n   Walk-forward, {runs[keys[0]]['months_traded']} months traded, Sharpe net of what each month cost:")
+        print(f"{'scheme':>14} " + " ".join(f"{k:>16}" for k in keys) + f"   {'w(volcarry) as financed -> lag 1':>34}")
+        for name in runs[keys[0]]["schemes"]:
+            print(f"{name:>14} " + " ".join(f"{runs[k]['schemes'][name]['sharpe']:>+16.2f}" for k in keys)
+                  + f"   {runs[keys[0]]['schemes'][name]['mean_weight']['volcarry']:>16.2f} -> "
+                  f"{runs[keys[1]]['schemes'][name]['mean_weight']['volcarry']:.2f}")
+        print(f"\n   Every window re-charged at one rate, whatever the Fed did:")
+        print(f"{'rate':>6} {'volcarry in 1st window':>23} {'w(volcarry), max Sharpe':>24} "
+              f"{'max Sharpe':>11} {'equal weight':>13}")
+        for row in r["rate_sweep"]:
+            print(f"{row['rate']:>6.0%} {row['volcarry_in_first_window']:>+23.2f} "
+                  f"{row['max_sharpe_weight_on_volcarry']:>24.2f} {row['max_sharpe']:>+11.2f} "
+                  f"{row['equal_weight']:>+13.2f}")
+        path = r["path"]
+        print(f"\n   max Sharpe's weight on the vol sleeve, month by month:")
+        print(f"{'month':>8} {'window rate':>12} {'rate priced':>12} " + " ".join(f"{k:>16}" for k in keys))
+        for i, d in enumerate(path["dates"]):
+            print(f"{d:>8} {path['rate_window_mean'][i]:>12.2%} {path['rate_priced'][i]:>12.2%} "
+                  + " ".join(f"{path['max_sharpe_weight_on_volcarry'][k][i]:>16.2f}" for k in keys))
+
+
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
     print(f"\n1. THE TWO SLEEVES   {panel.index[0]:%Y-%m} to "
           f"{panel.index[-1]:%Y-%m}, {len(panel)} months")
@@ -2051,6 +2290,8 @@ def main() -> None:
     print_implied_sizing(implied)
     financed = financing_study(lookback=lookback)
     print_financing(financed)
+    funding = funding_forecast_study(lookback=lookback)
+    print_funding_forecast(funding)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -2070,7 +2311,8 @@ def main() -> None:
                    "hedged_momentum": hedged,
                    "vol_target": levered,
                    "implied_sizing": implied,
-                   "financing": financed}, fh, indent=1,
+                   "financing": financed,
+                   "funding_forecast": funding}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to
