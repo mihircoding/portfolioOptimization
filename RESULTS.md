@@ -1214,6 +1214,116 @@ bad years are not its expected return — is what every shrinkage estimator
 in notes/allocator.md is, and what this section accidentally measured the
 value of.
 
+### 15. Shrink the mean on purpose, and find the strength that beats 1/N is one nobody could have set
+
+Reproduce with: `python multi_strategy.py` (section 16 of the printout)
+
+Section 14 ended by saying that the 12% loan — the one rate at which max
+Sharpe caught equal weight — was not a funding forecast but a haircut on
+the winning sleeve's mean, and that a haircut on the winning sleeve's mean
+is what shrinkage is. That was a reading, not a measurement. This is the
+measurement: the same net capped panel, the same 19 months, and max Sharpe
+handed a mean that has been pulled toward a prior *before* it allocates,
+through the front door. The prediction written down was that if any
+strength of shrinkage beats 1/N here, it is the first honest mean-variance
+win on levered sleeves in this repository; and if none does, the 12% row
+was a curve fit with one knob.
+
+Two priors, because the two textbook ones end in different places.
+`min_variance_return` is Jorion's (1986) target: the expected return of
+the unconstrained minimum-variance portfolio, the one portfolio return
+that does not depend on which sleeve got lucky, and a mean shrunk all the
+way to it is flat, so max Sharpe on it is min variance. `equal_weight_prior`
+is the Black-Litterman one with 1/N standing in for the market — reverse
+optimization, π = δΣw, the expected returns under which equal weight *is*
+the max-Sharpe portfolio — so a mean shrunk all the way to it is equal
+weight. `shrunk_mean` blends: (1 − s) × the window's mean + s × the prior.
+`shrunk_walk_forward` runs max Sharpe on the blend, month by month, and at
+s = 0 reproduces section 13's max Sharpe to the decimal (tested). For
+Jorion's target there is also the strength the estimator picks from the
+window on its own — `bayes_stein_strength`, (N + 2) / ((N + 2) + T·d′Σ⁻¹d),
+which trusts the window's mean in proportion to how far it sits from the
+target in standard errors — and that is the version nobody tuned.
+
+**The sweep.** Trailing rule, capped 5×, Sharpe net of the rate each
+month paid. Equal weight +1.42, max Sharpe +0.93, min variance +0.72:
+
+| strength of the prior | toward min variance | weight on volcarry | toward 1/N | weight on volcarry |
+|---|---|---|---|---|
+| 0 (the window's mean) | +0.93 | 0.92 | +0.93 | 0.92 |
+| 0.25 | +0.93 | 0.91 | +0.95 | 0.91 |
+| 0.50 | +0.95 | 0.88 | +0.94 | 0.87 |
+| 0.75 | +0.96 | 0.78 | +1.05 | 0.78 |
+| 0.90 | +0.85 | 0.64 | +1.39 | 0.66 |
+| 0.94 | +0.81 | 0.60 | +1.57 | 0.60 |
+| 0.96 | +0.78 | 0.58 | **+1.62** | 0.55 |
+| 0.98 | +0.75 | 0.56 | +1.56 | 0.48 |
+| 1 (the prior) | +0.72 | 0.54 | +1.42 | 0.33 |
+| Bayes-Stein, 0.56 on average | +0.86 | 0.83 | — | — |
+
+Under the implied rule the same table reads +0.86 at zero, +1.40 at 0.96
+and +1.36 at one, with Bayes-Stein at +0.79.
+
+Four things to say, and the fourth is the one that matters.
+
+**Toward min variance, there is nothing.** The sweep goes 0.93, 0.95,
+0.96 and then down to 0.72. Its best is three hundredths over the
+unshrunk mean, at a strength of 0.75, and every strength lands below
+equal weight. Jorion's own strength — 0.27 in the first window, rising
+to 0.88 by the autumn of 2024 as the three sleeves' means drift together — picks
+0.56 on average and scores 0.86, which is *worse* than not shrinking at
+all. The data-driven estimator, the one with no knob, costs 0.07 of
+Sharpe here. Shrinking toward "every sleeve earns the same" moves the
+book toward the pairs sleeve, from 0% to 29% of it, and the pairs sleeve
+lost money in every window; the prior is wrong about the thing the
+window was right about.
+
+**Toward 1/N, there is a strength, and it is 0.96.** At 0.96 max Sharpe
+reads 1.62 against equal weight's 1.42 under the trailing rule, 1.40
+against 1.36 under implied. The book it holds is 20% pairs, 55% vol, 25%
+momentum: equal weight tilted toward the sleeve that earned and away
+from the one that did not, with all three kept. It beats 1/N by earning
+0.8 points more a year at 1/N's own volatility (5.1% against 4.4%, at
+3.2% against 3.1%) — which is the one thing a mean estimate is supposed to buy,
+and the first time in this repository that a mean-variance book has
+beaten equal weight on sleeves levered to a common risk without being
+told something false about the funding.
+
+**But look at where the sweep lives.** Between 0 and 0.75 the 1/N column
+barely moves; everything happens above 0.9. That is a parameterization,
+not a result: the prior's level is the 1/N return over the window, a one-
+or two-percent number, and the window's means are ±7% to 15%, so the
+blend is still mostly the window's mean until the window has lost nearly
+all of its vote. The peak is at "4% of the vote". It is a hump, not a
+spike — 0.92 to 0.98 all beat 1/N under trailing — but it is a hump at
+the far end of a dial whose scale nothing sets in advance, and 0.96 was
+read off the answer. Under the implied rule the whole hump is four
+hundredths high.
+
+**And the 12% row was not shrinkage.** Run alongside, the 12% loan's
+book is 0% pairs, 37% vol, 63% momentum (26/74 under implied). No
+shrinkage toward either prior holds that: the 1/N peak is 20/55/25 and
+Bayes-Stein is 9/83/8. What charging the window 12% did was take six
+points off one sleeve's mean and leave the other two alone — a *view*
+against the vol sleeve, which pushed the optimizer into the momentum
+sleeve, which then turned positive in 2024. A prior pulls every mean
+toward a centre; a view moves one. Section 14 called the 12% row
+shrinkage through the back door, and it was a view through the back
+door, and it beat 1/N by being right about which sleeve was about to
+earn for a reason the window did not contain. That is the thing to be
+suspicious of, and the front door is the only way to tell the two
+apart.
+
+So the prediction held, and in both halves. There is a strength that
+beats 1/N — the 12% row was not the only way to get there — and it is
+not one anyone could have set: the estimator that chooses a strength
+from the data chooses the wrong target and loses, and the target that
+wins has its best strength at a point on the dial that only the answer
+locates. On 19 months. What an honest test of it would need is the
+strength chosen out of sample too — picked each month from how the
+strengths had done up to then — and 19 months is not enough to run
+that on top of a 24-month estimation window.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
@@ -1264,4 +1374,13 @@ value of.
   — and it changes nothing: max Sharpe goes from 0.92 to 0.91 on the
   sleeve, because the sleeve after the loan is still the only thing in its
   window that made money. The window has to be charged 10% before it holds
-  less than half.
+  less than half. Section 15 then shrinks the mean on purpose, and finds
+  the 12% row was a view, not a prior: no shrinkage toward either textbook
+  target holds the book it held. There is a strength toward 1/N that
+  beats equal weight — 1.62 against 1.42 — and it is 0.96 on a dial whose
+  scale nothing sets in advance, read off the answer; the estimator that
+  picks a strength from the data picks the other target and loses.
+- **The strength in section 15 was chosen after the fact.** The honest
+  version chooses it out of sample too, from how each strength had done
+  up to that month, and 19 traded months on top of a 24-month window is
+  not enough history to do that on.

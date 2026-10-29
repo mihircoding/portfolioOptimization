@@ -114,17 +114,29 @@ weight, by being told the loan costs more than twice what it did. That is
 not a funding forecast; it is a haircut on the winning sleeve's mean, which
 is what shrinkage is.
 
+So shrink the mean on purpose (section 15): the window's mean pulled toward
+Jorion's minimum-variance return, or toward the return under which 1/N is
+the answer, before the optimizer sees it. Toward min variance there is
+nothing — the strength the Bayes-Stein estimator picks from the data on its
+own scores 0.86, below the unshrunk 0.93. Toward 1/N there is a strength,
+0.96, at which max Sharpe reads 1.62 against equal weight's 1.42, holding
+20/55/25 — the first mean-variance book here to beat 1/N on levered
+sleeves without being told something false. But 0.96 sits at the far end
+of a dial whose scale nothing sets in advance, and it was read off the
+answer. And the 12% row was never shrinkage: its book was 0/37/63, a view
+against one sleeve that happened to land in the sleeve about to earn.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-335 tests.
+341 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 335 passed
+python -m pytest -q                 # 341 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

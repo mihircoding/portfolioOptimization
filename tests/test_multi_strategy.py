@@ -1089,3 +1089,93 @@ def test_funding_forecast_study_starts_from_section_13(monkeypatch):
         free, dear = study["rules"][rule]["rate_sweep"]
         assert dear["volcarry_in_first_window"] < free["volcarry_in_first_window"]
         assert dear["max_sharpe_weight_on_volcarry"] <= free["max_sharpe_weight_on_volcarry"]
+
+
+# ---------- 15. shrink the mean on purpose ----------
+
+from multi_strategy import (bayes_stein_strength, equal_weight_prior,
+                            min_variance_return, shrinkage_study, shrunk_mean,
+                            shrunk_walk_forward)
+from src.optimizer import max_sharpe_weights, min_variance_weights_analytic
+
+
+def _three_sleeves(n=48, seed=11, means=(-0.006, 0.012, -0.003)):
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2020-01-31", periods=n, freq="ME")
+    draws = rng.normal(means, 0.03, size=(n, 3))
+    return pd.DataFrame(draws, index=idx, columns=["statarb", "volcarry", "xsmom"])
+
+
+def test_min_variance_return_is_what_the_analytic_min_variance_portfolio_earns():
+    mu, cov = estimate(_three_sleeves())
+    w = min_variance_weights_analytic(cov)
+    assert min_variance_return(mu, cov) == pytest.approx(float(w @ mu))
+
+
+def test_shrunk_mean_is_the_window_at_zero_and_the_prior_at_one():
+    mu, cov = estimate(_three_sleeves())
+    assert np.allclose(shrunk_mean(mu, cov, 0.0), mu)
+    assert np.allclose(shrunk_mean(mu, cov, 0.0, "1/N"), mu)
+    flat = shrunk_mean(mu, cov, 1.0, "min variance")
+    assert np.allclose(flat, flat[0])
+    assert flat[0] == pytest.approx(min_variance_return(mu, cov))
+    assert np.allclose(shrunk_mean(mu, cov, 1.0, "1/N"), equal_weight_prior(mu, cov))
+    with pytest.raises(ValueError):
+        shrunk_mean(mu, cov, 0.5, "market")
+
+
+def test_max_sharpe_on_the_equal_weight_prior_is_equal_weight_even_when_1n_lost():
+    # a window where every sleeve lost: 1/N's own return is negative, and the
+    # prior still has to be the one that makes 1/N the answer
+    mu, cov = estimate(_three_sleeves(means=(-0.01, -0.004, -0.008)))
+    assert float(mu.mean()) < 0
+    w = max_sharpe_weights(equal_weight_prior(mu, cov), cov)
+    assert np.allclose(w, 1 / 3, atol=1e-3)
+    # and the prior's level is the size of the 1/N return, not its sign
+    assert float(np.ones(3) / 3 @ equal_weight_prior(mu, cov)) == pytest.approx(abs(float(mu.mean())))
+
+
+def test_bayes_stein_shrinks_more_when_the_means_agree_and_less_with_more_months():
+    mu, cov = estimate(_three_sleeves())
+    phi = bayes_stein_strength(mu, cov, 24)
+    assert 0.0 < phi < 1.0
+    # twice the months is the same evidence twice over: less shrinkage
+    assert bayes_stein_strength(mu, cov, 48) < phi
+    # means that already sit at the target get pulled all the way
+    flat = np.full(3, min_variance_return(mu, cov))
+    assert bayes_stein_strength(flat, cov, 24) == pytest.approx(1.0)
+    # and means that disagree by a mile are left alone
+    assert bayes_stein_strength(mu * 50, cov, 24) < 0.01
+
+
+def test_shrunk_walk_forward_ends_where_the_textbook_says():
+    panel = _three_sleeves(n=60)
+    reference = walk_forward(panel, lookback=24)["schemes"]
+    none = shrunk_walk_forward(panel, 24, 0.0, "1/N")
+    assert none["sharpe"] == pytest.approx(reference["max Sharpe"]["sharpe"])
+    assert none["mean_weight"] == reference["max Sharpe"]["mean_weight"]
+    to_1n = shrunk_walk_forward(panel, 24, 1.0, "1/N")
+    assert to_1n["sharpe"] == pytest.approx(reference["equal weight"]["sharpe"], abs=1e-3)
+    to_mv = shrunk_walk_forward(panel, 24, 1.0, "min variance")
+    assert to_mv["sharpe"] == pytest.approx(reference["min variance"]["sharpe"], abs=1e-3)
+    # the data-driven strength is one number per traded month, inside (0, 1]
+    bs = shrunk_walk_forward(panel, 24, "bayes-stein", "min variance")
+    assert len(bs["strength_path"]) == bs["months_traded"] == len(panel) - 24
+    assert all(0.0 < s <= 1.0 for s in bs["strength_path"])
+    assert bs["mean_strength"] == pytest.approx(np.mean(bs["strength_path"]), abs=1e-3)
+
+
+def test_shrinkage_study_brackets_max_sharpe_and_equal_weight(monkeypatch):
+    _patch_sleeves(monkeypatch)
+    study = shrinkage_study(lookback=24, target=0.10, window=36, beta_window=36,
+                            strengths=(0.0, 0.5, 1.0))
+    for rule in ("trailing", "implied"):
+        r = study["rules"][rule]
+        first, _, last = r["sweeps"]["1/N"]
+        assert first["sharpe"] == pytest.approx(r["max_sharpe"])
+        assert last["sharpe"] == pytest.approx(r["equal_weight"], abs=1e-3)
+        assert r["sweeps"]["min variance"][-1]["sharpe"] == pytest.approx(r["min_variance"], abs=1e-3)
+        assert r["best_toward_1n"]["sharpe"] == max(s["sharpe"] for s in r["sweeps"]["1/N"])
+        assert r["best_toward_1n"]["over_equal_weight"] == pytest.approx(
+            r["best_toward_1n"]["sharpe"] - r["equal_weight"])
+        assert set(r["view"]["mean_weight"]) == {"statarb", "volcarry", "xsmom"}

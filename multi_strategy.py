@@ -2087,6 +2087,208 @@ def print_funding_forecast(study: dict) -> None:
                   + " ".join(f"{path['max_sharpe_weight_on_volcarry'][k][i]:>16.2f}" for k in keys))
 
 
+# ---------- 15. shrink the mean on purpose ----------
+
+# Strengths from "the window's mean, untouched" to "the prior, untouched".
+# Dense above 0.9 because that is where the 1/N prior's sweep turns out to
+# live: the prior's level is the 1/N return, a one-or-two-percent number,
+# and the window's means are ten times that, so the blend only stops being
+# the window's mean once the window has lost nearly all of its vote.
+SHRINK_SWEEP = (0.0, 0.25, 0.5, 0.75, 0.9, 0.94, 0.96, 0.98, 1.0)
+VIEW_RATE = 0.12   # the rate_sweep row of section 14 where max Sharpe caught 1/N
+
+
+def min_variance_return(mu: np.ndarray, cov: np.ndarray) -> float:
+    """The expected return of the unconstrained minimum-variance portfolio.
+
+    Jorion's (1986) shrinkage target. It is the one portfolio return that does
+    not depend on which asset got lucky in the window: the weights are built
+    from the covariance alone, and mu only enters once, averaged through them.
+    """
+    inv = np.linalg.inv(cov)
+    one = np.ones(len(mu))
+    return float((one @ inv @ mu) / (one @ inv @ one))
+
+
+def equal_weight_prior(mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    """The expected returns under which 1/N is the max-Sharpe portfolio.
+
+    Reverse optimization (src/black_litterman.py), with equal weight standing
+    in for the market: pi = delta * Sigma * w_eq. Max Sharpe on pi returns
+    w_eq for any positive delta, so delta only sets the prior's level, and
+    the level is taken from the window's own 1/N return so the blend is in
+    the same units as the mean it is blended with. In absolute value: four of
+    the nineteen real windows have 1/N losing money over them, and the
+    honest version of "the prior is that equal weight is right" is not "the
+    prior is that the book should be shorted".
+    """
+    n = len(mu)
+    w = np.ones(n) / n
+    delta = abs(float(w @ mu)) / float(w @ cov @ w)
+    return delta * (cov @ w)
+
+
+def bayes_stein_strength(mu: np.ndarray, cov: np.ndarray, months: int) -> float:
+    """How far Jorion's estimator pulls the window's means toward the
+    minimum-variance return, from the data alone.
+
+        phi = (N + 2) / ((N + 2) + T * (mu - mu0)' Sigma^-1 (mu - mu0))
+
+    T is the number of observations the means were estimated from and the
+    quadratic form is in the same units, so mu and Sigma are taken back to
+    monthly before it is evaluated. Means that already agree with the target
+    get shrunk all the way (phi -> 1); means that disagree by many standard
+    errors are left alone (phi -> 0); and more months is less shrinkage, which
+    is the whole content of the estimator - the window's mean is trusted in
+    proportion to how much of it there is.
+    """
+    n = len(mu)
+    gap = mu - min_variance_return(mu, cov)
+    distance = months * float(gap @ np.linalg.inv(cov) @ gap) / MONTHS_PER_YEAR
+    return (n + 2) / ((n + 2) + distance)
+
+
+def shrunk_mean(mu: np.ndarray, cov: np.ndarray, strength: float,
+                target: str = "min variance") -> np.ndarray:
+    """(1 - strength) * the window's mean + strength * the prior."""
+    if target == "min variance":
+        prior = np.full(len(mu), min_variance_return(mu, cov))
+    elif target == "1/N":
+        prior = equal_weight_prior(mu, cov)
+    else:
+        raise ValueError(f"no such target: {target!r}")
+    return (1.0 - strength) * mu + strength * prior
+
+
+def shrunk_walk_forward(panel: pd.DataFrame, lookback: int = LOOKBACK_MONTHS,
+                        strength: float | str = 0.0,
+                        target: str = "min variance") -> dict:
+    """Max Sharpe on the trailing window, with the mean shrunk before it looks.
+
+    Same months and the same realized returns as walk_forward; the one thing
+    that differs is the mean the optimizer is handed. `strength` is a number
+    in [0, 1], or "bayes-stein" to let each window pick its own. At 0 this is
+    walk_forward's max Sharpe to the decimal; at 1 toward the min-variance
+    return it is min variance (a constant mean leaves only risk to optimize),
+    and at 1 toward the 1/N prior it is equal weight.
+    """
+    realized, weights, strengths, dates = [], [], [], []
+    for i in range(lookback, len(panel)):
+        train = panel.iloc[i - lookback:i]
+        mu, cov = estimate(train)
+        phi = bayes_stein_strength(mu, cov, lookback) if strength == "bayes-stein" else float(strength)
+        m = shrunk_mean(mu, cov, phi, target)
+        # A flat mean leaves only risk to optimize, so that endpoint is min
+        # variance by construction rather than by whatever SLSQP makes of a
+        # Sharpe whose numerator has no sign (a window where the min-variance
+        # return is negative hands it one, and it maximizes the risk instead).
+        w = min_variance_weights(cov) if np.ptp(m) < 1e-12 else max_sharpe_weights(m, cov)
+        w = np.asarray(w, dtype=float)
+        realized.append(float(w @ panel.iloc[i].to_numpy(dtype=float)))
+        weights.append(w)
+        strengths.append(phi)
+        dates.append(panel.index[i])
+    w = np.array(weights)
+    return {
+        "months_traded": len(dates), "target": target,
+        "strength": strength if strength == "bayes-stein" else float(strength),
+        "mean_strength": float(np.mean(strengths)),
+        "strength_path": [round(float(x), 4) for x in strengths],
+        **performance(pd.Series(realized, index=dates)),
+        "mean_weight": dict(zip(panel.columns, w.mean(axis=0).round(4))),
+    }
+
+
+def shrinkage_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
+                    window: int = VOL_WINDOW_MONTHS,
+                    beta_window: int = BETA_WINDOW_MONTHS,
+                    cap: float = LEVERAGE_CAP, spread_bps: float = FUNDING_SPREAD_BPS,
+                    borrow_fee_bps: float = BORROW_FEE_BPS,
+                    min_months: int = IMPLIED_FIT_MIN_MONTHS,
+                    strengths=SHRINK_SWEEP, view_rate: float = VIEW_RATE) -> dict:
+    """Section 14's accidental result, done on purpose.
+
+    Section 14 found that charging the window a 12% loan is what it takes
+    for max Sharpe to catch equal weight, and read that as a haircut on the
+    winning sleeve's mean - shrinkage through the back door. This is the
+    front door: the same net capped panel, the same 19 months, and max
+    Sharpe handed a mean that has been shrunk toward a prior before it
+    allocates. Two priors, because the two textbook ones end in different
+    places - Jorion's minimum-variance return, under which full shrinkage
+    is min variance, and the 1/N-implied return, under which it is equal
+    weight. A sweep of strengths for each, and for Jorion's the strength
+    the estimator picks from the window on its own, which is the version
+    nobody tuned. The 12% book is run alongside so the two can be compared
+    on what they held rather than on what they scored.
+    """
+    fed_funds = fed_funds_monthly()
+    occupancy = statarb_occupancy()
+    implied = volcarry_implied()
+    delta = atm_call_delta(implied)
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    forecast = implied_vol_forecast(volcarry, implied, min_months)
+    rules = {
+        "trailing": sleeve_frames(target, window, beta_window),
+        "implied": sleeve_frames(target, window, beta_window, volcarry_vol=forecast),
+    }
+
+    out = {"lookback": int(lookback), "leverage_cap": float(cap),
+           "strengths": [float(s) for s in strengths], "view_rate": float(view_rate), "rules": {}}
+    for rule, frames in rules.items():
+        fin = financed_frames(frames, fed_funds, occupancy, delta, spread_bps,
+                              borrow_fee_bps, cap)
+        net = _financed_panels(fin)["net_capped"]
+        plain = walk_forward(net, lookback=lookback)["schemes"]
+        view = funding_aware_walk_forward(fin, fed_funds, lookback, None, spread_bps, cap,
+                                          rate_override=view_rate)["schemes"]["max Sharpe"]
+        out["rules"][rule] = {
+            "months_traded": len(net) - lookback,
+            "equal_weight": plain["equal weight"]["sharpe"],
+            "min_variance": plain["min variance"]["sharpe"],
+            "max_sharpe": plain["max Sharpe"]["sharpe"],
+            "sweeps": {t: [shrunk_walk_forward(net, lookback, s, t) for s in strengths]
+                       for t in ("min variance", "1/N")},
+            "bayes_stein": shrunk_walk_forward(net, lookback, "bayes-stein", "min variance"),
+            "view": {"rate": float(view_rate), "sharpe": view["sharpe"],
+                     "mean_weight": view["mean_weight"]},
+        }
+        # The strength that did best toward 1/N, read off the answer. Reported
+        # as what it is - the ceiling a tuned knob reaches - not as a rule.
+        best = max(out["rules"][rule]["sweeps"]["1/N"], key=lambda r: r["sharpe"])
+        out["rules"][rule]["best_toward_1n"] = {
+            "strength": best["strength"], "sharpe": best["sharpe"],
+            "over_equal_weight": best["sharpe"] - plain["equal weight"]["sharpe"],
+            "mean_weight": best["mean_weight"]}
+    return out
+
+
+def print_shrinkage(study: dict) -> None:
+    print(f"\n16. SHRINK THE MEAN ON PURPOSE")
+    print(f"   Max Sharpe on the net capped panel, the window's mean pulled toward a prior "
+          f"before it allocates. Capped {study['leverage_cap']:.0f}x, {study['lookback']}-month window.")
+    for rule, r in study["rules"].items():
+        print(f"\n   Vol sleeve sized on {rule}. Equal weight {r['equal_weight']:+.2f}, "
+              f"max Sharpe {r['max_sharpe']:+.2f}, min variance {r['min_variance']:+.2f}.")
+        print(f"{'strength':>9} {'toward min variance':>20} {'w(vol)':>7} {'toward 1/N':>12} {'w(vol)':>7}")
+        for a, b in zip(r["sweeps"]["min variance"], r["sweeps"]["1/N"]):
+            print(f"{a['strength']:>9.2f} {a['sharpe']:>+20.2f} {a['mean_weight']['volcarry']:>7.2f} "
+                  f"{b['sharpe']:>+12.2f} {b['mean_weight']['volcarry']:>7.2f}")
+        bs = r["bayes_stein"]
+        print(f"\n   Bayes-Stein, strength from the window: {bs['mean_strength']:.2f} on average "
+              f"({min(bs['strength_path']):.2f} to {max(bs['strength_path']):.2f}), "
+              f"Sharpe {bs['sharpe']:+.2f}, holding "
+              + ", ".join(f"{k} {v:.2f}" for k, v in bs["mean_weight"].items()))
+        v = r["view"]
+        print(f"   The {v['rate']:.0%} loan of section 14: Sharpe {v['sharpe']:+.2f}, holding "
+              + ", ".join(f"{k} {v['mean_weight'][k]:.2f}" for k in v["mean_weight"]))
+        b = r["best_toward_1n"]
+        print(f"   Best strength toward 1/N, chosen after the fact: {b['strength']:.2f} "
+              f"(the window keeps {1 - b['strength']:.0%} of the vote), Sharpe {b['sharpe']:+.2f}, "
+              f"{b['over_equal_weight']:+.2f} over equal weight, holding "
+              + ", ".join(f"{k} {v:.2f}" for k, v in b["mean_weight"].items()))
+
+
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
     print(f"\n1. THE TWO SLEEVES   {panel.index[0]:%Y-%m} to "
           f"{panel.index[-1]:%Y-%m}, {len(panel)} months")
@@ -2292,6 +2494,8 @@ def main() -> None:
     print_financing(financed)
     funding = funding_forecast_study(lookback=lookback)
     print_funding_forecast(funding)
+    shrunk = shrinkage_study(lookback=lookback)
+    print_shrinkage(shrunk)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -2312,7 +2516,8 @@ def main() -> None:
                    "vol_target": levered,
                    "implied_sizing": implied,
                    "financing": financed,
-                   "funding_forecast": funding}, fh, indent=1,
+                   "funding_forecast": funding,
+                   "shrinkage": shrunk}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to
