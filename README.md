@@ -126,17 +126,30 @@ of a dial whose scale nothing sets in advance, and it was read off the
 answer. And the 12% row was never shrinkage: its book was 0/37/63, a view
 against one sleeve that happened to land in the sleeve about to earn.
 
+So choose it without looking (section 16): each month, trade the strength
+with the best record over the previous twelve. On section 15's own sample
+the chooser finds 0.96 by its second month, holds it for eight, and loses
+to equal weight by half a point — the hump was in the six months that
+built the record, which nobody could have traded. On a 12-month window,
+which trades 25 months instead of 13, it beats 1/N by five hundredths, by
+switching between the two ends of the dial rather than by holding a
+strength. And the dial itself was the finding: the prior's level was the
+window's 1/N return, so "0.96" was 16% of the vote in one window and 94%
+in another. Put the prior at the mean's own size and no strength between
+the ends beats the better end. It was never a strength; it was the window
+changing regime under a number quoted in the wrong units.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-341 tests.
+347 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 341 passed
+python -m pytest -q                 # 347 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

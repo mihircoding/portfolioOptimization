@@ -1179,3 +1179,101 @@ def test_shrinkage_study_brackets_max_sharpe_and_equal_weight(monkeypatch):
         assert r["best_toward_1n"]["over_equal_weight"] == pytest.approx(
             r["best_toward_1n"]["sharpe"] - r["equal_weight"])
         assert set(r["view"]["mean_weight"]) == {"statarb", "volcarry", "xsmom"}
+
+
+# ---------- 16. choose the strength out of sample ----------
+
+from multi_strategy import chosen_strength_study, chosen_strength_walk_forward
+
+
+def test_the_norm_scaled_prior_is_the_same_direction_at_the_means_own_size():
+    mu, cov = estimate(_three_sleeves())
+    default = equal_weight_prior(mu, cov)
+    scaled = equal_weight_prior(mu, cov, "window norm")
+    assert np.linalg.norm(scaled) == pytest.approx(np.linalg.norm(mu))
+    # same vector, different length: max Sharpe on it is still 1/N
+    assert np.allclose(scaled / np.linalg.norm(scaled), default / np.linalg.norm(default))
+    assert np.allclose(max_sharpe_weights(scaled, cov), 1 / 3, atol=1e-3)
+    # and on the default scale the prior is a tenth the size of the mean, which
+    # is why section 15's hump sat above 0.9
+    assert np.linalg.norm(default) < 0.5 * np.linalg.norm(mu)
+    with pytest.raises(ValueError):
+        equal_weight_prior(mu, cov, "market")
+
+
+def test_the_two_dials_are_the_same_books_at_different_numbers():
+    # a blend on the norm dial is some blend on the default dial, because max
+    # Sharpe reads the direction of the mean and the two priors share one
+    mu, cov = estimate(_three_sleeves())
+    lo, hi = (np.linalg.norm(equal_weight_prior(mu, cov, lvl)) for lvl in ("1/N return", "window norm"))
+    t = 0.5
+    x = t / (1 - t) * hi / lo      # strength on the default dial that is t on the norm dial
+    s = x / (1 + x)
+    a = max_sharpe_weights(shrunk_mean(mu, cov, t, "1/N", "window norm"), cov)
+    b = max_sharpe_weights(shrunk_mean(mu, cov, s, "1/N", "1/N return"), cov)
+    assert np.allclose(a, b, atol=1e-4)
+    assert s > t  # the smaller prior needs a bigger number for the same say
+
+
+def test_the_chooser_trades_the_strength_it_chose_and_only_after_a_record():
+    panel = _three_sleeves(n=60)
+    strengths = (0.0, 0.5, 1.0)
+    runs = {s: shrunk_walk_forward(panel, 24, s, "1/N") for s in strengths}
+    r = chosen_strength_walk_forward(panel, 24, strengths, memory=12, min_months=6)
+    assert r["months_traded"] == 36 and r["months_chosen"] == 30
+    assert len(r["strength_path"]) == 30
+    assert set(r["strength_path"]) <= set(strengths)
+    # each month's return is that strength's own return for that month
+    held = []
+    for j, s in enumerate(r["strength_path"]):
+        held.append(runs[s]["realized_path"][j + 6])
+    assert r["chosen"]["sharpe"] == pytest.approx(
+        performance(pd.Series(held, index=panel.index[24 + 6:]))["sharpe"])
+    # the comparisons are on the chosen months, not all of them
+    assert r["equal_weight"] == pytest.approx(
+        performance(pd.Series(runs[1.0]["realized_path"][6:], index=panel.index[30:]))["sharpe"])
+    assert r["hindsight"]["sharpe"] == max(r["same_months"].values())
+    assert sum(r["months_at"].values()) == 30
+    assert r["switches"] == sum(a != b for a, b in zip(r["strength_path"], r["strength_path"][1:]))
+
+
+def test_with_one_strength_in_the_sweep_the_chooser_is_that_strength():
+    panel = _three_sleeves(n=60)
+    only = shrunk_walk_forward(panel, 24, 0.5, "1/N")
+    r = chosen_strength_walk_forward(panel, 24, (0.5,), min_months=6)
+    assert r["strength_path"] == [0.5] * 30 and r["switches"] == 0
+    assert r["chosen"]["sharpe"] == pytest.approx(
+        performance(pd.Series(only["realized_path"][6:]))["sharpe"])
+    assert r["equal_weight"] is None and r["unshrunk"] is None
+
+
+def test_the_chooser_picks_the_strength_that_has_been_winning():
+    # hand the chooser a sweep where one strength's record is rigged: the
+    # choice has to follow the record, whatever the books look like
+    panel = _three_sleeves(n=48)
+    r = chosen_strength_walk_forward(panel, 24, (0.0, 1.0), memory=6, min_months=6)
+    runs = {s: np.array(shrunk_walk_forward(panel, 24, s, "1/N")["realized_path"]) for s in (0.0, 1.0)}
+    for j, s in enumerate(r["strength_path"], start=6):
+        rec = {k: v[j - 6:j] for k, v in runs.items()}
+        best = max(rec, key=lambda k: rec[k].mean() / rec[k].std(ddof=1))
+        assert s == best
+
+
+def test_chosen_strength_study_runs_both_windows_on_both_dials(monkeypatch):
+    _patch_sleeves(monkeypatch)
+    study = chosen_strength_study(target=0.10, window=36, beta_window=36,
+                                  strengths=(0.0, 0.5, 1.0), lookbacks=(24, 12))
+    assert study["lookbacks"] == [24, 12]
+    for rule in ("trailing", "implied"):
+        for lb in ("24", "12"):
+            for level in ("1/N return", "window norm"):
+                r = study["rules"][rule][lb][level]
+                assert r["lookback"] == int(lb) and r["level"] == level
+                assert r["months_chosen"] == r["months_traded"] - study["min_months"]
+                assert r["sweep"]["0.00"]["sharpe"] == pytest.approx(
+                    study["rules"][rule][lb]["1/N return"]["sweep"]["0.00"]["sharpe"])
+                assert r["hindsight"]["sharpe"] >= r["chosen"]["sharpe"] - 1e-9 or \
+                    r["hindsight"]["sharpe"] >= r["equal_weight"]
+            # the shorter window trades more months
+        assert study["rules"][rule]["12"]["1/N return"]["months_traded"] > \
+            study["rules"][rule]["24"]["1/N return"]["months_traded"]

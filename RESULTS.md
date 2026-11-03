@@ -1324,6 +1324,113 @@ strength chosen out of sample too — picked each month from how the
 strengths had done up to then — and 19 months is not enough to run
 that on top of a 24-month estimation window.
 
+### 16. Choose the strength out of sample, and find the hump was the dial
+
+Reproduce with: `python multi_strategy.py` (section 17 of the printout)
+
+Section 15 ended on its own weakness: 0.96 was read off the answer, and
+the honest test would choose the strength out of sample too, which 19
+months was too few to run. This runs it anyway, and then runs it on a
+sample that is not too few. `chosen_strength_walk_forward` is the nested
+version: every strength in the sweep is walked forward as before, which
+gives one realized return per strength per month, and on the first of each
+month the strength traded is the one with the best Sharpe over the
+previous twelve traded months. The first six traded months are spent
+building that record and the chooser holds nothing in them, so every
+comparison below — against 1/N, against the unshrunk mean, against the
+single best strength — is on the months the chooser actually held
+something. The prediction written down: if the chosen-strength book still
+beats 1/N, section 15's win is real; if it does not, the hump was 19
+months of one sample.
+
+Two things were changed from section 15 at the same time, on purpose.
+The estimation window is also run at 12 months, which trades 31 months
+instead of 19 and so gives the chooser 25 to choose in rather than 13.
+And the 1/N prior is also run at a second scale. Section 15's prior had
+the level of the window's 1/N return, a one-percent number, against
+sleeve means of ±7–15%, which is why its sweep lived above 0.9. The
+second scale (`level="window norm"`) sets the prior to the mean's own
+norm, so a strength of a half is the two vectors with an equal say. That
+is not a different estimator — max Sharpe reads only the direction of the
+mean, and the two priors point the same way, so every book on one dial is
+somewhere on the other (tested). What differs is that the same number
+means the same amount of shrinkage in every window.
+
+**Section 15's own sample.** Trailing rule, capped 5×, 24-month window,
+13 months chosen, November 2023 to November 2024:
+
+| | Sharpe on the 13 chosen months |
+|---|---|
+| the chooser | +1.07 |
+| equal weight | +1.57 |
+| the window's mean, unshrunk | +0.53 |
+| 0.96, section 15's strength, held throughout | +1.21 |
+| the best single strength on these months | 1.00, i.e. equal weight |
+
+The chooser found the hump. It picked 0.94 in its first month and 0.96
+in its second, and held 0.96 for eight months running — exactly the
+strength section 15 read off the full sample — and lost to equal weight
+by half a point of Sharpe doing it. Over the 13 months anyone could have
+traded, every strength below 1 loses to 1; the whole of 0.96's lead over
+1/N in section 15's table was earned in the first six traded months, the
+ones that built the record. Under the implied rule the same thing: the
+chooser +0.68, equal weight +1.50, six months at 0.96. So on the sample
+section 15 ran on, the out-of-sample answer is equal weight, and the
+hump was the part of the sample nobody could have acted on.
+
+**The sample that is not too few.** 12-month window, 25 months chosen,
+November 2022 to November 2024:
+
+| | trailing rule | implied rule |
+|---|---|---|
+| the chooser | **+0.66** | **+0.61** |
+| equal weight | +0.61 | +0.56 |
+| the window's mean, unshrunk | +0.57 | +0.51 |
+| the best single strength on these months | 0.98 at +0.63 | 0.98 at +0.68 |
+
+Here the chooser beats equal weight by five hundredths, and it beats every
+fixed strength on the same months under the trailing rule. It did that
+with four switches: five months at 1/N, eleven months at the window's own
+unshrunk mean, one at 0.25, four at 0.98 and the last four back at 1/N.
+Not a strength — a regime switch between the two ends of the dial, with
+the months in the middle of the sweep never held at all. Read as a
+sequence rather than as an average it says: trust the window through
+2023, when the vol sleeve was the only thing that paid and the window
+knew it; stop trusting it in 2024, when the momentum sleeve turned and
+the window did not know. Five hundredths on 25 months is not a result
+anyone should quote; the shape of the path is the result.
+
+**And the hump was the dial.** On section 15's scale, `0.96` means "the
+prior gets 0.96 of the vote" only if the prior and the mean are the same
+size, and they are not: the prior's level is |the window's 1/N return|,
+which is tiny in a window where the sleeves cancelled, and ordinary
+where they did not. Translating 0.96 window by window onto the dial
+where the two are the same size, it was 0.80 of the vote in the first
+window, **0.16** in the third, 0.21 in the fifth, and 0.91–0.94 from
+the tenth onward. Section 15's "one strength" was the window's own mean
+with a nudge in the early-2022 windows — where 1/N had lost over the
+window and the prior all but vanished — and equal weight in the 2024
+windows. Which is the chooser's 12-month path, found by hand: unshrunk
+first, 1/N later. On the norm-scaled dial, where 0.96 is 0.96 in every
+window, the 24-month sweep is monotone — 0.93, 0.95, 1.08, 1.21, 1.33,
+1.37, 1.38, 1.40, 1.42 — and no strength between the two ends beats the
+better end, under either rule. At 12 months the middle of that dial is
+*below* both ends (0.53 at a half, against 0.65 unshrunk and 0.76 at
+1/N). A blend of a mean that is right and a prior that is right is not
+a mean that is more right; it is a book that is neither.
+
+So the prediction's second branch is the one that held. The chosen
+strength does not beat 1/N on section 15's sample, and on the longer one
+it beats it by a margin that is noise and does so by switching, not by
+shrinking. The strength that beat equal weight in section 15 was not a
+strength; it was the window's 1/N return changing sign under a dial that
+quoted the prior's share in units of that return. That is the kind of
+thing a sweep over a fixed parameter cannot show and a nested walk-forward
+shows in one table — and it is the third time in this file that what
+looked like an estimator was a regime (sections 3, 14, 16). The sleeves
+have had two regimes in four years, and every allocator here is a bet on
+which one the next month is in.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A

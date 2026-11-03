@@ -2110,22 +2110,28 @@ def min_variance_return(mu: np.ndarray, cov: np.ndarray) -> float:
     return float((one @ inv @ mu) / (one @ inv @ one))
 
 
-def equal_weight_prior(mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
+def equal_weight_prior(mu: np.ndarray, cov: np.ndarray,
+                       level: str = "1/N return") -> np.ndarray:
     """The expected returns under which 1/N is the max-Sharpe portfolio.
 
     Reverse optimization (src/black_litterman.py), with equal weight standing
     in for the market: pi = delta * Sigma * w_eq. Max Sharpe on pi returns
-    w_eq for any positive delta, so delta only sets the prior's level, and
-    the level is taken from the window's own 1/N return so the blend is in
-    the same units as the mean it is blended with. In absolute value: four of
-    the nineteen real windows have 1/N losing money over them, and the
-    honest version of "the prior is that equal weight is right" is not "the
-    prior is that the book should be shorted".
+    w_eq for any positive delta, so delta only sets the prior's level. By
+    default the level is the window's own 1/N return, so the blend is in the
+    same units as the mean it is blended with. In absolute value: four of the
+    nineteen real windows have 1/N losing money over them, and the honest
+    version of "the prior is that equal weight is right" is not "the prior is
+    that the book should be shorted".
+
+    `level="window norm"` scales the prior to the mean's own Euclidean norm
+    instead. Section 16 needs that: the 1/N return is a one-percent number
+    and the sleeves' means are ten times it, so on the default scale a
+    strength of 0.96 is where the two vectors are the same size, and the
+    same strength is a different amount of shrinkage in every window.
     """
     n = len(mu)
     w = np.ones(n) / n
-    delta = abs(float(w @ mu)) / float(w @ cov @ w)
-    return delta * (cov @ w)
+    return _prior_level(mu, cov, level) * (cov @ w)
 
 
 def bayes_stein_strength(mu: np.ndarray, cov: np.ndarray, months: int) -> float:
@@ -2149,12 +2155,12 @@ def bayes_stein_strength(mu: np.ndarray, cov: np.ndarray, months: int) -> float:
 
 
 def shrunk_mean(mu: np.ndarray, cov: np.ndarray, strength: float,
-                target: str = "min variance") -> np.ndarray:
+                target: str = "min variance", level: str = "1/N return") -> np.ndarray:
     """(1 - strength) * the window's mean + strength * the prior."""
     if target == "min variance":
         prior = np.full(len(mu), min_variance_return(mu, cov))
     elif target == "1/N":
-        prior = equal_weight_prior(mu, cov)
+        prior = equal_weight_prior(mu, cov, level)
     else:
         raise ValueError(f"no such target: {target!r}")
     return (1.0 - strength) * mu + strength * prior
@@ -2162,7 +2168,7 @@ def shrunk_mean(mu: np.ndarray, cov: np.ndarray, strength: float,
 
 def shrunk_walk_forward(panel: pd.DataFrame, lookback: int = LOOKBACK_MONTHS,
                         strength: float | str = 0.0,
-                        target: str = "min variance") -> dict:
+                        target: str = "min variance", level: str = "1/N return") -> dict:
     """Max Sharpe on the trailing window, with the mean shrunk before it looks.
 
     Same months and the same realized returns as walk_forward; the one thing
@@ -2177,7 +2183,7 @@ def shrunk_walk_forward(panel: pd.DataFrame, lookback: int = LOOKBACK_MONTHS,
         train = panel.iloc[i - lookback:i]
         mu, cov = estimate(train)
         phi = bayes_stein_strength(mu, cov, lookback) if strength == "bayes-stein" else float(strength)
-        m = shrunk_mean(mu, cov, phi, target)
+        m = shrunk_mean(mu, cov, phi, target, level)
         # A flat mean leaves only risk to optimize, so that endpoint is min
         # variance by construction rather than by whatever SLSQP makes of a
         # Sharpe whose numerator has no sign (a window where the min-variance
@@ -2194,6 +2200,7 @@ def shrunk_walk_forward(panel: pd.DataFrame, lookback: int = LOOKBACK_MONTHS,
         "strength": strength if strength == "bayes-stein" else float(strength),
         "mean_strength": float(np.mean(strengths)),
         "strength_path": [round(float(x), 4) for x in strengths],
+        "realized_path": [float(x) for x in realized],
         **performance(pd.Series(realized, index=dates)),
         "mean_weight": dict(zip(panel.columns, w.mean(axis=0).round(4))),
     }
@@ -2287,6 +2294,152 @@ def print_shrinkage(study: dict) -> None:
               f"(the window keeps {1 - b['strength']:.0%} of the vote), Sharpe {b['sharpe']:+.2f}, "
               f"{b['over_equal_weight']:+.2f} over equal weight, holding "
               + ", ".join(f"{k} {v:.2f}" for k, v in b["mean_weight"].items()))
+
+# ---------- 16. choose the strength out of sample ----------
+#
+# Section 15 read 0.96 off the answer. Here nothing is allowed to: each month
+# the strength traded is the one with the best realized Sharpe over the months
+# already traded, judged on the last CHOICE_MEMORY_MONTHS of them, and no
+# strength is chosen at all until there are CHOICE_MIN_MONTHS to judge on. On a
+# 24-month estimation window that leaves very little, so the section also runs
+# on 12 (what --quick does), which trades 31 months instead of 19.
+CHOICE_MEMORY_MONTHS = 12
+CHOICE_MIN_MONTHS = 6
+CHOICE_LOOKBACKS = (24, 12)
+
+
+def _prior_level(mu: np.ndarray, cov: np.ndarray, level: str) -> float:
+    """Multiplier that puts the 1/N prior on the scale `level` asks for."""
+    n = len(mu)
+    w = np.ones(n) / n
+    base = cov @ w
+    if level == "1/N return":
+        return abs(float(w @ mu)) / float(w @ base)
+    if level == "window norm":
+        return float(np.linalg.norm(mu) / np.linalg.norm(base))
+    raise ValueError(f"no such level: {level!r}")
+
+
+def chosen_strength_walk_forward(panel: pd.DataFrame, lookback: int = LOOKBACK_MONTHS,
+                                 strengths=SHRINK_SWEEP, target: str = "1/N",
+                                 level: str = "1/N return",
+                                 memory: int = CHOICE_MEMORY_MONTHS,
+                                 min_months: int = CHOICE_MIN_MONTHS) -> dict:
+    """The nested walk-forward: pick the strength from the past, then trade it.
+
+    Every strength in the sweep is run as its own shrunk_walk_forward, which
+    gives one realized return per strength per traded month. On the first of
+    each month the strength with the best Sharpe over the previous `memory`
+    traded months is chosen and that month's return is taken from its path.
+    The first `min_months` traded months are spent building the record and are
+    not traded by the chooser, so the comparisons at the end - against 1/N,
+    against the unshrunk mean, against the single best strength over those
+    same months - are all on the months the chooser actually held something.
+
+    The in-sample sweep is kept too (`sweep`), over all traded months, so the
+    hump the chooser is trying to find can be seen next to what it found.
+    """
+    strengths = [float(s) for s in strengths]
+    runs = {s: shrunk_walk_forward(panel, lookback, s, target, level) for s in strengths}
+    paths = np.array([runs[s]["realized_path"] for s in strengths])
+    dates = list(panel.index[lookback:])
+    chosen, held, held_dates = [], [], []
+    for j in range(paths.shape[1]):
+        if j < min_months:
+            continue
+        record = paths[:, max(0, j - memory):j]
+        sd = record.std(axis=1, ddof=1)
+        score = np.where(sd > 0, record.mean(axis=1) / np.where(sd > 0, sd, 1.0), -np.inf)
+        k = int(np.argmax(score))
+        chosen.append(strengths[k])
+        held.append(float(paths[k, j]))
+        held_dates.append(dates[j])
+    held = pd.Series(held, index=held_dates)
+    same_months = {s: performance(pd.Series(paths[i, min_months:], index=held_dates))["sharpe"]
+                   for i, s in enumerate(strengths)}
+    hindsight = max(same_months, key=same_months.get)
+    switches = int(sum(a != b for a, b in zip(chosen, chosen[1:])))
+    return {
+        "lookback": int(lookback), "target": target, "level": level,
+        "memory": int(memory), "min_months": int(min_months),
+        "months_traded": len(dates), "months_chosen": len(held),
+        "first_chosen": f"{held_dates[0]:%Y-%m}", "last_chosen": f"{held_dates[-1]:%Y-%m}",
+        "strength_path": chosen, "switches": switches,
+        "months_at": {f"{s:.2f}": int(sum(c == s for c in chosen)) for s in strengths},
+        "chosen": performance(held),
+        "same_months": {f"{s:.2f}": v for s, v in same_months.items()},
+        "equal_weight": same_months[1.0] if 1.0 in same_months else None,
+        "unshrunk": same_months[0.0] if 0.0 in same_months else None,
+        "hindsight": {"strength": hindsight, "sharpe": same_months[hindsight]},
+        "sweep": {f"{s:.2f}": {"sharpe": runs[s]["sharpe"], "mean_weight": runs[s]["mean_weight"]}
+                  for s in strengths},
+    }
+
+
+def chosen_strength_study(target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
+                          beta_window: int = BETA_WINDOW_MONTHS,
+                          cap: float = LEVERAGE_CAP, spread_bps: float = FUNDING_SPREAD_BPS,
+                          borrow_fee_bps: float = BORROW_FEE_BPS,
+                          min_months: int = IMPLIED_FIT_MIN_MONTHS,
+                          strengths=SHRINK_SWEEP, lookbacks=CHOICE_LOOKBACKS,
+                          levels=("1/N return", "window norm"),
+                          memory: int = CHOICE_MEMORY_MONTHS,
+                          choice_min: int = CHOICE_MIN_MONTHS) -> dict:
+    """Section 15's hump, with the strength chosen before the month, not after.
+
+    Same net capped panels as section 15 - both sizing rules - run at both
+    estimation windows, and on both scales of the 1/N prior: the one section
+    15 used, where the prior's level is the window's 1/N return and the hump
+    sits above 0.9 because that level is a tenth of the mean's, and one where
+    the prior is scaled to the mean's own norm, so a strength of a half means
+    the two have an equal say. The second is not a different estimator - max
+    Sharpe only reads the direction of the mean, so every book on the one dial
+    is somewhere on the other - but the same number on it means the same
+    amount of shrinkage in every window, which on the first dial it does not.
+    """
+    fed_funds = fed_funds_monthly()
+    occupancy = statarb_occupancy()
+    implied = volcarry_implied()
+    delta = atm_call_delta(implied)
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    forecast = implied_vol_forecast(volcarry, implied, min_months)
+    rules = {
+        "trailing": sleeve_frames(target, window, beta_window),
+        "implied": sleeve_frames(target, window, beta_window, volcarry_vol=forecast),
+    }
+    out = {"leverage_cap": float(cap), "strengths": [float(s) for s in strengths],
+           "memory": int(memory), "min_months": int(choice_min),
+           "lookbacks": [int(l) for l in lookbacks], "levels": list(levels), "rules": {}}
+    for rule, frames in rules.items():
+        fin = financed_frames(frames, fed_funds, occupancy, delta, spread_bps,
+                              borrow_fee_bps, cap)
+        net = _financed_panels(fin)["net_capped"]
+        out["rules"][rule] = {
+            str(lb): {lvl: chosen_strength_walk_forward(net, lb, strengths, "1/N", lvl,
+                                                        memory, choice_min)
+                      for lvl in levels}
+            for lb in lookbacks}
+    return out
+
+
+def print_chosen_strength(study: dict) -> None:
+    print(f"\n17. CHOOSE THE STRENGTH OUT OF SAMPLE")
+    print(f"   Toward 1/N, capped {study['leverage_cap']:.0f}x. Each month the strength with "
+          f"the best Sharpe over the last {study['memory']} traded months, after "
+          f"{study['min_months']} months of record.")
+    for rule, by_lookback in study["rules"].items():
+        for lb, by_level in by_lookback.items():
+            for level, r in by_level.items():
+                print(f"\n   {rule} rule, {lb}-month window, prior scaled to the {level}: "
+                      f"{r['months_chosen']} months chosen, {r['first_chosen']} to {r['last_chosen']}")
+                print(f"      sweep over all {r['months_traded']} months: " + " | ".join(
+                    f"{s} {v['sharpe']:+.2f}" for s, v in r["sweep"].items()))
+                print(f"      chosen {r['chosen']['sharpe']:+.2f}   1/N {r['equal_weight']:+.2f}   "
+                      f"unshrunk {r['unshrunk']:+.2f}   best single strength on the same months "
+                      f"{r['hindsight']['strength']:.2f} at {r['hindsight']['sharpe']:+.2f}")
+                print(f"      held: " + ", ".join(f"{s} x{n}" for s, n in r["months_at"].items() if n)
+                      + f"; {r['switches']} switches")
 
 
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
@@ -2496,6 +2649,8 @@ def main() -> None:
     print_funding_forecast(funding)
     shrunk = shrinkage_study(lookback=lookback)
     print_shrinkage(shrunk)
+    chosen = chosen_strength_study()
+    print_chosen_strength(chosen)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -2517,7 +2672,8 @@ def main() -> None:
                    "implied_sizing": implied,
                    "financing": financed,
                    "funding_forecast": funding,
-                   "shrinkage": shrunk}, fh, indent=1,
+                   "shrinkage": shrunk,
+                   "chosen_strength": chosen}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to
