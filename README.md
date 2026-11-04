@@ -139,17 +139,30 @@ in another. Put the prior at the mean's own size and no strength between
 the ends beats the better end. It was never a strength; it was the window
 changing regime under a number quoted in the wrong units.
 
+So build the regime switch the chooser seemed to be making (section 17):
+section 3's t-statistic on the trailing window each month, the window's
+mean when it clears a line and 1/N when it does not, nothing needed but
+the window itself. At section 3's own line it loses to both ends on
+every panel, and on the 12-month windows it is the worst book in the
+repository, 0.22 against 1/N's 0.76. Invert it and it reads 1.34. The
+statistic on a trailing window is not a regime test; it is a count of
+how long the current run has lasted, high at the end of one, and every
+sleeve's trailing mean here is negatively correlated with its next
+month. It points the wrong way at both dates the chooser switched. A
+perfect switch would roughly double 1/N, which is the size of the prize
+for a regime test that works, and this repository does not have one.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-347 tests.
+353 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 347 passed
+python -m pytest -q                 # 353 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

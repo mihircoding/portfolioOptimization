@@ -1431,6 +1431,106 @@ looked like an estimator was a regime (sections 3, 14, 16). The sleeves
 have had two regimes in four years, and every allocator here is a bet on
 which one the next month is in.
 
+### 17. Run the regime test on the window, and find it is a clock
+
+Reproduce with: `python multi_strategy.py` (section 18 of the printout)
+
+Section 16 ended on a reading. The chooser's 12-month path was a regime
+switch — trust the window through 2023, stop in 2024 — and the honest
+allocator might be the section 3 test run on the trailing window: hold
+the window's mean when the sleeves can be told apart, 1/N when they
+cannot. If the test alone reproduced the chooser's path, the strength
+machinery of sections 15 and 16 was that test wearing a hat, and three
+sections of finding would collapse into one rule known on day one.
+That is the prediction written down, and this section builds the
+allocator and checks it.
+
+`pairwise_gap_tstat` is section 3's Welch statistic over every pair of
+sleeves, the largest kept. `regime_gate_walk_forward` runs it on the
+same trailing window the optimizer estimates on, and the month is
+unshrunk max Sharpe's if the statistic clears a line and equal weight's
+if not. No record of realized returns is needed, which is what the
+chooser spent its first six months building, so the gate trades every
+month the two endpoint books do. The line is swept from 0.5 to 2.5; 1.0
+is where section 3's docstring drew it ("under 1 the optimizer is
+allocating on noise").
+
+**At section 3's line it loses everywhere.** Capped 5×, Sharpe over all
+traded months:
+
+| | trailing, 24-mo | trailing, 12-mo | implied, 24-mo | implied, 12-mo |
+|---|---|---|---|---|
+| equal weight | +1.42 | +0.76 | +1.36 | +0.70 |
+| the window's mean, unshrunk | +0.93 | +0.65 | +0.86 | +0.57 |
+| the gate at 1.0 | +0.72 | **+0.22** | +0.65 | **+0.08** |
+| the gate at 1.5 | +0.51 | +0.42 | +1.18 | +0.35 |
+| the gate at 2.0 | +1.46 | +0.56 | +1.40 | +0.63 |
+| the gate at 2.5 | +2.01 | +0.75 | +1.96 | +0.68 |
+| the gate at 1.0, inverted | +1.43 | **+1.34** | +1.42 | **+1.27** |
+| a perfect switch every month | +2.39 | +2.13 | +2.41 | +2.01 |
+
+The perfect-switch row is the prize: an allocator that knew which end
+of the dial to hold each month would roughly double the better end.
+The gate at 1.0 is not that allocator. It is below *both* ends on
+every panel, and on the 12-month windows it is the worst book in this
+file — +0.22 and +0.08, against 1/N's +0.76 and +0.70. Invert it, so
+the window's mean is held when the statistic is *under* the line, and
+the 12-month book reads +1.34 and +1.27, the best on those panels by
+half a point. The inversion is not a rule — it was found by reading the
+table, the same way 0.96 was — but it is the evidence for what the
+statistic actually measures.
+
+**Which is how long the current run has lasted.** The 12-month `|t|`
+path: 4.1, 3.5, 3.1, 2.7, 2.3, 2.3, 2.1 through November 2022, then
+1.1, 0.9, 0.7, 0.6 into March 2023, then 0.9, 1.0, 1.3, 1.6 and
+between 1.4 and 1.9 for the following year. That is not a signal
+flipping between two regimes; it is the vol sleeve's 2021–22 run
+leaving the window month by month, then the 2023 run entering it. On
+24 months the path decays monotonically from 3.3 to 0.8 over the whole
+19 traded months, which is one event aging out of a window. The
+statistic is high at the *end* of a run, because a run is what makes
+two means separable, and here every sleeve's trailing mean is
+negatively correlated with its next month: −0.35 for pairs, −0.22 for
+the vol sleeve, −0.16 for momentum on the 12-month window. The
+window's edge over 1/N averages −0.09% a month when `|t|` is above its
+median and +0.18% a month when it is below. Separable means, on this
+sample, are means about to converge.
+
+**And it does not reproduce the chooser.** On the 12-month window the
+gate at 1.0 agrees with the chooser's end of the dial in 14 of 25
+months, a coin flip, and the best line (1.5) agrees in 18. At the two
+dates the chooser switched it points the other way. In April 2023 the
+chooser started trusting the window, and `|t|` was at its lowest of the
+whole sample (0.6 to 1.0, March to May); those were the three best
+months the window's mean ever had over 1/N, +3.1%, +1.5% and +2.0%. In
+March 2024 the chooser stopped, and `|t|` was at its highest in a year
+(1.85); the window's mean then lost to 1/N in seven of the next nine
+months. The chooser was reading the realized record of each strength,
+which is the window's mean lagged by its own payoff; the gate reads the
+window. They are different clocks, and neither is a regime test.
+
+The lines that beat 1/N on the 24-month window — 2.0 and 2.5 — need
+saying, because they look like the rule working. They trust the window
+in the first six to eight traded months only (May to October or
+December 2023), when the 24-month window still held the whole of the
+2021–22 vol run and the vol sleeve happened to pay again in 2023; 2.5
+clears +2.01 because it stops trusting in November 2023, the month the
+window's mean lost 2.3% to 1/N, and 2.0 does not. Under the implied
+rule the same two lines, the same months. That is one event, caught by
+a threshold placed where it ends, on a window the chooser had not yet
+begun trading. On the months the chooser did trade (November 2023 on),
+both lines are 1/N in every month, which is the whole reason they
+agree with it 11 and 13 times out of 13.
+
+So the prediction's first branch failed, and the reading at the end of
+section 16 was wrong in a useful way. The section 3 statistic is a
+description of the overlap — on 46 months in sample it says the two
+sleeves differed, which was true — and it is not a forecast of the
+next month, because on a trailing window it rises as a run lengthens
+and this sample's runs end. The honest allocator is not "run the test,
+then trust the window". On what is here, it is still 1/N, and the one
+thing that would beat it by a point is a regime test nobody has.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
@@ -1487,7 +1587,15 @@ which one the next month is in.
   beats equal weight — 1.62 against 1.42 — and it is 0.96 on a dial whose
   scale nothing sets in advance, read off the answer; the estimator that
   picks a strength from the data picks the other target and loses.
-- **The strength in section 15 was chosen after the fact.** The honest
-  version chooses it out of sample too, from how each strength had done
-  up to that month, and 19 traded months on top of a 24-month window is
-  not enough history to do that on.
+- ~~**The strength in section 15 was chosen after the fact.**~~ Chosen out
+  of sample in section 16, where it loses on section 15's sample and wins
+  by noise on a longer one, by switching between the ends of the dial
+  rather than holding a strength. Section 17 then builds the switch the
+  chooser seemed to be making — section 3's test on the trailing window,
+  the window's mean when it clears a line and 1/N when it does not — and
+  at section 3's own line it is below both ends on every panel, the worst
+  book in this file on the 12-month windows. The statistic on a trailing
+  window counts how long a run has lasted, and this sample's runs end.
+  What is still not here: a regime test that works. 1/N is the answer
+  because nothing known on day one has told the window's mean from its
+  own history.

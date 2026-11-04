@@ -1277,3 +1277,104 @@ def test_chosen_strength_study_runs_both_windows_on_both_dials(monkeypatch):
             # the shorter window trades more months
         assert study["rules"][rule]["12"]["1/N return"]["months_traded"] > \
             study["rules"][rule]["24"]["1/N return"]["months_traded"]
+
+
+# ---------- 17. run the regime test on the window ----------
+
+from multi_strategy import (chooser_agreement, pairwise_gap_tstat,
+                            regime_gate_study, regime_gate_walk_forward,
+                            sleeve_persistence)
+
+
+def test_pairwise_gap_tstat_is_section_3s_statistic_on_two_sleeves_and_the_largest_pair_on_three():
+    two = panel(n=36)
+    assert pairwise_gap_tstat(two) == pytest.approx(return_gap_tstat(two)["tstat"])
+    three = _three_sleeves(n=36)
+    pairs = {}
+    for a, b in (("statarb", "volcarry"), ("statarb", "xsmom"), ("volcarry", "xsmom")):
+        pairs[(a, b)] = return_gap_tstat(pd.DataFrame(
+            {"statarb": three[a].to_numpy(), "volcarry": three[b].to_numpy()}))["tstat"]
+    biggest = max(pairs.values(), key=abs)
+    assert pairwise_gap_tstat(three) == pytest.approx(biggest)
+    # signed by the pair that produced it, so the sign carries which sleeve led
+    assert np.sign(pairwise_gap_tstat(three)) == np.sign(biggest)
+
+
+def test_the_gate_is_the_window_at_a_line_of_zero_and_equal_weight_at_a_line_nobody_clears():
+    p = _three_sleeves(n=48)
+    r = regime_gate_walk_forward(p, 24, thresholds=(0.0, 99.0))
+    unshrunk = shrunk_walk_forward(p, 24, 0.0, "1/N")
+    equal = shrunk_walk_forward(p, 24, 1.0, "1/N")
+    assert r["months_traded"] == 24 and len(r["tstat_path"]) == 24
+    assert r["gates"]["0.0"]["sharpe"] == pytest.approx(unshrunk["sharpe"])
+    assert r["gates"]["0.0"]["months_trusting_window"] == 24
+    assert r["gates"]["99.0"]["sharpe"] == pytest.approx(equal["sharpe"])
+    assert r["gates"]["99.0"]["months_trusting_window"] == 0
+    # the inverted gate is the complement, month for month
+    for t in ("0.0", "99.0"):
+        g, inv = r["gates"][t], r["inverted"][t]
+        assert all(a != b for a, b in zip(g["trust_path"], inv["trust_path"]))
+        assert g["months_trusting_window"] + inv["months_trusting_window"] == 24
+    assert r["unshrunk"]["sharpe"] == pytest.approx(unshrunk["sharpe"])
+    assert r["equal_weight"]["sharpe"] == pytest.approx(equal["sharpe"])
+
+
+def test_the_gate_takes_each_month_from_the_book_the_statistic_pointed_at():
+    p = _three_sleeves(n=48)
+    r = regime_gate_walk_forward(p, 24, thresholds=(1.0,))
+    pu = shrunk_walk_forward(p, 24, 0.0, "1/N")["realized_path"]
+    pe = shrunk_walk_forward(p, 24, 1.0, "1/N")["realized_path"]
+    g = r["gates"]["1.0"]
+    for j, trusted in enumerate(g["trust_path"]):
+        assert trusted == (abs(r["tstat_path"][j]) >= 1.0)
+        assert g["realized_path"][j] == pytest.approx(pu[j] if trusted else pe[j])
+    assert g["switches"] == sum(a != b for a, b in zip(g["trust_path"], g["trust_path"][1:]))
+    # nothing beats choosing right every month
+    assert r["oracle"]["sharpe"] >= max(g["sharpe"], r["unshrunk"]["sharpe"], r["equal_weight"]["sharpe"]) - 1e-9
+
+
+def test_chooser_agreement_counts_months_on_the_same_end_of_the_dial_over_the_chooser_s_months():
+    gate = {"months_traded": 10,
+            "gates": {"1.0": {"trust_path": [True] * 4 + [False, False, True, True, False, False]}}}
+    chooser = {"months_chosen": 6, "strength_path": [1.0, 1.0, 0.0, 0.0, 1.0, 0.96]}
+    out = chooser_agreement(gate, chooser)["1.0"]
+    # offset of 4: gate months 4..9 against the chooser's six; 1.0 and 0.96
+    # are the 1/N end, 0.0 the window's
+    assert out["of"] == 6 and out["agree_months"] == 6 and out["agreement"] == 1.0
+    chooser["strength_path"] = [0.0] * 6
+    assert chooser_agreement(gate, chooser)["1.0"]["agree_months"] == 2
+
+
+def test_sleeve_persistence_is_positive_when_the_mean_persists_and_near_zero_when_it_does_not():
+    idx = pd.date_range("2020-01-31", periods=240, freq="ME")
+    rng = np.random.default_rng(3)
+    regime = np.repeat([0.02, -0.02] * 4, 30)        # a mean that holds for thirty months at a time
+    persistent = pd.Series(regime + rng.normal(0, 0.01, 240), index=idx)
+    noise = pd.Series(rng.normal(0, 0.01, 240), index=idx)
+    out = sleeve_persistence(pd.DataFrame({"statarb": persistent, "volcarry": noise}), 12)
+    assert out["statarb"] > 0.3
+    assert abs(out["volcarry"]) < 0.2
+
+
+def test_regime_gate_study_runs_both_rules_and_windows_and_scores_the_chooser_when_given_one(monkeypatch):
+    _patch_sleeves(monkeypatch)
+    chosen = chosen_strength_study(target=0.10, window=36, beta_window=36,
+                                  strengths=(0.0, 1.0), lookbacks=(24, 12))
+    study = regime_gate_study(target=0.10, window=36, beta_window=36,
+                              thresholds=(1.0, 2.0), lookbacks=(24, 12), chosen=chosen)
+    assert study["thresholds"] == [1.0, 2.0]
+    for rule in ("trailing", "implied"):
+        for lb in ("24", "12"):
+            r = study["rules"][rule][lb]
+            assert set(r["gates"]) == {"1.0", "2.0"} and set(r["inverted"]) == {"1.0", "2.0"}
+            assert r["months_traded"] == chosen["rules"][rule][lb]["1/N return"]["months_traded"]
+            assert set(r["persistence"]) == {"statarb", "volcarry", "xsmom"}
+            agree = r["chooser_agreement"]["1.0"]
+            assert agree["of"] == chosen["rules"][rule][lb]["1/N return"]["months_chosen"]
+            assert 0 <= agree["agree_months"] <= agree["of"]
+            # the gate is never more than the perfect switch
+            for g in r["gates"].values():
+                assert g["sharpe"] <= r["oracle"]["sharpe"] + 1e-9
+    without = regime_gate_study(target=0.10, window=36, beta_window=36,
+                                thresholds=(1.0,), lookbacks=(12,))
+    assert "chooser_agreement" not in without["rules"]["trailing"]["12"]

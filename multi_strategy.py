@@ -2442,6 +2442,201 @@ def print_chosen_strength(study: dict) -> None:
                       + f"; {r['switches']} switches")
 
 
+# ---------- 17. run the regime test on the window, not on the answer ----------
+#
+# Section 16 ended on a reading: the chooser's 12-month path was a regime
+# switch, trust the window through 2023 and stop in 2024, and the honest
+# allocator might be the section 3 test run on the trailing window, holding
+# the window's mean when the sleeves can be told apart and 1/N when they
+# cannot. Here that allocator is built and the reading is checked against
+# it. GATE_SWEEP is in t-statistic units; 1.0 is the line section 3 drew.
+GATE_SWEEP = (0.5, 1.0, 1.5, 2.0, 2.5)
+
+
+def pairwise_gap_tstat(train: pd.DataFrame) -> float:
+    """Section 3's statistic on more than two sleeves: the largest Welch t
+    over every pair, signed by the pair that produced it.
+
+    With three sleeves there are three gaps, and the one that decides whether
+    the optimizer has anything to work with is the biggest of them: if no two
+    means can be told apart, neither can any book built from them. A max of
+    three t-statistics is biased upward against one, which only makes the
+    gate below more willing to trust the window, which is the direction the
+    section's finding is robust to.
+    """
+    cols = list(train.columns)
+    best = 0.0
+    for i, a in enumerate(cols):
+        for b in cols[i + 1:]:
+            pair = pd.DataFrame({"statarb": train[a].to_numpy(), "volcarry": train[b].to_numpy()})
+            t = return_gap_tstat(pair)["tstat"]
+            if abs(t) > abs(best):
+                best = t
+    return float(best)
+
+
+def regime_gate_walk_forward(panel: pd.DataFrame, lookback: int = LOOKBACK_MONTHS,
+                             thresholds=GATE_SWEEP) -> dict:
+    """Hold the window's mean when the window says the sleeves differ, and
+    1/N when it says they do not.
+
+    Each month the section 3 statistic is run on the same trailing window the
+    optimizer estimates on, so the decision is made from what was known on
+    the first of the month and nothing else - no record of realized returns,
+    which is the thing section 16's chooser needed six months to build. A
+    threshold is a line on that statistic: at or above it the month's return
+    is unshrunk max Sharpe's, below it equal weight's. The two endpoint books
+    are the ones section 16 found the chooser switching between, so this is
+    the chooser's path with the chooser taken out and a test put in.
+
+    Also reported: the statistic's correlation with the next month's gap
+    between the two books, and the inverted gate (trust the window when the
+    statistic is BELOW the line), because if the test points the wrong way
+    the inversion is where the evidence for that lives. It is not a rule;
+    it is a diagnosis.
+    """
+    unshrunk = shrunk_walk_forward(panel, lookback, 0.0, "1/N")
+    equal = shrunk_walk_forward(panel, lookback, 1.0, "1/N")
+    pu = np.array(unshrunk["realized_path"])
+    pe = np.array(equal["realized_path"])
+    dates = list(panel.index[lookback:])
+    stats = np.array([pairwise_gap_tstat(panel.iloc[i - lookback:i])
+                      for i in range(lookback, len(panel))])
+    size = np.abs(stats)
+    edge = pu - pe
+
+    def gated(mask: np.ndarray) -> dict:
+        path = np.where(mask, pu, pe)
+        return {**performance(pd.Series(path, index=dates)),
+                "months_trusting_window": int(mask.sum()),
+                "switches": int((mask[1:] != mask[:-1]).sum()),
+                "realized_path": [float(x) for x in path],
+                "trust_path": [bool(m) for m in mask]}
+
+    gates = {f"{t:.1f}": gated(size >= t) for t in thresholds}
+    inverted = {f"{t:.1f}": gated(size < t) for t in thresholds}
+    # how the window's mean did in the months the statistic was high vs low,
+    # which is the direct reading of whether separable means persist
+    median = float(np.median(size))
+    high, low = size >= median, size < median
+    return {
+        "lookback": int(lookback), "months_traded": len(dates),
+        "first": f"{dates[0]:%Y-%m}", "last": f"{dates[-1]:%Y-%m}",
+        "thresholds": [float(t) for t in thresholds],
+        "tstat_path": [round(float(s), 3) for s in stats],
+        "unshrunk": performance(pd.Series(pu, index=dates)),
+        "equal_weight": performance(pd.Series(pe, index=dates)),
+        "gates": gates, "inverted": inverted,
+        "corr_tstat_next_edge": float(np.corrcoef(size, edge)[0, 1]) if size.std() > 0 else 0.0,
+        "edge_when_separable": float(edge[high].mean()) if high.any() else 0.0,
+        "edge_when_not": float(edge[low].mean()) if low.any() else 0.0,
+        "median_tstat": median,
+        "oracle": performance(pd.Series(np.maximum(pu, pe), index=dates)),
+    }
+
+
+def sleeve_persistence(panel: pd.DataFrame, lookback: int = LOOKBACK_MONTHS) -> dict:
+    """Correlation of each sleeve's trailing mean with its next month.
+
+    The gate trusts the window on the premise that a sleeve whose mean the
+    window can resolve keeps that mean next month. This is that premise as
+    one number per sleeve: positive and the window's mean is a forecast,
+    negative and it is a description of a run that is ending.
+    """
+    out = {}
+    for c in panel.columns:
+        trail = panel[c].rolling(lookback).mean().shift(1)
+        ok = trail.notna()
+        out[c] = float(np.corrcoef(trail[ok], panel[c][ok])[0, 1]) if ok.sum() > 2 else 0.0
+    return out
+
+
+def chooser_agreement(gate: dict, chooser: dict) -> dict:
+    """How often the gate and section 16's chooser held the same end of the dial.
+
+    The chooser starts `min_months` later than the gate, so the comparison is
+    on the chooser's months. A chosen strength under a half counts as the
+    window's end, which on the 1/N-return dial is anything the chooser ever
+    held below 0.9.
+    """
+    offset = gate["months_traded"] - chooser["months_chosen"]
+    chooser_trusts = [s < 0.5 for s in chooser["strength_path"]]
+    out = {}
+    for t, g in gate["gates"].items():
+        gate_trusts = g["trust_path"][offset:]
+        agree = sum(a == b for a, b in zip(gate_trusts, chooser_trusts))
+        out[t] = {"agree_months": int(agree), "of": len(chooser_trusts),
+                  "agreement": agree / len(chooser_trusts)}
+    return out
+
+
+def regime_gate_study(target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
+                      beta_window: int = BETA_WINDOW_MONTHS,
+                      cap: float = LEVERAGE_CAP, spread_bps: float = FUNDING_SPREAD_BPS,
+                      borrow_fee_bps: float = BORROW_FEE_BPS,
+                      min_months: int = IMPLIED_FIT_MIN_MONTHS,
+                      thresholds=GATE_SWEEP, lookbacks=CHOICE_LOOKBACKS,
+                      chosen: dict | None = None) -> dict:
+    """Section 16's reading, built as an allocator and run on the same panels.
+
+    Same net capped panels, both sizing rules, both estimation windows. For
+    each, the gate at every threshold, the inverted gate, the statistic's
+    path, and - when section 16's result is passed in - how often the gate
+    and the chooser agreed on which end of the dial to hold.
+    """
+    fed_funds = fed_funds_monthly()
+    occupancy = statarb_occupancy()
+    implied = volcarry_implied()
+    delta = atm_call_delta(implied)
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    forecast = implied_vol_forecast(volcarry, implied, min_months)
+    rules = {
+        "trailing": sleeve_frames(target, window, beta_window),
+        "implied": sleeve_frames(target, window, beta_window, volcarry_vol=forecast),
+    }
+    out = {"leverage_cap": float(cap), "thresholds": [float(t) for t in thresholds],
+           "lookbacks": [int(l) for l in lookbacks], "rules": {}}
+    for rule, frames in rules.items():
+        fin = financed_frames(frames, fed_funds, occupancy, delta, spread_bps,
+                              borrow_fee_bps, cap)
+        net = _financed_panels(fin)["net_capped"]
+        out["rules"][rule] = {}
+        for lb in lookbacks:
+            gate = regime_gate_walk_forward(net, lb, thresholds)
+            gate["persistence"] = sleeve_persistence(net, lb)
+            if chosen is not None:
+                gate["chooser_agreement"] = chooser_agreement(
+                    gate, chosen["rules"][rule][str(lb)]["1/N return"])
+            out["rules"][rule][str(lb)] = gate
+    return out
+
+
+def print_regime_gate(study: dict) -> None:
+    print(f"\n18. RUN THE REGIME TEST ON THE WINDOW")
+    print(f"   Section 3's t-statistic on the trailing window each month. At or above the line, "
+          f"the window's mean; below it, 1/N. Capped {study['leverage_cap']:.0f}x.")
+    for rule, by_lookback in study["rules"].items():
+        for lb, r in by_lookback.items():
+            print(f"\n   {rule} rule, {lb}-month window, {r['months_traded']} months "
+                  f"({r['first']} to {r['last']}): unshrunk {r['unshrunk']['sharpe']:+.2f}, "
+                  f"1/N {r['equal_weight']['sharpe']:+.2f}, a perfect switch {r['oracle']['sharpe']:+.2f}")
+            print(f"{'line':>9} {'gated':>7} {'trusts':>7} {'switches':>9} {'inverted':>9} {'agrees w/ chooser':>18}")
+            for t, g in r["gates"].items():
+                agree = r.get("chooser_agreement", {}).get(t)
+                print(f"{t:>9} {g['sharpe']:>+7.2f} {g['months_trusting_window']:>4}/{r['months_traded']:<2} "
+                      f"{g['switches']:>9} {r['inverted'][t]['sharpe']:>+9.2f} "
+                      + (f"{agree['agree_months']:>9}/{agree['of']}" if agree else ""))
+            print(f"      corr(|t|, next month's edge of the window's mean over 1/N) "
+                  f"{r['corr_tstat_next_edge']:+.2f}; that edge averages "
+                  f"{r['edge_when_separable'] * 100:+.2f}%/mo when |t| is above its median "
+                  f"({r['median_tstat']:.2f}) and {r['edge_when_not'] * 100:+.2f}%/mo below it")
+            print(f"      each sleeve's trailing mean vs its next month: " + ", ".join(
+                f"{k} {v:+.2f}" for k, v in r["persistence"].items()))
+            if lb == "12":
+                print(f"      |t| path: " + " ".join(f"{abs(s):.1f}" for s in r["tstat_path"]))
+
+
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
     print(f"\n1. THE TWO SLEEVES   {panel.index[0]:%Y-%m} to "
           f"{panel.index[-1]:%Y-%m}, {len(panel)} months")
@@ -2651,6 +2846,8 @@ def main() -> None:
     print_shrinkage(shrunk)
     chosen = chosen_strength_study()
     print_chosen_strength(chosen)
+    gate = regime_gate_study(chosen=chosen)
+    print_regime_gate(gate)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -2673,7 +2870,8 @@ def main() -> None:
                    "financing": financed,
                    "funding_forecast": funding,
                    "shrinkage": shrunk,
-                   "chosen_strength": chosen}, fh, indent=1,
+                   "chosen_strength": chosen,
+                   "regime_gate": gate}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to
