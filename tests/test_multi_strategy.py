@@ -1378,3 +1378,66 @@ def test_regime_gate_study_runs_both_rules_and_windows_and_scores_the_chooser_wh
     without = regime_gate_study(target=0.10, window=36, beta_window=36,
                                 thresholds=(1.0,), lookbacks=(12,))
     assert "chooser_agreement" not in without["rules"]["trailing"]["12"]
+
+
+# ---------- 18. ask the market instead of the window ----------
+
+from multi_strategy import (implied_gate_study, implied_gate_walk_forward,
+                            implied_signals, paired_sharpe_bootstrap)
+
+
+def test_implied_signals_use_only_months_up_to_the_one_traded():
+    idx = pd.date_range("2020-01-31", periods=30, freq="ME")
+    iv = pd.Series(np.linspace(0.10, 0.39, 30), index=idx)
+    sig = implied_signals(iv, memory=12, change=3)
+    # the level compares this month to the median of the twelve before it
+    assert np.isnan(sig["level"].iloc[11])
+    assert sig["level"].iloc[12] == pytest.approx(iv.iloc[12] / iv.iloc[0:12].median() - 1)
+    assert sig["change"].iloc[5] == pytest.approx(iv.iloc[5] - iv.iloc[2])
+    # changing a later month never moves an earlier reading
+    bumped = iv.copy()
+    bumped.iloc[20:] *= 3
+    pd.testing.assert_frame_equal(implied_signals(bumped).iloc[:20], implied_signals(iv).iloc[:20])
+
+
+def test_paired_bootstrap_is_centred_on_the_observed_gap_and_zero_for_identical_books():
+    rng = np.random.default_rng(1)
+    a = rng.normal(0.01, 0.02, 60)
+    same = paired_sharpe_bootstrap(a, a, draws=300)
+    assert same["gap"] == 0 and same["low"] == 0 and same["high"] == 0 and same["p_not_ahead"] == 1.0
+    better = paired_sharpe_bootstrap(a + 0.02, a, draws=300)
+    assert better["gap"] > 0 and better["low"] > 0 and better["p_not_ahead"] == 0.0
+    assert better["low"] <= better["gap"] <= better["high"]
+
+
+def test_the_implied_gate_holds_the_window_in_calm_months_and_1_over_n_otherwise():
+    p = _three_sleeves(n=48)
+    dates = p.index[24:]
+    level = pd.Series([-0.1, 0.1] * 12, index=dates)
+    change = pd.Series(np.nan, index=dates)
+    r = implied_gate_walk_forward(p, pd.DataFrame({"level": level, "change": change}), 24)
+    pu = shrunk_walk_forward(p, 24, 0.0, "1/N")["realized_path"]
+    pe = shrunk_walk_forward(p, 24, 1.0, "1/N")["realized_path"]
+    g = r["variants"]["level"]["gate"]
+    expect = [pu[j] if j % 2 == 0 else pe[j] for j in range(24)]
+    assert g["sharpe"] == pytest.approx(performance(pd.Series(expect))["sharpe"])
+    assert g["months_trusting_window"] == 12 and g["switches"] == 23
+    assert r["variants"]["level"]["inverted"]["months_trusting_window"] == 12
+    # no signal at all is 1/N every month, both ways round
+    none = r["variants"]["change"]
+    assert none["months_with_signal"] == 0
+    assert none["gate"]["sharpe"] == pytest.approx(r["equal_weight"]["sharpe"])
+    assert none["inverted"]["sharpe"] == pytest.approx(r["equal_weight"]["sharpe"])
+
+
+def test_implied_gate_study_runs_both_rules_and_windows(monkeypatch):
+    _patch_sleeves(monkeypatch)
+    study = implied_gate_study(target=0.10, window=36, beta_window=36, lookbacks=(24, 12))
+    for rule in ("trailing", "implied"):
+        for lb in ("24", "12"):
+            r = study["rules"][rule][lb]
+            assert set(r["variants"]) == {"level", "change"}
+            for v in r["variants"].values():
+                assert v["gate"]["sharpe"] <= r["oracle"]["sharpe"] + 1e-9
+                assert v["gate"]["months_trusting_window"] + v["inverted"]["months_trusting_window"] \
+                    == v["months_with_signal"]

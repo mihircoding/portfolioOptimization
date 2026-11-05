@@ -2637,6 +2637,156 @@ def print_regime_gate(study: dict) -> None:
                 print(f"      |t| path: " + " ".join(f"{abs(s):.1f}" for s in r["tstat_path"]))
 
 
+# ---------- 18. ask the market instead of the window ----------
+#
+# Section 17 found the window's own statistic is a clock. The one day-one
+# number here with a claim to being a regime indicator is the implied vol the
+# vol sleeve sells on the first session of the month. The prediction, written
+# before running: a calm market (implied at or under its own trailing-year
+# median, or falling over the last quarter) is one where the run the window
+# recorded is still going, so hold the window's mean; a stressed one means the
+# window is stale, so hold 1/N. Both variants are fixed in advance, line at
+# zero, and the inverted gate is reported only as a diagnostic.
+IMPLIED_GATE_MEMORY = 12   # months of implied history the level is judged against
+IMPLIED_GATE_CHANGE = 3    # months the change is measured over
+GATE_BOOTSTRAP_DRAWS = 2000
+GATE_BOOTSTRAP_BLOCK = 3
+
+
+def implied_signals(implied: pd.Series, memory: int = IMPLIED_GATE_MEMORY,
+                    change: int = IMPLIED_GATE_CHANGE) -> pd.DataFrame:
+    """Two day-one readings of the implied vol, both positive when stressed.
+
+    `level` is this month's implied over the median of the previous `memory`
+    months, minus one; `change` is this month's implied minus the one
+    `change` months earlier. Each uses only months up to and including the
+    one being traded, and the implied stamped on a month is known the
+    morning that month's trade goes on.
+    """
+    prior = implied.shift(1).rolling(memory).median()
+    return pd.DataFrame({"level": implied / prior - 1.0,
+                         "change": implied - implied.shift(change)})
+
+
+def paired_sharpe_bootstrap(a: np.ndarray, b: np.ndarray,
+                            draws: int = GATE_BOOTSTRAP_DRAWS,
+                            block: int = GATE_BOOTSTRAP_BLOCK, seed: int = 0) -> dict:
+    """Moving-block bootstrap of Sharpe(a) - Sharpe(b) on the same months.
+
+    The two paths are resampled together, so the months that flatter one
+    book flatter the other too, and the blocks keep a little of the serial
+    dependence a monthly strategy return has. Reported: the observed gap,
+    a 90% interval, and the share of draws where a is not ahead.
+    """
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    n = len(a)
+    rng = np.random.default_rng(seed)
+
+    def sr(x):
+        sd = x.std(ddof=1)
+        return x.mean() / sd * np.sqrt(MONTHS_PER_YEAR) if sd > 0 else 0.0
+
+    starts_max = max(n - block + 1, 1)
+    k = int(np.ceil(n / block))
+    gaps = np.empty(draws)
+    for d in range(draws):
+        idx = (rng.integers(0, starts_max, k)[:, None] + np.arange(block)).ravel()[:n]
+        gaps[d] = sr(a[idx]) - sr(b[idx])
+    return {"gap": float(sr(a) - sr(b)),
+            "low": float(np.quantile(gaps, 0.05)), "high": float(np.quantile(gaps, 0.95)),
+            "p_not_ahead": float((gaps <= 0).mean())}
+
+
+def implied_gate_walk_forward(panel: pd.DataFrame, signals: pd.DataFrame,
+                              lookback: int = LOOKBACK_MONTHS) -> dict:
+    """Hold the window's mean in calm months and 1/N in stressed ones.
+
+    Same two endpoint books as section 17, same months. A month with no
+    signal (not enough implied history yet) holds 1/N, which is the default
+    nothing-known book. Each variant is scored against 1/N with the paired
+    bootstrap, and so is its inversion.
+    """
+    pu = np.array(shrunk_walk_forward(panel, lookback, 0.0, "1/N")["realized_path"])
+    pe = np.array(shrunk_walk_forward(panel, lookback, 1.0, "1/N")["realized_path"])
+    dates = panel.index[lookback:]
+    sig = signals.reindex(dates)
+    edge = pu - pe
+    out = {"lookback": int(lookback), "months_traded": len(dates),
+           "first": f"{dates[0]:%Y-%m}", "last": f"{dates[-1]:%Y-%m}",
+           "unshrunk": performance(pd.Series(pu, index=dates)),
+           "equal_weight": performance(pd.Series(pe, index=dates)),
+           "oracle": performance(pd.Series(np.maximum(pu, pe), index=dates)),
+           "variants": {}}
+    for name in sig.columns:
+        s = sig[name].to_numpy(dtype=float)
+        known = ~np.isnan(s)
+        calm = known & (s <= 0)
+        stressed = known & (s > 0)
+        row = {}
+        for label, mask in (("gate", calm), ("inverted", stressed)):
+            path = np.where(mask, pu, pe)
+            row[label] = {**performance(pd.Series(path, index=dates)),
+                          "months_trusting_window": int(mask.sum()),
+                          "switches": int((mask[1:] != mask[:-1]).sum()),
+                          "vs_equal_weight": paired_sharpe_bootstrap(path, pe)}
+        row["months_with_signal"] = int(known.sum())
+        row["edge_when_calm"] = float(edge[calm].mean()) if calm.any() else 0.0
+        row["edge_when_stressed"] = float(edge[stressed].mean()) if stressed.any() else 0.0
+        row["corr_signal_edge"] = (float(np.corrcoef(s[known], edge[known])[0, 1])
+                                   if known.sum() > 2 and s[known].std() > 0 else 0.0)
+        out["variants"][name] = row
+    return out
+
+
+def implied_gate_study(target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
+                       beta_window: int = BETA_WINDOW_MONTHS,
+                       cap: float = LEVERAGE_CAP, spread_bps: float = FUNDING_SPREAD_BPS,
+                       borrow_fee_bps: float = BORROW_FEE_BPS,
+                       min_months: int = IMPLIED_FIT_MIN_MONTHS,
+                       lookbacks=CHOICE_LOOKBACKS) -> dict:
+    """Section 17's panels, gated on the market instead of the window."""
+    fed_funds = fed_funds_monthly()
+    occupancy = statarb_occupancy()
+    implied = volcarry_implied()
+    delta = atm_call_delta(implied)
+    volcarry = volcarry_monthly()
+    volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
+    forecast = implied_vol_forecast(volcarry, implied, min_months)
+    signals = implied_signals(implied)
+    rules = {
+        "trailing": sleeve_frames(target, window, beta_window),
+        "implied": sleeve_frames(target, window, beta_window, volcarry_vol=forecast),
+    }
+    out = {"leverage_cap": float(cap), "lookbacks": [int(l) for l in lookbacks],
+           "memory": IMPLIED_GATE_MEMORY, "change_months": IMPLIED_GATE_CHANGE, "rules": {}}
+    for rule, frames in rules.items():
+        fin = financed_frames(frames, fed_funds, occupancy, delta, spread_bps,
+                              borrow_fee_bps, cap)
+        net = _financed_panels(fin)["net_capped"]
+        out["rules"][rule] = {str(lb): implied_gate_walk_forward(net, signals, lb)
+                              for lb in lookbacks}
+    return out
+
+
+def print_implied_gate(study: dict) -> None:
+    print(f"\n19. ASK THE MARKET INSTEAD OF THE WINDOW")
+    print(f"   Window's mean when the implied vol is calm (at or under its trailing "
+          f"{study['memory']}-month median, or down over {study['change_months']} months); "
+          f"1/N otherwise. Capped {study['leverage_cap']:.0f}x.")
+    for rule, by_lookback in study["rules"].items():
+        for lb, r in by_lookback.items():
+            print(f"\n   {rule} rule, {lb}-month window, {r['months_traded']} months "
+                  f"({r['first']} to {r['last']}): unshrunk {r['unshrunk']['sharpe']:+.2f}, "
+                  f"1/N {r['equal_weight']['sharpe']:+.2f}, a perfect switch {r['oracle']['sharpe']:+.2f}")
+            print(f"{'signal':>9} {'gated':>7} {'trusts':>7} {'vs 1/N, 90%':>20} {'P(not ahead)':>13} "
+                  f"{'inverted':>9} {'corr':>6}")
+            for name, v in r["variants"].items():
+                g, b = v["gate"], v["gate"]["vs_equal_weight"]
+                print(f"{name:>9} {g['sharpe']:>+7.2f} {g['months_trusting_window']:>4}/{r['months_traded']:<2} "
+                      f"  {b['gap']:+.2f} [{b['low']:+.2f},{b['high']:+.2f}] {b['p_not_ahead']:>13.2f} "
+                      f"{v['inverted']['sharpe']:>+9.2f} {v['corr_signal_edge']:>+6.2f}")
+
+
 def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
     print(f"\n1. THE TWO SLEEVES   {panel.index[0]:%Y-%m} to "
           f"{panel.index[-1]:%Y-%m}, {len(panel)} months")
@@ -2848,6 +2998,8 @@ def main() -> None:
     print_chosen_strength(chosen)
     gate = regime_gate_study(chosen=chosen)
     print_regime_gate(gate)
+    market_gate = implied_gate_study()
+    print_implied_gate(market_gate)
 
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
@@ -2871,7 +3023,8 @@ def main() -> None:
                    "funding_forecast": funding,
                    "shrinkage": shrunk,
                    "chosen_strength": chosen,
-                   "regime_gate": gate}, fh, indent=1,
+                   "regime_gate": gate,
+                   "implied_gate": market_gate}, fh, indent=1,
                   default=float)
 
     # Also on its own, because section 7 is the one table someone is likely to

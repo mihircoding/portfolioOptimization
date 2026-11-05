@@ -152,17 +152,23 @@ month. It points the wrong way at both dates the chooser switched. A
 perfect switch would roughly double 1/N, which is the size of the prize
 for a regime test that works, and this repository does not have one.
 
+Section 18 asks the market instead: the implied vol the vol sleeve sells,
+known the morning of the trade. The rule written down first (trust the
+window in calm months) loses to 1/N in six of eight cases. Every gate is
+now scored with a paired block bootstrap, and none, in either direction,
+can be told apart from 1/N on this many months.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-353 tests.
+357 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 353 passed
+python -m pytest -q                 # 357 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

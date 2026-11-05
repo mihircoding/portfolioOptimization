@@ -1531,6 +1531,56 @@ and this sample's runs end. The honest allocator is not "run the test,
 then trust the window". On what is here, it is still 1/N, and the one
 thing that would beat it by a point is a regime test nobody has.
 
+### 18. Ask the market instead of the window, and find nothing tells 1/N apart
+
+Reproduce with: `python multi_strategy.py` (section 19 of the printout)
+
+Section 17's gate read the window and turned out to be a clock. The one
+number here that is known on day one and is not built from the window is
+the implied vol the vol sleeve sells on the first session of the month.
+So this section gates on that instead, with the rule written down before
+it was run:
+
+> In a calm month the run the window recorded is still going, so hold the
+> window's mean. In a stressed month the window is stale, so hold 1/N.
+
+"Calm" is defined two ways, both fixed in advance with the line at zero:
+`level`, this month's implied at or under the median of the previous
+twelve, and `change`, implied down over the last three months.
+`implied_gate_walk_forward` holds the same two endpoint books as section
+17 on the same months. New this time: every gate is scored against 1/N
+with `paired_sharpe_bootstrap`, a moving-block bootstrap (3-month blocks,
+2,000 draws) of the Sharpe gap with both paths resampled together.
+
+| | trailing, 24-mo | trailing, 12-mo | implied, 24-mo | implied, 12-mo |
+|---|---|---|---|---|
+| equal weight | +1.42 | +0.76 | +1.36 | +0.70 |
+| calm gate, `level` | +0.48 | +0.80 | +0.43 | +0.70 |
+| calm gate, `change` | +0.58 | +0.39 | +0.52 | +0.30 |
+| stressed gate (inverted), `level` | +1.67 | +0.58 | +1.66 | +0.53 |
+| stressed gate (inverted), `change` | +1.56 | +1.10 | +1.55 | +1.07 |
+| a perfect switch | +2.39 | +2.13 | +2.41 | +2.01 |
+
+**The prediction failed.** The calm gate is below 1/N in six of eight
+cells and level with it in the other two (+0.80 against +0.76, bootstrap
+P(not ahead) 0.50). On the 24-month windows it loses by close to a full
+point.
+
+**The inversion looks better and isn't distinguishable either.** Holding
+the window's mean in *stressed* months reads +1.67 on the 24-month
+window, and there is a story for it: when implied vol has just risen, the
+premium the vol sleeve sells is richer, and the window's book is mostly
+that sleeve. In the five stressed months the window beat 1/N by 1.0% a
+month. But it is five months, and the bootstrap's 90% interval on the gap
+is −0.29 to +0.55. No variant in either direction has an interval that
+excludes zero.
+
+That is the result: on 19 to 31 traded months, no day-one signal tried
+here — the window's statistic in section 17, the market's implied vol in
+this one — can be told apart from 1/N. The perfect-switch row says a
+regime test would be worth about a point of Sharpe; the bootstrap says
+this sample is too short to recognise one if it had been found.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
@@ -1596,6 +1646,8 @@ thing that would beat it by a point is a regime test nobody has.
   at section 3's own line it is below both ends on every panel, the worst
   book in this file on the 12-month windows. The statistic on a trailing
   window counts how long a run has lasted, and this sample's runs end.
-  What is still not here: a regime test that works. 1/N is the answer
-  because nothing known on day one has told the window's mean from its
-  own history.
+  Section 18 gates on the market's implied vol instead, with the rule
+  fixed in advance, and scores every gate against 1/N with a paired block
+  bootstrap: the pre-registered rule loses, the inversion wins on five
+  months, and no interval excludes zero. What is still not here: a regime
+  test that works, or enough months to recognise one.
