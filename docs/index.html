@@ -88,6 +88,7 @@ ul{color:var(--ink2);padding-left:20px;margin:0 0 14px}
 li{margin-bottom:7px}
 footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);font-size:13.5px}
 @media(max-width:860px){.grid2{grid-template-columns:1fr!important}h1{font-size:30px}}
+.short ul{margin:4px 0 10px;padding-left:20px;color:var(--ink2)}.short li{margin:4px 0}.short .terms{font-size:13.5px;color:var(--ink3);margin:0}details.more{margin-top:28px;border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px;background:var(--surface)}details.more>summary{cursor:pointer;font-weight:600;padding:10px 0;color:var(--ink)}details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:14px}
 </style>
 
 </head>
@@ -95,12 +96,13 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 
 <header>
 <div class="wrap">
-  <div class="tagline">The optimizer lost to splitting money evenly. Then it got something worth optimizing.</div>
+  <div class="tagline">How much money should each strategy get?</div>
   <h1>Alpha to Allocation</h1>
-  <p class="lede">Three trading strategies, and the system that decides how much money each one gets. Six ways of splitting the money, all tested on data the models had not seen. <strong style="color:var(--ink)">On ordinary assets, splitting evenly beat every optimizer. On trading strategies, the optimizer finally won, and not for the reason the textbook gives. Size the strategies to the same risk first and splitting evenly wins again, and it keeps winning once the leverage is paid for, even after the optimizer is shown the bill. Shrink the optimizer's forecast toward &ldquo;split evenly&rdquo; and there is a strength at which it finally wins &mdash; but only one you could find by looking at the answer, and choosing it without looking hands the win back. Build the regime switch the chooser seemed to be making and it is worse than either end: the test that says which regime you are in, run on the window, is a clock.</strong> 353 tests.</p>
-  <div class="note blue" style="max-width:70ch">
-    <p><strong>In plain English.</strong> There are two halves here. The strategies: pairs trading (bet that two stocks that usually move together will come back together), selling options and hedging them (collecting the insurance premium), and momentum (buy last year's winners, sell last year's losers). And the allocator: the math that decides how much of your money goes into each one.</p>
-    <p>The textbook says a clever optimizer should beat just splitting the money evenly. On stocks and ETFs it never did, in any test. On the strategies it did, because one strategy was losing money and only the optimizer that looks at returns could see that. The others only look at how bumpy each strategy is, and the losing one was the calmest. Everything below is the long version, with the numbers.</p>
+  <p class="lede">Three trading strategies, and the system that decides how much money goes into each one. Every method is tested only on data it had not seen yet.</p>
+  <div class="note blue short" style="max-width:70ch">
+    <p><strong>The short version</strong></p>
+    <ul><li>Textbooks say a smart optimizer beats splitting money evenly. On ordinary stocks and funds, <strong>splitting evenly won every time</strong>.</li><li>On trading strategies the optimizer did win once, because it was the only method that noticed one strategy was losing money.</li><li>Once every strategy was sized to the same level of risk, splitting evenly won again, and kept winning after paying for borrowed money.</li></ul>
+    <p class="terms"><strong>Pairs trading</strong>: betting two stocks that usually move together will come back together. <strong>Selling options</strong>: collecting a fee to insure others against big moves. <strong>Momentum</strong>: buying recent winners, selling recent losers. <strong>Sharpe ratio</strong>: return per unit of risk; higher is better.</p>
   </div>
   <div class="links">
     <a class="btn primary" href="#sleeves">Allocating the sleeves</a>
@@ -169,6 +171,9 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
     </tbody>
   </table>
   <p style="margin-top:14px">The window inflates the sleeve's Sharpe by <strong style="color:var(--ink)">+0.55</strong>. The important part is <em>where</em>: the return is almost unchanged (4.44% against 4.71%) and all the difference is in volatility. So the quantity mean-variance actually acted on survives the check. The 2.55 does not.</p>
+  <details class="more">
+  <summary>The full research log: 12 follow-up studies</summary>
+
   <h3 style="margin-top:32px">The cost the two sleeves were not matched on</h3>
   <p>Until now this study carried a caveat it could not price. The stat-arb sleeve pays bid-ask on every share it trades; the volatility sleeve charged its delta-hedging in basis points and then <strong style="color:var(--ink)">sold the option itself at the mid</strong>. Nobody sells at the mid, so the return gap was measured with one sleeve paying its spreads and the other not. Every figure above is now quoted with the charge applied, so the 0.00 row below is what this page used to say.</p>
   <p>Charging it is one parameter: half the option's bid-ask on the monthly sale, in <em>vol points</em>, sold at the bid and hedged on the mid &mdash; which is what a desk does, crossing the spread to get the position on and then marking on its own mid. The size is checkable rather than asserted: one-month ATM vega is about <span class="mono">S&middot;&radic;(T/2&pi;)</span>, or <strong style="color:var(--ink)">$0.67 per vol point</strong> at SPY 580, and SPY's front-month market runs a penny or two wide &mdash; so a cent of half-spread is roughly 0.02 vol points. The shipped charge of 0.10 is two to five times a calm day's width, because this sleeve trades every month from 2007 and option markets in October 2008 were not a penny wide.</p>
@@ -393,6 +398,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <p>And it does not reproduce the chooser. At the two dates the chooser switched, the test points the other way: it said &ldquo;noise&rdquo; in the three months the window's mean beat 1/N by most, and &ldquo;most separable in a year&rdquo; the month before the window's mean lost seven of nine. The chooser reads each strength's realized record, which is the window's mean lagged by its own payoff; the gate reads the window. Two clocks, neither a regime test. The perfect-switch row is the size of the prize for one that works &mdash; it would double 1/N &mdash; and this write-up does not have it. On what is here the answer is still equal weight, for the fourth time, and now because the one test that claimed to know the regime in advance turns out to know it in arrears.</p>
 
   <p><a href="statarb/">The stat-arb sleeve's own results &rarr;</a> &middot; <a href="volcarry/">the volatility sleeve's &rarr;</a></p>
+</details>
 </div>
 </section>
 
