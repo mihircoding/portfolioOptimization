@@ -1581,6 +1581,120 @@ this one — can be told apart from 1/N. The perfect-switch row says a
 regime test would be worth about a point of Sharpe; the bootstrap says
 this sample is too short to recognise one if it had been found.
 
+### 19. Open the thirteen months nobody had seen, and find the first stress test since 2020 was the one the sample needed
+
+Reproduce with: `python holdout.py` (its own file, on purpose; see below)
+
+Every section above ends in November 2024, because that is where the vol
+sleeve's cached P&L ends — the December 2024 option needed 21 trading days
+the download did not have — while the other two sleeves run through
+December 2025. So the allocator has been judged on 47 months with 13 more
+sitting in two of the three files, and section 18 closed on the
+observation that more months are the only thing that would let a test tell
+signals apart.
+
+`holdout.py` is not a section of `multi_strategy.py`, and that is the
+design. The main study reads its vol sleeve from a cache that stops in
+2024 and this file does not touch it, so nothing that chose a method above
+can have seen 2025. The sleeve is re-run here on a download that goes a
+month past 2025 — same trade, same spread, same anchor — and the
+three-sleeve walk-forward of sections 11–18 (vol-targeted, capped at 5×,
+24- and 12-month windows) is run on the extended panel, with every number
+split three ways: the months the main study saw, the thirteen it did not,
+and both. On the 215 months both series have, the re-run matches the
+shipped one to 0.008 basis points — the P&L is per $100 of underlying, so
+Yahoo's re-adjusted prices scale out — and on the 19 seen months the
+walk-forward reproduces section 11's capped table to the digit, which is
+the check that the only thing different here is the tape.
+
+Written before it ran: (1) thirteen months will not tell any allocator
+from 1/N; (2) the full-sample ranking will not change, 1/N stays ahead of
+the window's max-Sharpe book; (3) April 2025, the first VIX-above-50 month
+since March 2020, is taken worse by the optimizer than by 1/N — the 2022
+shape from section 18.
+
+**The sleeve's thirteen new months.** Sharpe +1.29 against +2.13 on the
+history, eleven up months of thirteen, and April 2025 at −2.22% per $100,
+which only one month of the previous 215 (March 2020) beats on the
+downside:
+
+| | 2024-12 | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| vol sleeve, % | −0.31 | +0.34 | +0.34 | +0.27 | **−2.22** | +0.42 | +0.66 | +0.82 | +0.74 | +0.62 | +0.27 | +0.93 | +1.18 |
+
+**Sharpe, capped 5×, and the bootstrap gap to equal weight (90% interval,
+P(not ahead)):**
+
+| 24-month window | seen, 19 mo | holdout, 13 mo | all, 32 mo |
+|---|---|---|---|
+| equal weight | +2.67 | +1.34 | +1.84 |
+| inverse vol | +2.46 [−0.53, +0.57] .69 | +0.91 [−0.90, −0.13] .99 | +1.56 [−0.55, −0.01] .96 |
+| risk parity | +2.43 [−0.47, +0.35] .74 | +0.92 [−0.90, −0.12] .99 | +1.53 [−0.56, −0.06] .98 |
+| HRP | +2.19 [−1.03, +0.87] .77 | +0.54 [−1.58, −0.23] .99 | +1.29 [−1.03, −0.06] .97 |
+| min variance | +2.20 [−0.92, +0.66] .78 | +0.56 [−1.58, −0.21] .99 | +1.26 [−1.02, −0.12] .98 |
+| max Sharpe | +2.26 [−1.52, +1.36] .75 | **+0.40** [−1.64, +0.68] .86 | +1.28 [−1.24, +0.37] .86 |
+
+| 12-month window | seen, 31 mo | holdout, 13 mo | all, 44 mo |
+|---|---|---|---|
+| equal weight | +1.57 | +1.34 | +1.46 |
+| inverse vol | +1.74 [−0.35, +0.63] .25 | +0.86 [−1.17, −0.21] 1.00 | +1.36 [−0.47, +0.24] .67 |
+| risk parity | +1.58 [−0.41, +0.39] .41 | +0.90 [−1.12, −0.19] 1.00 | +1.28 [−0.49, +0.09] .85 |
+| HRP | +1.74 [−0.73, +1.21] .32 | +0.54 [−1.85, −0.33] 1.00 | +1.23 [−0.87, +0.40] .72 |
+| min variance | +1.38 [−1.00, +0.71] .55 | +0.61 [−1.77, −0.28] 1.00 | +1.07 [−0.97, +0.12] .88 |
+| max Sharpe | +1.71 [−1.17, +1.52] .44 | **+0.18** [−2.06, +0.29] .91 | +0.91 [−1.32, +0.74] .77 |
+
+**Prediction 3 held, and it is the month that matters.** Going into April
+2025 the max-Sharpe book had 75% of its weight on the vol sleeve on the
+24-month window and 90% on the 12-month one — it had been 93–95% in
+December and January — because the window's mean belonged to the sleeve
+that had been winning. April cost it −7.2% and −9.6% in the month against
+−1.8% for equal weight, which held a third of a sleeve that lost 2.2% per
+$100 at the 5× cap, −11% on the sleeve. That is section 18's 2022 to the shape: a calm
+stretch, a window that concentrates, one month that charges for it. The
+sample now has two such months instead of one, and the optimizer took
+both the same way.
+
+**Prediction 1 failed, which is the surprise.** On the thirteen months the
+four risk-based rules are behind 1/N with intervals that exclude zero at
+both windows — not because of April, which they took only a little worse
+than 1/N (37–41% on the sleeve against 33%), but because of what they did
+*after* it. The row of weights on the vol sleeve tells it: inverse vol and
+risk parity hold 37% going into April, 27% in May, 25% from July on; HRP
+and min variance go from 41% to 22% to 17–19%. The sleeve's worst month
+raised its trailing variance, the risk-based rules did what they are
+built to do and cut it, and the sleeve then had eight up months in a row,
++0.4% to +1.2% per $100, its best run in the sample. Every risk-based
+book lagged 1/N in every one of those months. De-risk after the loss, miss
+the recovery — the rule a risk-based allocator cannot help following, on
+a sleeve whose losses and recoveries both come from the same place. Equal
+weight held a third throughout and had the best holdout of the six.
+
+Thirteen months is thirteen months, and a block bootstrap on four blocks
+is not a proof; the honest reading of the interval is that the gap is
+large and every scheme lost it in the same direction for the same reason,
+not that the rules are refuted. But the second half of section 18's
+closing sentence — that the sample was too short to recognise a signal —
+now has a counterexample: a sample this short *did* separate the
+risk-based rules from 1/N, because the separating event is a single
+mechanism acting over eight consecutive months, not a mean to be
+estimated.
+
+**Prediction 2 held, and widened.** On the whole 32 or 44 months 1/N is
+ahead of every rule on both windows; the gap to max Sharpe is +0.56 and
++0.55 against +0.41 and −0.14 on the seen months alone, and the 24-month
+window now puts 1/N ahead of the four risk-based rules with intervals
+that just exclude zero. Max Sharpe's own interval still straddles it, as
+it has in every section since 11: it is the noisiest book here, and the
+noise is the window.
+
+What this does not do: the extension is the vol sleeve only — the other
+two already ran through 2025 — and the section 12 implied-vol sizing, the
+section 15 shrinkage dial and the section 17–18 gates are not re-run on
+the new months; they are the next things to open. The panel's capped
+leverage and the 36-month vol windows are as shipped. And one stress
+month is one stress month: the finding is that it repeated the first
+one's shape, not that the next will.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
@@ -1592,7 +1706,8 @@ this sample is too short to recognise one if it had been found.
   two earn nothing is still not the eight-or-ten-sleeve book this study wants.
 - **22 out-of-sample months.** Everything in section 1 rests on fewer than two
   years. Section 5 is the only reason to take it at all seriously, and it is a
-  weak reason.
+  weak reason. Section 19 opens thirteen more, held out by construction, and
+  they move the answer in the same direction.
 - ~~**The sleeves are not cost-matched.**~~ Measured in section 6.
   `option_spread_vol_pts` charges the option's half-spread on the monthly sale,
   and at a realistic 0.10 vol points it costs the sleeve 0.14% a year and 0.08

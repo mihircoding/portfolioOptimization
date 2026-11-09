@@ -158,20 +158,32 @@ window in calm months) loses to 1/N in six of eight cases. Every gate is
 now scored with a paired block bootstrap, and none, in either direction,
 can be told apart from 1/N on this many months.
 
+Section 19 opens thirteen months none of that had seen. The vol sleeve's
+cache stopped in November 2024 while the other two ran through 2025, so
+`holdout.py` — its own file, so the main study cannot have touched the
+months — re-runs the sleeve a year further and the walk-forward on the
+longer panel. April 2025, the first VIX-above-50 month since 2020, finds
+the optimizer 75–90% in the vol sleeve and costs it 7–10% in a month 1/N
+lost 1.8%: the 2022 shape, a second time. The risk-based rules then cut
+the sleeve after its worst month and missed its best eight, and on the
+thirteen months all four are behind 1/N with intervals that exclude zero.
+On everything together 1/N is ahead of every rule at both windows.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-357 tests.
+362 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 357 passed
+python -m pytest -q                 # 362 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result
+python holdout.py                   # the thirteen months the main study never saw
 
 # the allocator
 python run_optimization.py          # frontier, walk-forward, Black-Litterman, costs

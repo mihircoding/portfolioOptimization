@@ -172,7 +172,7 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   </table>
   <p style="margin-top:14px">The window inflates the sleeve's Sharpe by <strong style="color:var(--ink)">+0.55</strong>. The important part is <em>where</em>: the return is almost unchanged (4.44% against 4.71%) and all the difference is in volatility. So the quantity mean-variance actually acted on survives the check. The 2.55 does not.</p>
   <details class="more">
-  <summary>The full research log: 13 follow-up studies</summary>
+  <summary>The full research log: 14 follow-up studies</summary>
 
   <h3 style="margin-top:32px">The cost the two sleeves were not matched on</h3>
   <p>Until now this study carried a caveat it could not price. The stat-arb sleeve pays bid-ask on every share it trades; the volatility sleeve charged its delta-hedging in basis points and then <strong style="color:var(--ink)">sold the option itself at the mid</strong>. Nobody sells at the mid, so the return gap was measured with one sleeve paying its spreads and the other not. Every figure above is now quoted with the charge applied, so the 0.00 row below is what this page used to say.</p>
@@ -400,6 +400,8 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <p><a href="statarb/">The stat-arb sleeve's own results &rarr;</a> &middot; <a href="volcarry/">the volatility sleeve's &rarr;</a></p>
   <h3 style="margin-top:32px">Ask the market instead of the window</h3>
   <p>The one regime signal not built from the window is the implied vol the options sleeve sells, known the morning of the trade. The rule written down first, trust the window when implied vol is calm, lost to splitting evenly in six of eight cases. The reverse looks better on five months, but a block bootstrap puts every gap's 90% interval across zero. On two years of data, nothing known on day one can be told apart from 1/N.</p>
+  <h3 style="margin-top:32px">Open the thirteen months nobody had seen</h3>
+  <p>The vol sleeve's cache stopped in November 2024 while the other two sleeves ran through 2025, so every study above was judged on 47 months with 13 more sitting unused. <span class="mono">holdout.py</span> &mdash; its own file, so nothing in the main study can have touched the months &mdash; re-runs the sleeve a year further and the capped three-sleeve walk-forward on the longer panel. Three predictions were written first. April 2025, the first VIX-above-50 month since 2020, found the optimizer 75&ndash;90% in the vol sleeve and cost it 7&ndash;10% in a month equal weight lost 1.8%: the 2022 shape, a second time (predicted). The full-sample ranking did not change (predicted). And the thirteen months <em>did</em> separate the four risk-based rules from 1/N, which was not predicted: they cut the vol sleeve after its worst month, the sleeve then had eight up months in a row, and every one of them lagged 1/N in every one of those months. De-risk after the loss, miss the recovery. On everything together, equal weight is ahead of every rule at both windows.</p>
 </details>
 </div>
 </section>
