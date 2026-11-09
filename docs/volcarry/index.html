@@ -60,6 +60,7 @@ header{padding:60px 0 46px}
 .note.blue{border-color:var(--blue);background:var(--blue-bg)}
 .note p{margin:0;color:var(--ink);font-size:14.5px}
 .note p+p{margin-top:9px}
+.short ul{margin:4px 0 10px;padding-left:20px;color:var(--ink2)}.short li{margin:4px 0}.short .terms{font-size:13.5px;color:var(--ink3);margin:0}details.more{margin-top:4px;border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px;background:var(--surface)}details.more>summary{cursor:pointer;font-weight:600;padding:10px 0;color:var(--ink)}details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:14px}details.more .sub{padding:30px 0 8px;border-top:1px solid var(--line)}details.more .sub:first-of-type{border-top:0;padding-top:10px}details.more .sub>.wrap{padding:0}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;font-weight:600;color:var(--ink2);padding:9px 10px;border-bottom:1px solid var(--line2);
   white-space:nowrap;font-size:12.5px}
@@ -106,9 +107,10 @@ sup{font-size:.72em}
   <h1>Options Pricer</h1>
   <p class="lede">An options pricer written from the formula up &mdash; prices, all five Greeks, an implied-vol solver, with <span class="mono">scipy.stats.norm</span> as the only outside help &mdash; then checked two more ways, by Monte Carlo and by a binomial tree, <strong style="color:var(--ink)">because a pricing model you have only derived one way is a model you have not checked.</strong> Then the trade the formula describes, run on seventeen years of real SPY data.</p>
   <p style="font-size:14px;margin:-4px 0 16px"><a href="../">&larr; Alpha to Allocation</a> &middot; the volatility sleeve</p>
-  <div class="note blue" style="max-width:70ch">
-    <p><strong>In plain English.</strong> An option is a contract whose value depends on how much a stock might move, so pricing one means putting a number on uncertainty. I wrote the standard formula for that from scratch, then wrote two completely different ways of reaching the same number so each could catch the others&rsquo; mistakes. All three agree, live, in the calculator below.</p>
-    <p>The formula also says how to run the trade: sell the option, then keep buying and selling the stock to stay neutral while it is open. I ran that on real data, selling one SPY option a month from 2007 to 2024. The seller came out ahead most months, because the market tends to price in more movement than actually shows up (about 20% against 16% here). The exception is a month like March 2020, where one bill wipes out half a year of income. The page shows where the money comes from month by month, and why hedging less often does not make the trade cheaper, only noisier.</p>
+  <div class="note blue short" style="max-width:70ch">
+    <p><strong>The short version</strong></p>
+    <ul><li>An option's price is a number put on uncertainty. The standard formula is written from scratch here, then checked two completely different ways, and <strong>all three agree</strong>, live, in the calculator below.</li><li>The trade the formula describes &mdash; sell an option, keep hedging with the stock &mdash; ran on seventeen years of real SPY data. The seller came out ahead most months, because the market prices in more movement than shows up (about 20% against 16%).</li><li>The exception is a month like March 2020, where one bill wipes out half a year of income. Hedging less often does not make the trade cheaper, only noisier.</li></ul>
+    <p class="terms"><strong>Option</strong>: a contract that pays off if a stock finishes above (or below) a set price. <strong>Implied volatility</strong>: how much movement the option's price is assuming. <strong>Greeks</strong>: how the price reacts to the stock, to time, and to volatility. <strong>Delta hedging</strong>: holding stock against a sold option so small moves cancel. <strong>Volatility smile</strong>: the market quoting higher implied vol far from the current price, which the formula says it should not.</p>
   </div>
   <div class="links">
     <a class="btn primary" href="#calc">Price an option</a>
@@ -194,6 +196,10 @@ sup{font-size:.72em}
 
 <section>
 <div class="wrap">
+<details class="more">
+<summary>The full research log: 5 follow-up studies</summary>
+<div class="sub">
+<div class="wrap">
   <div class="eyebrow">Cross-checking</div>
   <h2>Why price the same thing three times</h2>
   <p class="lede">Because agreement between methods that share an assumption but nothing else is the only evidence you have that the implementation is right. A closed form can be algebraically wrong in a way that still looks plausible; it cannot be wrong in a way that a simulation of the same process happens to reproduce.</p>
@@ -227,9 +233,9 @@ sup{font-size:.72em}
     </div>
   </div>
 </div>
-</section>
+</div>
 
-<section>
+<div class="sub">
 <div class="wrap">
   <div class="eyebrow">Greeks by simulation</div>
   <h2>Two techniques, because one can't do all three</h2>
@@ -245,9 +251,9 @@ sup{font-size:.72em}
     </div>
   </div>
 </div>
-</section>
+</div>
 
-<section>
+<div class="sub">
 <div class="wrap">
   <div class="eyebrow">Real market</div>
   <h2>The one assumption the market openly refuses</h2>
@@ -282,9 +288,9 @@ sup{font-size:.72em}
     </div>
   </div>
 </div>
-</section>
+</div>
 
-<section id="arbitrage">
+<div class="sub" id="arbitrage">
 <div class="wrap">
   <div class="eyebrow">Sanity</div>
   <h2>Is the chain pricing a real distribution?</h2>
@@ -318,9 +324,9 @@ sup{font-size:.72em}
     </div>
   </div>
 </div>
-</section>
+</div>
 
-<section id="svi">
+<div class="sub" id="svi">
 <div class="wrap">
   <div class="eyebrow">The fix</div>
   <h2>Fit it, don't join the dots</h2>
@@ -372,6 +378,9 @@ sup{font-size:.72em}
       <p style="font-size:13.5px;color:var(--ink3)">One condition this does not touch: each expiry is fitted on its own, so nothing here prevents calendar arbitrage <em>between</em> expiries. That needs the fits tied together across maturity, and is the next thing to build.</p>
     </div>
   </div>
+</div>
+</div>
+</details>
 </div>
 </section>
 
@@ -1022,6 +1031,29 @@ update();
                  grid:{color:c.line}}}}});
 })();
 
+</script>
+<script>
+// The research log is folded by default. A link into it (the header buttons,
+// or a shared #anchor) has to open the fold, and Chart.js needs a nudge to
+// size the canvases it drew while the fold was display:none.
+(function () {
+  function openFor(hash) {
+    if (!hash) return;
+    var target = document.querySelector(hash);
+    var fold = target && target.closest('details');
+    if (fold && !fold.open) { fold.open = true; target.scrollIntoView(); }
+  }
+  document.querySelectorAll('details.more').forEach(function (d) {
+    d.addEventListener('toggle', function () {
+      if (!d.open || !window.Chart) return;
+      d.querySelectorAll('canvas').forEach(function (c) {
+        var chart = Chart.getChart(c); if (chart) chart.resize();
+      });
+    });
+  });
+  window.addEventListener('hashchange', function () { openFor(location.hash); });
+  openFor(location.hash);
+})();
 </script>
 </body>
 </html>

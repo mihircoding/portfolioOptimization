@@ -60,6 +60,7 @@ header{padding:60px 0 46px}
 .note.blue{border-color:var(--blue);background:var(--blue-bg)}
 .note p{margin:0;color:var(--ink);font-size:14.5px}
 .note p+p{margin-top:9px}
+.short ul{margin:4px 0 10px;padding-left:20px;color:var(--ink2)}.short li{margin:4px 0}.short .terms{font-size:13.5px;color:var(--ink3);margin:0}details.more{margin-top:4px;border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px;background:var(--surface)}details.more>summary{cursor:pointer;font-weight:600;padding:10px 0;color:var(--ink)}details.more[open]>summary{border-bottom:1px solid var(--line);margin-bottom:14px}details.more .sub{padding:30px 0 8px;border-top:1px solid var(--line)}details.more .sub:first-of-type{border-top:0;padding-top:10px}details.more .sub>.wrap{padding:0}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;font-weight:600;color:var(--ink2);padding:9px 10px;border-bottom:1px solid var(--line2);
   white-space:nowrap;font-size:12.5px}
@@ -98,9 +99,10 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
   <h1>Pairs Trading Lab</h1>
   <p class="lede">Take every pair of stocks in the S&amp;P 100, test which ones move together closely enough to bet on, then trade the ones that pass on years of data the test never saw. <strong style="color:var(--ink)">930 of 4,950 pairs passed. Out of sample they averaged a Sharpe ratio of &minus;0.009, which is to say nothing.</strong></p>
   <p style="font-size:14px;margin:-4px 0 16px"><a href="../">&larr; Alpha to Allocation</a> &middot; the stat-arb sleeve</p>
-  <div class="note blue" style="max-width:70ch">
-    <p><strong>In plain English.</strong> Pairs trading is the idea that two stocks which usually move together will keep doing so, so when they drift apart you buy the one that fell behind, sell the one that ran ahead, and wait for them to meet again. The hard part is picking pairs that are really linked rather than ones that happened to line up in the past. There is a standard statistical test for that, and this page checks whether it earns its keep.</p>
-    <p>I ran the test on every pair, kept the ones that passed, and traded them for five years they were not selected on. They made nothing. Then I did the thing nobody does and traded the 4,020 pairs the test rejected, under the same rules. They did about as well. Re-picking the pairs every quarter, tightening the test, and fixing a flaw in the test itself (its advertised 5% false-alarm rate is closer to 15%) did not change the answer. The honest result is that the screen does not rank, and the page leads with that instead of the one pair that happened to work.</p>
+  <div class="note blue short" style="max-width:70ch">
+    <p><strong>The short version</strong></p>
+    <ul><li>Pairs trading bets that two stocks which usually move together will come back together after drifting apart. The hard part is telling a real link from a coincidence, and there is a standard statistical test for that.</li><li>930 of 4,950 pairs passed the test. Traded for five years they were not picked on, <strong>they made nothing</strong>. The 4,020 pairs the test rejected, traded under the same rules, did about as well.</li><li>Re-picking the pairs every quarter, tightening the test, and fixing a flaw in the test itself (its advertised 5% false-alarm rate is closer to 15%) did not change the answer.</li></ul>
+    <p class="terms"><strong>Cointegration</strong>: the statistical test for whether two prices stay tied together over time. <strong>p-value</strong>: how often a link this strong would show up by chance; 5% is the usual bar. <strong>Out of sample</strong>: measured on data the method never saw. <strong>Sharpe ratio</strong>: return per unit of risk; higher is better, zero is nothing.</p>
   </div>
   <div class="links">
     <a class="btn primary" href="#explorer">Explore the data</a>
@@ -235,7 +237,11 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
 </div>
 </section>
 
-<section id="control">
+<section>
+<div class="wrap">
+<details class="more">
+<summary>The full research log: 3 follow-up studies</summary>
+<div class="sub" id="control">
 <div class="wrap">
   <div class="eyebrow">Control group</div>
   <h2>Now trade the 4,020 pairs the screen threw away</h2>
@@ -274,9 +280,9 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
     <p><strong>This is the experiment a desk asks for first, and most pairs-trading projects never run it.</strong> The bucket table earlier shows the screen doesn't rank the pairs it keeps. This shows it doesn't separate the ones it keeps from the ones it discards either. Everything else on this page is an argument about how to trade a signal; this is the check on whether there is one.</p>
   </div>
 </div>
-</section>
+</div>
 
-<section id="validity">
+<div class="sub" id="validity">
 <div class="wrap">
   <div class="eyebrow">The screen itself</div>
   <h2>Is the screen&rsquo;s 5% really 5%?</h2>
@@ -316,9 +322,9 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
     <p style="margin-top:14px">The tempting conclusion is that the screen was reading the wrong table and the survivors are the real pairs. <strong style="color:var(--ink)">The seventeen best-evidenced pairs in the universe trade no better than the 4,020 the screen threw away.</strong> The screen had two separate problems &mdash; it was miscalibrated by a factor of three, and the property it tests for does not survive into the next five years at a strength worth trading. Fixing the first does not touch the second.</p>
   </div>
 </div>
-</section>
+</div>
 
-<section>
+<div class="sub">
 <div class="wrap">
   <div class="eyebrow">Walk-forward</div>
   <h2>What if you re-estimated every quarter?</h2>
@@ -366,6 +372,9 @@ footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--ink3);fo
     <p><strong>Not one pair out of 4,950 is cointegrated in all twenty quarters.</strong> Cointegration is supposed to be a property of a relationship, not of a window. Two stocks that are genuinely tied together, with the same business, inputs and customers, don't come untied for nine months and then tie back up. A screen whose verdict holds one quarter in five is measuring which noise happened to look like reversion in the last three years, and re-running it every quarter draws a fresh sample of that noise.</p>
     <p>This is the p-value bucket result from the other side. That one showed the screen can't <em>rank</em> pairs; this one shows it can't <em>repeat</em>. The structure in the universe is real, but it isn't stable at the level of a pair, on this horizon, at a strength this test can find.</p>
   </div>
+</div>
+</div>
+</details>
 </div>
 </section>
 
@@ -934,6 +943,29 @@ draw(); renderTable();
   $('cap-wf-hist').innerHTML = `Grey is the ${meta.never_pass.toLocaleString()} pairs that never pass. ` +
     `Of the ${ever.toLocaleString()} that pass at least once, the median passes in <strong>${median} of ${meta.quarters}</strong>, ` +
     `and the bar at ${meta.quarters} is empty: no pair passes every time.`;
+})();
+</script>
+<script>
+// The research log is folded by default. A link into it (the header buttons,
+// or a shared #anchor) has to open the fold, and Chart.js needs a nudge to
+// size the canvases it drew while the fold was display:none.
+(function () {
+  function openFor(hash) {
+    if (!hash) return;
+    var target = document.querySelector(hash);
+    var fold = target && target.closest('details');
+    if (fold && !fold.open) { fold.open = true; target.scrollIntoView(); }
+  }
+  document.querySelectorAll('details.more').forEach(function (d) {
+    d.addEventListener('toggle', function () {
+      if (!d.open || !window.Chart) return;
+      d.querySelectorAll('canvas').forEach(function (c) {
+        var chart = Chart.getChart(c); if (chart) chart.resize();
+      });
+    });
+  });
+  window.addEventListener('hashchange', function () { openFor(location.hash); });
+  openFor(location.hash);
 })();
 </script>
 </body>
