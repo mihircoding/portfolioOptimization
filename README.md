@@ -169,21 +169,32 @@ the sleeve after its worst month and missed its best eight, and on the
 thirteen months all four are behind 1/N with intervals that exclude zero.
 On everything together 1/N is ahead of every rule at both windows.
 
+Section 20 asks whether that cut was a window-length question and finds
+it was not: April's square is 26 times an ordinary month's, so it is four
+fifths of a six-month variance and still half of a 42-month one, and no
+window short of nineteen years makes it small. What the window sets is
+how long the cut lasts — a six-month window forgets April by October and
+the rules finish the recovery level with 1/N; a three-year window barely
+cuts; and the 12-to-24-month windows every section since 11 has used
+are the ones that remember April all year, finish 2–5% behind on the
+recovery, and are the only windows at which the bootstrap can tell the
+rules from 1/N at all.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-362 tests.
+366 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 362 passed
+python -m pytest -q                 # 366 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result
-python holdout.py                   # the thirteen months the main study never saw
+python holdout.py                   # the thirteen months the main study never saw, and the window sweep
 
 # the allocator
 python run_optimization.py          # frontier, walk-forward, Black-Litterman, costs

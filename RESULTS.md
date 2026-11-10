@@ -1695,6 +1695,135 @@ leverage and the 36-month vol windows are as shipped. And one stress
 month is one stress month: the finding is that it repeated the first
 one's shape, not that the next will.
 
+### 20. Sweep the window the cut was made on, and find one month was worth twenty-six — no window the panel can hold dilutes it, and the ones that shipped were the worst two
+
+Reproduce with: `python holdout.py` (the sweep is written beside the
+section 19 study, in the same results file)
+
+Section 19's finding was a mechanism: the four risk-based rules cut the
+vol sleeve after April and lagged 1/N through the eight up months that
+followed. A cut like that is one month entering a variance estimate, so its
+size should be a question of how long the window is — April is one month
+in six or one in forty-two. The walk-forward is re-run on the extended
+panel at every window from 6 to 42 months (the panel is 56 months, and 42
+is the longest that still trades the 13 holdout months), and each book's
+holdout is read three ways: what it held going into the sleeve's worst
+month, how much it cut the month after, and how many of the eight months
+after that it finished behind equal weight. Section 19's 12 and 24 sit in
+the middle of the sweep.
+
+Written before it ran: (1) the cut shrinks with the window roughly as one
+over it, for all four risk-based rules — at 6 months April is a sixth of
+the variance and the weight should roughly halve, at 42 it is a
+forty-second and the weight after should be within a few points of the
+weight before; (2) the holdout Sharpe gap to 1/N shrinks toward zero as
+the window lengthens and stays negative at every window, because any
+window that includes April cuts something and 1/N cuts nothing; (3) max
+Sharpe's weight going in has no clean prediction, since it comes off the
+mean, but the 6-month window — October to March, the sleeve's best run —
+should be the heaviest, and its April loss goes with the weight.
+
+**Weight on the vol sleeve going into April 2025 → the month after, and
+the cut in points:**
+
+| window | inverse vol | risk parity | HRP | min variance | max Sharpe |
+|---|---|---|---|---|---|
+| 6 mo | 37% → 22% (16) | 38% → 24% (14) | 42% → 14% (28) | 42% → 17% (24) | 98% → 0% (98) |
+| 12 mo | 33% → 22% (11) | 33% → 22% (11) | 32% → 14% (18) | 32% → 14% (18) | 90% → 12% (78) |
+| 18 mo | 35% → 24% (11) | 35% → 24% (11) | 36% → 16% (20) | 36% → 16% (20) | 75% → 17% (57) |
+| 24 mo | 37% → 27% (10) | 37% → 27% (10) | 41% → 22% (19) | 41% → 22% (19) | 75% → 36% (39) |
+| 36 mo | 42% → 32% (10) | 41% → 32% (9) | 50% → 30% (20) | 48% → 30% (18) | 92% → 70% (22) |
+| 42 mo | 42% → 32% (9) | 40% → 32% (8) | 49% → 31% (19) | 48% → 31% (17) | 95% → 81% (14) |
+
+**Prediction 1 failed, and the reason is the size of the month.** The cut
+at 42 months is 0.6 to 0.7 of the cut at 6, not the 0.14 that one-over-
+the-window would give. April was −11.1% on the capped sleeve, and its
+square is 26 times the mean square of the 47 months before it: one month
+worth twenty-six ordinary ones. The sleeve's vol estimate goes ×2.32 the
+month April enters a six-month window, which makes the one month four
+fifths of that window's variance, and ×1.46 when it enters a 42-month one,
+which still makes it half. To get April down to a tenth of the variance
+would take a window of about 230 months — nineteen years, the whole of the
+sleeve's history from 2007 — and the longest the panel can hold is three
+and a half. The cut does not shrink with the window because the
+window is not the quantity that sets it; the ratio of the month to an
+ordinary one is, and no window in reach changes that ratio much. What the
+window does change is the weight *going in*: the long windows have more of
+the sleeve's calm 2023–24 in them and hold more of it — 49% at 42 months
+against 42% at 6 for HRP — so they lose more in April (−4.3% against
+−3.3%) for the same reason they cut less after it.
+
+**April 2025, months behind 1/N of the eight after it, and the holdout
+Sharpe gap to equal weight [bootstrap 90%]:**
+
+| window | inverse vol | risk parity | HRP | min variance | max Sharpe |
+|---|---|---|---|---|---|
+| 6 mo | −2.5% · 5/8 · −0.36 [−1.11, −0.16] | −2.6% · 5/8 · −0.28 [−0.83, −0.11] | −3.3% · 5/8 · −0.54 [−1.56, −0.23] | −3.3% · 5/8 · −0.44 [−1.40, −0.14] | −10.8% · 4/8 · −1.04 [−2.15, −0.03] |
+| 12 mo | −1.8% · 7/8 · −0.48 [−1.17, −0.21] | −1.8% · 7/8 · −0.45 [−1.12, −0.19] | −1.8% · 7/8 · −0.80 [−1.85, −0.33] | −1.8% · 7/8 · −0.74 [−1.77, −0.28] | −9.5% · 2/8 · −1.16 [−2.06, +0.29] |
+| 18 mo | −2.3% · 7/8 · −0.45 [−1.02, −0.14] | −2.3% · 7/8 · −0.44 [−1.01, −0.13] | −2.6% · 7/8 · −0.79 [−1.72, −0.24] | −2.6% · 7/8 · −0.77 [−1.72, −0.21] | −7.2% · 2/8 · −0.91 [−1.70, +0.38] |
+| 24 mo | −2.5% · 7/8 · −0.43 [−0.90, −0.13] | −2.5% · 7/8 · −0.42 [−0.90, −0.12] | −3.1% · 7/8 · −0.80 [−1.58, −0.23] | −3.1% · 7/8 · −0.79 [−1.58, −0.21] | −7.2% · 2/8 · −0.94 [−1.64, +0.68] |
+| 36 mo | −3.1% · 7/8 · −0.27 [−0.65, +0.19] | −3.0% · 7/8 · −0.26 [−0.60, +0.14] | −4.3% · 7/8 · −0.55 [−1.11, +0.29] | −4.1% · 7/8 · −0.52 [−1.06, +0.20] | −9.8% · 0/8 · −0.36 [−1.09, +5.01] |
+| 42 mo | −3.1% · 6/8 · −0.25 [−0.62, +0.20] | −2.9% · 6/8 · −0.23 [−0.56, +0.15] | −4.3% · 6/8 · −0.51 [−1.07, +0.33] | −4.0% · 6/8 · −0.47 [−1.01, +0.24] | −10.2% · 0/8 · −0.34 [−1.06, +5.97] |
+
+(Equal weight: −1.8% in April, 0/8 behind itself, gap zero.)
+
+**Prediction 2 held, but the shape is a hump, not a slope.** The gap to
+1/N is negative at every window for every rule, as it had to be. It closes
+with the window for three of the four — inverse vol −0.36 at 6 months,
+−0.48 at 12, −0.25 at 42 — and is flat for min variance, whose best window
+is 6. But the path between the ends is the finding: the gap is *widest* at
+12 to 24 months, which are the two windows section 19 ran and the two
+every section since 11 has used. At 6 months the rules cut hardest — HRP
+to 7% of the book at the bottom — and then April rolled out of the window
+in October and the weight came back to 62%; the short window forgets as
+fast as it panics, and on the eight months after April the four rules
+finished within 1.3% of 1/N, three of them ahead of it. At 36 and 42 months the rules barely cut, held 28–32%
+through the recovery, and finished 0.3–1.0% behind. At 12 to 24 months
+the window is long enough to remember April all year and short enough
+for April to be most of what it remembers, and the books finished 2.2% to
+5.2% behind on the recovery, lagging 1/N in seven of the eight months at
+every one of the three. The bootstrap says the same thing from the other
+side: at 12, 18 and 24 months every risk-based interval excludes zero; at
+36 and 42 every one straddles it. Section 19's "thirteen months *did*
+separate the rules from 1/N" was true of the windows it ran, and those
+were the windows at which the separation is largest.
+
+**Prediction 3 held, and the long-window optimizer is the other hump.**
+Max Sharpe is heaviest in the sleeve at 6 months, 98%, and April takes
+−10.8% off it; the cut is to zero. At 36 and 42 months it goes in at
+92–95% — the mean over three years belongs to the sleeve as surely as the
+mean over six months does — takes −9.8% and −10.2%, and then cuts only to
+70–81%, because one month moves a 42-month mean by a fortieth of itself.
+It holds 77–80% through the recovery, finishes 12.3% *ahead* of 1/N on
+the eight months after April, 0/8 behind, and its holdout Sharpe gap is
+−0.34, the smallest in its row — with an interval of [−1.06, +5.97] that
+says what fourteen traded months of a 95%-concentrated book are worth as
+evidence. The optimizer at a long window is the one book here that took
+the whole of April and the whole of the recovery; it was still behind
+equal weight on the thirteen months, because April was −10% and the
+recovery was +23% on a book that had started 10% down.
+
+So: the cut is not a window-length question, because the month that made
+it was worth twenty-six ordinary months and no window short of two decades
+makes that small. The window sets how long the cut *lasts* — six months at
+6, all year at 12 to 42 — and how much the book held going in, and the
+two windows this repository has used since section 11 are the ones at
+which the cut lasted all year on a book that was not large to begin with.
+That is not a reason to change the window; it is a reason to know that
+"the risk-based rules lag 1/N after a stress month" is, on this sample, a
+statement about a window of one to two years, and that at three the rules
+and 1/N are thirteen months apart and the bootstrap cannot tell them
+apart.
+
+What this does not do: the sweep is on the allocator's window only — the
+sleeves' own 36-month vol-targeting window, which also de-levers the vol
+sleeve after April inside the panel, is as shipped at every row, and is
+the next dial. The 36- and 42-month rows trade 20 and 14 months in all,
+so their seen-sample figures are not worth reporting and are not; the
+holdout is the same 13 months in every row. And a hump in six points is a
+hump in six points: the 12-to-24 trough is three windows wide and the
+ends are one each.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A
