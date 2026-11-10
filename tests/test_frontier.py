@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from src.frontier import efficient_frontier

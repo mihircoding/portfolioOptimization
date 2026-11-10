@@ -50,7 +50,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from statsmodels.tsa.stattools import adfuller, coint
+from statsmodels.tsa.stattools import coint
 
 from sleeves.statarb.scan import (ADF_MAXLAG, FORMATION, MIN_FORMATION_DAYS, TRADING,
                   beta_and_pvalue, clean, load_prices, run_pair, sharpe)

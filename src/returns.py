@@ -10,7 +10,6 @@ Conventions everything downstream depends on:
                                                             with time, vol doesn't
 """
 
-import numpy as np
 import pandas as pd
 
 TRADING_DAYS = 252

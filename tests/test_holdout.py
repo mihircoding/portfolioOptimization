@@ -8,7 +8,7 @@ import pytest
 import holdout
 from holdout import (agreement, capped_panel, frames, holdout_study, split_scores,
                      walk_forward_paths)
-from multi_strategy import sleeve_frames, vol_target_study, walk_forward
+from multi_strategy import sleeve_frames, walk_forward
 
 
 def _patch(monkeypatch, n=120, seed=11, extra=13):

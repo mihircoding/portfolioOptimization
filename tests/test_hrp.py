@@ -162,7 +162,7 @@ def test_one_asset_gets_everything():
 # Aliased: the module-level `linkage` above is scipy's, and the tests that
 # check this implementation against it need that name to keep meaning scipy.
 from src.hrp import linkage as hrp_linkage
-from src.hrp import cluster_leaves, tree_bisection, tree_shape
+from src.hrp import cluster_leaves, tree_shape
 
 
 def _duplicate_cov(rho: float = 0.99, var: float = 0.04) -> np.ndarray:

@@ -40,7 +40,7 @@ import pandas as pd
 import yfinance as yf
 
 from sleeves.volcarry.black_scholes import price
-from sleeves.volcarry.hedging import delta_hedge, gamma_pnl, realized_vol
+from sleeves.volcarry.hedging import delta_hedge, gamma_pnl
 
 TICKER = "SPY"
 START, END = "2007-01-01", "2024-12-31"

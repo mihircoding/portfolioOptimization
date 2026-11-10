@@ -57,7 +57,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from sleeves.statarb.scan import COST_BPS, TRADING_DAYS, run_pair, sharpe
+from sleeves.statarb.scan import TRADING_DAYS, run_pair, sharpe
 
 ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT / "results"

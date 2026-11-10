@@ -31,12 +31,11 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from src.costs import DEFAULT_COST_BPS, hold, net_returns
+from src.costs import DEFAULT_COST_BPS
 from src.hrp import hrp_weights
 from src.optimizer import min_variance_weights, min_variance_weights_analytic
 from src.returns import TRADING_DAYS, daily_returns
-from src.risk_parity import (equal_risk_contribution_weights,
-                             inverse_vol_weights, ledoit_wolf_alpha,
+from src.risk_parity import (equal_risk_contribution_weights, inverse_vol_weights,
                              shrink_covariance)
 
 # The same 50 names as factor_study.py, so the two sections are talking

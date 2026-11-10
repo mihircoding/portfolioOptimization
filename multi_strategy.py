@@ -641,7 +641,6 @@ def third_sleeve_study(lookback: int = LOOKBACK_MONTHS) -> dict:
 
     inv_vol = inverse_vol_weights(np.cov(panel.to_numpy(dtype=float),
                                          rowvar=False, ddof=1))
-    equal = np.ones(panel.shape[1]) / panel.shape[1]
     return {
         "full_history": {"first": f"{full.index[0]:%Y-%m}",
                          "last": f"{full.index[-1]:%Y-%m}",
