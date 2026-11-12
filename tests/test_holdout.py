@@ -202,11 +202,112 @@ def test_holdout_main_writes_the_sweep_beside_the_study(monkeypatch, tmp_path, c
     monkeypatch.setattr("holdout.HOLDOUT_FROM", f"{first_new:%Y-%m-01}")
     monkeypatch.setattr("holdout.LOOKBACKS", (12,))
     monkeypatch.setattr("holdout.WINDOWS", (12, 24))
+    monkeypatch.setattr("holdout.SLEEVE_WINDOWS", (12, 24))
     monkeypatch.setattr("holdout.OUT", str(tmp_path / "holdout.json"))
     monkeypatch.chdir(tmp_path)
     holdout.main()
     out = capsys.readouterr().out
     assert "THE WINDOW THE CUT WAS MADE ON" in out
+    assert "THE SLEEVE'S OWN WINDOW" in out
     written = json.load(open(tmp_path / "holdout.json"))
     assert set(written["window_sweep"]["windows"]) == {"12", "24"}
     assert written["window_verdicts"]["windows"] == [12, 24]
+    assert set(written["sleeve_window_sweep"]["windows"]) == {"12", "24"}
+    assert written["sleeve_window_verdicts"]["windows"] == [12, 24]
+
+
+# ---------- the sleeve's own window ----------
+
+from holdout import SLEEVE_WINDOWS, sleeve_window_sweep, sleeve_window_verdicts
+from multi_strategy import trailing_vol, vol_targeted
+
+
+def test_frames_sizes_the_vol_sleeve_on_its_own_window_and_leaves_momentum_on_the_shipped_one(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    shipped_frames = frames(volcarry)
+    own = frames(volcarry, volcarry_window=12)
+    monthly = volcarry.copy()
+    monthly.index = monthly.index.to_period("M").to_timestamp("M")
+    pd.testing.assert_frame_equal(own["volcarry"], vol_targeted(monthly, trailing_vol(monthly, 12), 0.10))
+    pd.testing.assert_frame_equal(own["xsmom"], shipped_frames["xsmom"])
+    pd.testing.assert_frame_equal(own["statarb"], shipped_frames["statarb"])
+    # None is the shipped setting
+    pd.testing.assert_frame_equal(frames(volcarry, volcarry_window=None)["volcarry"], shipped_frames["volcarry"])
+
+
+def test_the_sleeve_sweep_reads_the_sleeves_own_cut_and_every_books_exposure(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    # one bad month inside the holdout, with months after it, on a sleeve
+    # the cap never binds on (4% a year against a 10% target is 2.4x)
+    volcarry.iloc[-9] = -0.06
+    sweep = sleeve_window_sweep(volcarry, windows=(6, 12, 24), lookback=12,
+                                holdout_from=f"{first_new:%Y-%m-01}")
+    assert set(sweep["windows"]) == {"6", "12", "24"} and sweep["lookback"] == 12
+    mult, cuts = [], []
+    for w in (6, 12, 24):
+        r = sweep["windows"][str(w)]
+        assert r["worst_month"] == f"{volcarry.index[-9]:%Y-%m}"
+        assert not r["cap_binds_into_worst"] and not r["cap_binds_after_worst"]
+        assert r["leverage_into_worst"] == pytest.approx(r["uncapped_leverage_into_worst"])
+        # the sleeve's leverage is target over the vol it saw, so its own
+        # cut is one minus the inverse of the vol multiplier
+        assert r["vol_multiplier"] > 1.0
+        assert r["own_cut"] == pytest.approx(1 - 1 / r["vol_multiplier"])
+        assert r["leverage_after_worst"] == pytest.approx(0.10 / r["vol_after_worst"])
+        mult.append(r["vol_multiplier"])
+        cuts.append(r["own_cut"])
+        s = r["schemes"]
+        assert set(s) == {"equal weight", "inverse vol", "risk parity", "HRP", "min variance", "max Sharpe"}
+        for name, sc in s.items():
+            assert sc["exposure_into_worst"] == pytest.approx(sc["weight_into_worst"] * r["leverage_into_worst"])
+            assert sc["exposure_after_worst"] == pytest.approx(sc["weight_after_worst"] * r["leverage_after_worst"])
+        # equal weight cuts no weight, and its exposure still falls by the sleeve's own cut
+        ew = s["equal weight"]
+        assert ew["weight_cut_share"] == pytest.approx(0.0, abs=1e-3)
+        assert ew["exposure_cut_share"] == pytest.approx(r["own_cut"], abs=1e-3)
+        # the risk-based books cut weight on top of that
+        for name in RISK_BASED:
+            assert s[name]["weight_cut_share"] > 0
+            assert s[name]["exposure_cut_share"] > r["own_cut"]
+    # one month is a bigger share of a shorter window
+    assert all(b < a for a, b in zip(mult, mult[1:]))
+    assert all(b < a for a, b in zip(cuts, cuts[1:]))
+
+
+def test_when_the_target_asks_for_more_than_the_cap_the_window_sets_nothing(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    # a sleeve at 1% a year asks for 10x and gets 5: the cap is the leverage
+    # going into the bad month and, on a long window, out of it
+    quiet = (volcarry * 0.25).rename("ret")
+    quiet.iloc[-9] = -0.02
+    sweep = sleeve_window_sweep(quiet, windows=(6, 36), lookback=12,
+                                holdout_from=f"{first_new:%Y-%m-01}")
+    long = sweep["windows"]["36"]
+    assert long["cap_binds_into_worst"] and long["cap_binds_after_worst"]
+    assert long["leverage_into_worst"] == 5.0 and long["leverage_after_worst"] == 5.0
+    assert long["uncapped_leverage_into_worst"] > 5.0
+    assert long["own_cut"] == 0.0 and long["predicted_own_cut"] > 0.0
+    assert long["cap_binds_share"] > 0.9 and long["cap_binds_share_holdout"] == 1.0
+    assert long["schemes"]["equal weight"]["exposure_cut_share"] == pytest.approx(0.0, abs=1e-3)
+    # the short window's estimate climbs over the target after the month, and the cap lets go
+    short = sweep["windows"]["6"]
+    assert short["cap_binds_into_worst"] and not short["cap_binds_after_worst"]
+    assert short["own_cut"] > 0.0
+
+
+def test_the_sleeve_verdicts_score_the_cap_first_and_then_the_four_predictions(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    volcarry.iloc[-9] = -0.06
+    sweep = sleeve_window_sweep(volcarry, windows=(6, 12, 24), lookback=12,
+                                holdout_from=f"{first_new:%Y-%m-01}")
+    v = sleeve_window_verdicts(sweep)
+    assert v["windows"] == [6, 12, 24]
+    assert v["cap_binds_into_worst"] == [False, False, False]
+    assert len(v["own_cut"]) == len(v["predicted_own_cut"]) == 3
+    assert v["own_cut_shrinks_with_window"] is True
+    assert all(v["equal_weight_exposure_cut_is_own_cut"])
+    assert all(v["risk_based_exposure_cut_above_own"].values())
+    assert v["sleeve_april_worst_at"] in (6, 12, 24) and v["sleeve_best_window"] in (6, 12, 24)
+    assert set(v["weight_cut_deepest_at"]) == set(RISK_BASED)
+    assert v["exposure_cut_at_shipped"] is None   # 36 is not in this sweep
+    assert SLEEVE_WINDOWS == (6, 12, 24, 36, 60)

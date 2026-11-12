@@ -3104,5 +3104,1153 @@
     0
    ]
   }
+ },
+ "sleeve_window_sweep": {
+  "holdout_from": "2024-12-01",
+  "sleeve": "volcarry",
+  "lookback": 24,
+  "windows": {
+   "6": {
+    "worst_month": "2025-04",
+    "months_traded": 32,
+    "worst_in_ordinary_months": 15.308863072433397,
+    "vol_multiplier": 2.3235959112127187,
+    "predicted_multiplier": 1.8397854527287232,
+    "leverage_into_worst": 5.0,
+    "leverage_after_worst": 2.7467907352704795,
+    "uncapped_leverage_into_worst": 6.382431721431463,
+    "uncapped_leverage_after_worst": 2.7467907352704795,
+    "vol_into_worst": 0.015668009367685302,
+    "vol_after_worst": 0.03640612250359614,
+    "cap_binds_into_worst": true,
+    "cap_binds_after_worst": false,
+    "cap_binds_share": 0.8392857142857143,
+    "cap_binds_share_holdout": 0.38461538461538464,
+    "own_cut": 0.4506418529459041,
+    "predicted_own_cut": 0.4564583612090065,
+    "sleeve": {
+     "ann_return": 0.10996562756945896,
+     "ann_vol": 0.13893777552932757,
+     "sharpe": 0.7914739324889145,
+     "worst_month": -0.11081948998987749,
+     "hit_rate": 0.8461538461538461,
+     "worst_month_return": -0.11081948998987749,
+     "raw_worst_month_return": -0.0221638979979755,
+     "return_after_worst": 0.21571084618870207,
+     "raw_return_after_worst": 0.05789356327411688,
+     "mean_leverage_holdout": 3.7818038179192093
+    },
+    "schemes": {
+     "equal weight": {
+      "ann_return": 0.05433326542814525,
+      "ann_vol": 0.05718625741150199,
+      "sharpe": 0.9501105315770688,
+      "worst_month": -0.019580195685715226,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": 0.0,
+       "low": 0.0,
+       "high": 0.0,
+       "p_not_ahead": 1.0
+      },
+      "sharpe_gap": 0.0,
+      "worst_month_return": -0.018108043898779062,
+      "weight_into_worst": 0.3333,
+      "weight_after_worst": 0.3333,
+      "weight_cut_share": 0.0,
+      "exposure_into_worst": 1.6664999999999999,
+      "exposure_after_worst": 0.9155053520656508,
+      "exposure_cut_share": 0.4506418529459041,
+      "months_behind_after_worst": 0,
+      "return_after_worst": 0.07863486999923786
+     },
+     "inverse vol": {
+      "ann_return": 0.037368351880370264,
+      "ann_vol": 0.059432963747733165,
+      "sharpe": 0.6287479123367045,
+      "worst_month": -0.02506296243014452,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.32136261924036436,
+       "low": -0.5950483933511606,
+       "high": -0.04496499741523807,
+       "p_not_ahead": 0.9745
+      },
+      "sharpe_gap": -0.32136261924036436,
+      "worst_month_return": -0.02506296243014452,
+      "weight_into_worst": 0.3768,
+      "weight_after_worst": 0.2761,
+      "weight_cut_share": 0.2672505307855626,
+      "exposure_into_worst": 1.8840000000000001,
+      "exposure_after_worst": 0.7583889220081794,
+      "exposure_cut_share": 0.5974581093374844,
+      "months_behind_after_worst": 5,
+      "return_after_worst": 0.06602366025398632
+     },
+     "risk parity": {
+      "ann_return": 0.03778750825098441,
+      "ann_vol": 0.05957190829345646,
+      "sharpe": 0.6343175723839468,
+      "worst_month": -0.02506296243014452,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.3157929591931219,
+       "low": -0.5950383501753598,
+       "high": -0.03789109016026004,
+       "p_not_ahead": 0.97
+      },
+      "sharpe_gap": -0.315792959193122,
+      "worst_month_return": -0.02506296243014452,
+      "weight_into_worst": 0.3768,
+      "weight_after_worst": 0.2761,
+      "weight_cut_share": 0.2672505307855626,
+      "exposure_into_worst": 1.8840000000000001,
+      "exposure_after_worst": 0.7583889220081794,
+      "exposure_cut_share": 0.5974581093374844,
+      "months_behind_after_worst": 5,
+      "return_after_worst": 0.06602366025398632
+     },
+     "HRP": {
+      "ann_return": 0.022442837579117747,
+      "ann_vol": 0.06336949456695275,
+      "sharpe": 0.35415838066068006,
+      "worst_month": -0.0318236418277628,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.5959521509163888,
+       "low": -1.0451088810647355,
+       "high": -0.05047927695844092,
+       "p_not_ahead": 0.9685
+      },
+      "sharpe_gap": -0.5959521509163888,
+      "worst_month_return": -0.0318236418277628,
+      "weight_into_worst": 0.4198,
+      "weight_after_worst": 0.223,
+      "weight_cut_share": 0.4687946641257742,
+      "exposure_into_worst": 2.099,
+      "exposure_after_worst": 0.612534333965317,
+      "exposure_cut_share": 0.7081780209788866,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.054819678444059994
+     },
+     "min variance": {
+      "ann_return": 0.023365519900010352,
+      "ann_vol": 0.06354065747817185,
+      "sharpe": 0.36772549777340785,
+      "worst_month": -0.03182364139622312,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.5823850338036609,
+       "low": -1.0411448150306766,
+       "high": -0.03412805176446091,
+       "p_not_ahead": 0.964
+      },
+      "sharpe_gap": -0.5823850338036609,
+      "worst_month_return": -0.03182364139622312,
+      "weight_into_worst": 0.4198,
+      "weight_after_worst": 0.223,
+      "weight_cut_share": 0.4687946641257742,
+      "exposure_into_worst": 2.099,
+      "exposure_after_worst": 0.612534333965317,
+      "exposure_cut_share": 0.7081780209788866,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.05481967544367694
+     },
+     "max Sharpe": {
+      "ann_return": -0.0018774941238157098,
+      "ann_vol": 0.08790599262722784,
+      "sharpe": -0.021357976489468345,
+      "worst_month": -0.07220166684810604,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.9714685080665371,
+       "low": -1.5624739176176006,
+       "high": 0.28026758551239805,
+       "p_not_ahead": 0.914
+      },
+      "sharpe_gap": -0.9714685080665372,
+      "worst_month_return": -0.07220166684810604,
+      "weight_into_worst": 0.7488,
+      "weight_after_worst": 0.3515,
+      "weight_cut_share": 0.530582264957265,
+      "exposure_into_worst": 3.744,
+      "exposure_after_worst": 0.9654969434475734,
+      "exposure_cut_share": 0.7421215428825926,
+      "months_behind_after_worst": 2,
+      "return_after_worst": 0.06784947282362808
+     }
+    }
+   },
+   "12": {
+    "worst_month": "2025-04",
+    "months_traded": 32,
+    "worst_in_ordinary_months": 18.28433829694612,
+    "vol_multiplier": 1.7655869254410497,
+    "predicted_multiplier": 1.5621656521462473,
+    "leverage_into_worst": 5.0,
+    "leverage_after_worst": 3.3608986134865355,
+    "uncapped_leverage_into_worst": 5.933958649704779,
+    "uncapped_leverage_after_worst": 3.3608986134865355,
+    "vol_into_worst": 0.016852156528757597,
+    "vol_after_worst": 0.02975394723266044,
+    "cap_binds_into_worst": true,
+    "cap_binds_after_worst": false,
+    "cap_binds_share": 0.8571428571428571,
+    "cap_binds_share_holdout": 0.38461538461538464,
+    "own_cut": 0.3278202773026929,
+    "predicted_own_cut": 0.35986302180814966,
+    "sleeve": {
+     "ann_return": 0.10417036191537253,
+     "ann_vol": 0.13255227255013116,
+     "sharpe": 0.7858813727691872,
+     "worst_month": -0.11081948998987749,
+     "hit_rate": 0.8461538461538461,
+     "worst_month_return": -0.11081948998987749,
+     "raw_worst_month_return": -0.0221638979979755,
+     "return_after_worst": 0.20772365836607043,
+     "raw_return_after_worst": 0.05789356327411688,
+     "mean_leverage_holdout": 3.9998492199759914
+    },
+    "schemes": {
+     "equal weight": {
+      "ann_return": 0.052401510210116437,
+      "ann_vol": 0.05597595361464987,
+      "sharpe": 0.9361432334116067,
+      "worst_month": -0.019580195685715226,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": 0.0,
+       "low": 0.0,
+       "high": 0.0,
+       "p_not_ahead": 1.0
+      },
+      "sharpe_gap": 0.0,
+      "worst_month_return": -0.018108043898779062,
+      "weight_into_worst": 0.3333,
+      "weight_after_worst": 0.3333,
+      "weight_cut_share": 0.0,
+      "exposure_into_worst": 1.6664999999999999,
+      "exposure_after_worst": 1.1201875078750623,
+      "exposure_cut_share": 0.3278202773026928,
+      "months_behind_after_worst": 0,
+      "return_after_worst": 0.07604774846010987
+     },
+     "inverse vol": {
+      "ann_return": 0.03576198324525141,
+      "ann_vol": 0.05894671772434939,
+      "sharpe": 0.6066831984180019,
+      "worst_month": -0.02463185990379617,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.32946003499360477,
+       "low": -0.659817288935154,
+       "high": -0.07090160181211402,
+       "p_not_ahead": 0.9865
+      },
+      "sharpe_gap": -0.32946003499360477,
+      "worst_month_return": -0.02463185990379617,
+      "weight_into_worst": 0.3736,
+      "weight_after_worst": 0.2748,
+      "weight_cut_share": 0.2644539614561028,
+      "exposure_into_worst": 1.8679999999999999,
+      "exposure_after_worst": 0.9235749389860999,
+      "exposure_cut_share": 0.5055808677804604,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.06346072228345245
+     },
+     "risk parity": {
+      "ann_return": 0.03615668676402885,
+      "ann_vol": 0.059062576428601694,
+      "sharpe": 0.6121759149423014,
+      "worst_month": -0.02463185990379617,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.32396731846930527,
+       "low": -0.6589402405160858,
+       "high": -0.06772487563102621,
+       "p_not_ahead": 0.986
+      },
+      "sharpe_gap": -0.32396731846930527,
+      "worst_month_return": -0.02463185990379617,
+      "weight_into_worst": 0.3736,
+      "weight_after_worst": 0.2748,
+      "weight_cut_share": 0.2644539614561028,
+      "exposure_into_worst": 1.8679999999999999,
+      "exposure_after_worst": 0.9235749389860999,
+      "exposure_cut_share": 0.5055808677804604,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.06346072228345245
+     },
+     "HRP": {
+      "ann_return": 0.021192817355742875,
+      "ann_vol": 0.06324449012995323,
+      "sharpe": 0.33509349687532297,
+      "worst_month": -0.03093912016925661,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.6010497365362836,
+       "low": -1.1507496818348852,
+       "high": -0.10959093644663698,
+       "p_not_ahead": 0.9855
+      },
+      "sharpe_gap": -0.6010497365362837,
+      "worst_month_return": -0.03093912016925661,
+      "weight_into_worst": 0.4133,
+      "weight_after_worst": 0.2207,
+      "weight_cut_share": 0.46600532300992015,
+      "exposure_into_worst": 2.0665,
+      "exposure_after_worst": 0.7417503239964784,
+      "exposure_cut_share": 0.64105960609897,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.05233214832483046
+     },
+     "min variance": {
+      "ann_return": 0.022078034747943554,
+      "ann_vol": 0.06337732622794255,
+      "sharpe": 0.34835857020123906,
+      "worst_month": -0.030939121068242523,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.5877846632103676,
+       "low": -1.1452255433368872,
+       "high": -0.09981292212787965,
+       "p_not_ahead": 0.982
+      },
+      "sharpe_gap": -0.5877846632103676,
+      "worst_month_return": -0.030939121068242523,
+      "weight_into_worst": 0.4133,
+      "weight_after_worst": 0.2207,
+      "weight_cut_share": 0.46600532300992015,
+      "exposure_into_worst": 2.0665,
+      "exposure_after_worst": 0.7417503239964784,
+      "exposure_cut_share": 0.64105960609897,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.0523321434280315
+     },
+     "max Sharpe": {
+      "ann_return": -0.0017398702125106557,
+      "ann_vol": 0.08619225787594954,
+      "sharpe": -0.020185922209100596,
+      "worst_month": -0.07184940737966253,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.9563291556207072,
+       "low": -1.5520942204892565,
+       "high": 0.4217992557751328,
+       "p_not_ahead": 0.8915
+      },
+      "sharpe_gap": -0.9563291556207073,
+      "worst_month_return": -0.07184940737966253,
+      "weight_into_worst": 0.7465,
+      "weight_after_worst": 0.3552,
+      "weight_cut_share": 0.5241795043536503,
+      "exposure_into_worst": 3.7325000000000004,
+      "exposure_after_worst": 1.1937911875104175,
+      "exposure_cut_share": 0.6801631111827415,
+      "months_behind_after_worst": 2,
+      "return_after_worst": 0.06683297334456917
+     }
+    }
+   },
+   "24": {
+    "worst_month": "2025-04",
+    "months_traded": 32,
+    "worst_in_ordinary_months": 23.34738234076451,
+    "vol_multiplier": 1.5972378397827875,
+    "predicted_multiplier": 1.3896549682799642,
+    "leverage_into_worst": 5.0,
+    "leverage_after_worst": 4.692675859028085,
+    "uncapped_leverage_into_worst": 7.495319451874854,
+    "uncapped_leverage_after_worst": 4.692675859028085,
+    "vol_into_worst": 0.013341659503916987,
+    "vol_after_worst": 0.021309803405153864,
+    "cap_binds_into_worst": true,
+    "cap_binds_after_worst": false,
+    "cap_binds_share": 0.6607142857142857,
+    "cap_binds_share_holdout": 0.38461538461538464,
+    "own_cut": 0.06146482819438304,
+    "predicted_own_cut": 0.2803969166261874,
+    "sleeve": {
+     "ann_return": 0.1638914872056912,
+     "ann_vol": 0.14183956130049807,
+     "sharpe": 1.155470911662469,
+     "worst_month": -0.11081948998987749,
+     "hit_rate": 0.8461538461538461,
+     "worst_month_return": -0.11081948998987749,
+     "raw_worst_month_return": -0.0221638979979755,
+     "return_after_worst": 0.28595768346595074,
+     "raw_return_after_worst": 0.05789356327411688,
+     "mean_leverage_holdout": 4.722518792787752
+    },
+    "schemes": {
+     "equal weight": {
+      "ann_return": 0.07230855197355598,
+      "ann_vol": 0.05852990011923117,
+      "sharpe": 1.2354121880655244,
+      "worst_month": -0.019580195685715226,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": 0.0,
+       "low": 0.0,
+       "high": 0.0,
+       "p_not_ahead": 1.0
+      },
+      "sharpe_gap": 0.0,
+      "worst_month_return": -0.018108043898779062,
+      "weight_into_worst": 0.3333,
+      "weight_after_worst": 0.3333,
+      "weight_cut_share": 0.0,
+      "exposure_into_worst": 1.6664999999999999,
+      "exposure_after_worst": 1.5640688638140605,
+      "exposure_cut_share": 0.06146482819438304,
+      "months_behind_after_worst": 0,
+      "return_after_worst": 0.09922754839517833
+     },
+     "inverse vol": {
+      "ann_return": 0.05037893753723667,
+      "ann_vol": 0.060756500513516686,
+      "sharpe": 0.8291941950479639,
+      "worst_month": -0.02463185990379617,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.4062179930175607,
+       "low": -0.8498965751658842,
+       "high": -0.11886054227004136,
+       "p_not_ahead": 0.9925
+      },
+      "sharpe_gap": -0.40621799301756056,
+      "worst_month_return": -0.02463185990379617,
+      "weight_into_worst": 0.3736,
+      "weight_after_worst": 0.2748,
+      "weight_cut_share": 0.2644539614561028,
+      "exposure_into_worst": 1.8679999999999999,
+      "exposure_after_worst": 1.2895473260609176,
+      "exposure_cut_share": 0.30966417234426247,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.08026023405966809
+     },
+     "risk parity": {
+      "ann_return": 0.050773641056014104,
+      "ann_vol": 0.06086035711335171,
+      "sharpe": 0.8342645929837182,
+      "worst_month": -0.02463185990379617,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.4011475950818063,
+       "low": -0.8498965751658838,
+       "high": -0.11259783470764792,
+       "p_not_ahead": 0.9915
+      },
+      "sharpe_gap": -0.4011475950818062,
+      "worst_month_return": -0.02463185990379617,
+      "weight_into_worst": 0.3736,
+      "weight_after_worst": 0.2748,
+      "weight_cut_share": 0.2644539614561028,
+      "exposure_into_worst": 1.8679999999999999,
+      "exposure_after_worst": 1.2895473260609176,
+      "exposure_cut_share": 0.30966417234426247,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.08026023405966809
+     },
+     "HRP": {
+      "ann_return": 0.03131213075786509,
+      "ann_vol": 0.0644885589061765,
+      "sharpe": 0.4855455182898516,
+      "worst_month": -0.03093912016925661,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.7498666697756728,
+       "low": -1.4875331822592672,
+       "high": -0.20883625499630012,
+       "p_not_ahead": 0.9915
+      },
+      "sharpe_gap": -0.7498666697756728,
+      "worst_month_return": -0.03093912016925661,
+      "weight_into_worst": 0.4133,
+      "weight_after_worst": 0.2207,
+      "weight_cut_share": 0.46600532300992015,
+      "exposure_into_worst": 2.0665,
+      "exposure_after_worst": 1.0356735620874984,
+      "exposure_cut_share": 0.4988272140878305,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.06382468699930843
+     },
+     "min variance": {
+      "ann_return": 0.032197338965747474,
+      "ann_vol": 0.0646063223974063,
+      "sharpe": 0.49836204524528205,
+      "worst_month": -0.030939121068242523,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.7370501428202425,
+       "low": -1.4875336981408174,
+       "high": -0.19424721556959654,
+       "p_not_ahead": 0.9915
+      },
+      "sharpe_gap": -0.7370501428202424,
+      "worst_month_return": -0.030939121068242523,
+      "weight_into_worst": 0.4133,
+      "weight_after_worst": 0.2207,
+      "weight_cut_share": 0.46600532300992015,
+      "exposure_into_worst": 2.0665,
+      "exposure_after_worst": 1.0356735620874984,
+      "exposure_cut_share": 0.4988272140878305,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.06382467144001369
+     },
+     "max Sharpe": {
+      "ann_return": 0.02611721595146428,
+      "ann_vol": 0.0898095914770944,
+      "sharpe": 0.2908065332657189,
+      "worst_month": -0.07184940737966253,
+      "hit_rate": 0.6153846153846154,
+      "vs_equal_weight": {
+       "gap": -0.9446056547998055,
+       "low": -1.623633448506723,
+       "high": 0.6608258938350544,
+       "p_not_ahead": 0.866
+      },
+      "sharpe_gap": -0.9446056547998055,
+      "worst_month_return": -0.07184940737966253,
+      "weight_into_worst": 0.7465,
+      "weight_after_worst": 0.3552,
+      "weight_cut_share": 0.5241795043536503,
+      "exposure_into_worst": 3.7325000000000004,
+      "exposure_after_worst": 1.6668384651267758,
+      "exposure_cut_share": 0.5534257293699194,
+      "months_behind_after_worst": 2,
+      "return_after_worst": 0.09914429073944286
+     }
+    }
+   },
+   "36": {
+    "worst_month": "2025-04",
+    "months_traded": 32,
+    "worst_in_ordinary_months": 27.531773055681676,
+    "vol_multiplier": 1.4884722145849303,
+    "predicted_multiplier": 1.317950566596167,
+    "leverage_into_worst": 5.0,
+    "leverage_after_worst": 5.0,
+    "uncapped_leverage_into_worst": 7.8727009733213045,
+    "uncapped_leverage_after_worst": 5.289115172040114,
+    "vol_into_worst": 0.012702120954279354,
+    "vol_after_worst": 0.01890675410674184,
+    "cap_binds_into_worst": true,
+    "cap_binds_after_worst": true,
+    "cap_binds_share": 0.5892857142857143,
+    "cap_binds_share_holdout": 1.0,
+    "own_cut": 0.0,
+    "predicted_own_cut": 0.24124620046814715,
+    "sleeve": {
+     "ann_return": 0.18836823394598445,
+     "ann_vol": 0.1465516934062695,
+     "sharpe": 1.285336454105593,
+     "worst_month": -0.11081948998987749,
+     "hit_rate": 0.8461538461538461,
+     "worst_month_return": -0.11081948998987749,
+     "raw_worst_month_return": -0.0221638979979755,
+     "return_after_worst": 0.31916181077813177,
+     "raw_return_after_worst": 0.05789356327411688,
+     "mean_leverage_holdout": 5.0
+    },
+    "schemes": {
+     "equal weight": {
+      "ann_return": 0.08046746755365375,
+      "ann_vol": 0.06000260240861774,
+      "sharpe": 1.3410662925196188,
+      "worst_month": -0.019580195685715226,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": 0.0,
+       "low": 0.0,
+       "high": 0.0,
+       "p_not_ahead": 1.0
+      },
+      "sharpe_gap": 0.0,
+      "worst_month_return": -0.018108043898779062,
+      "weight_into_worst": 0.3333,
+      "weight_after_worst": 0.3333,
+      "weight_cut_share": 0.0,
+      "exposure_into_worst": 1.6664999999999999,
+      "exposure_after_worst": 1.6664999999999999,
+      "exposure_cut_share": 0.0,
+      "months_behind_after_worst": 0,
+      "return_after_worst": 0.1088308937729705
+     },
+     "inverse vol": {
+      "ann_return": 0.05627212298906163,
+      "ann_vol": 0.061738311422331334,
+      "sharpe": 0.9114619705764656,
+      "worst_month": -0.02463185990379617,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.4296043219431529,
+       "low": -0.9001347381153542,
+       "high": -0.13328098895451154,
+       "p_not_ahead": 0.9935
+      },
+      "sharpe_gap": -0.42960432194315323,
+      "worst_month_return": -0.02463185990379617,
+      "weight_into_worst": 0.3736,
+      "weight_after_worst": 0.2748,
+      "weight_cut_share": 0.2644539614561028,
+      "exposure_into_worst": 1.8679999999999999,
+      "exposure_after_worst": 1.3739999999999999,
+      "exposure_cut_share": 0.2644539614561028,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.08706927490219218
+     },
+     "risk parity": {
+      "ann_return": 0.05674883017368164,
+      "ann_vol": 0.061862135200455484,
+      "sharpe": 0.917343541243688,
+      "worst_month": -0.02463185990379617,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.42372275127593084,
+       "low": -0.9001347381153542,
+       "high": -0.1241444589765624,
+       "p_not_ahead": 0.992
+      },
+      "sharpe_gap": -0.42372275127593084,
+      "worst_month_return": -0.02463185990379617,
+      "weight_into_worst": 0.3736,
+      "weight_after_worst": 0.2748,
+      "weight_cut_share": 0.2644539614561028,
+      "exposure_into_worst": 1.8679999999999999,
+      "exposure_after_worst": 1.3739999999999999,
+      "exposure_cut_share": 0.2644539614561028,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.08706927490219218
+     },
+     "HRP": {
+      "ann_return": 0.0353999551984889,
+      "ann_vol": 0.06513660052415456,
+      "sharpe": 0.5434725624859953,
+      "worst_month": -0.03093912016925661,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.7975937300336233,
+       "low": -1.5828329880901018,
+       "high": -0.23288021195693465,
+       "p_not_ahead": 0.993
+      },
+      "sharpe_gap": -0.7975937300336235,
+      "worst_month_return": -0.03093912016925661,
+      "weight_into_worst": 0.4133,
+      "weight_after_worst": 0.2207,
+      "weight_cut_share": 0.46600532300992015,
+      "exposure_into_worst": 2.0665,
+      "exposure_after_worst": 1.1035,
+      "exposure_cut_share": 0.46600532300992015,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.06837467283833254
+     },
+     "min variance": {
+      "ann_return": 0.036270410624541644,
+      "ann_vol": 0.06525391748113567,
+      "sharpe": 0.5558349908268281,
+      "worst_month": -0.030939121068242523,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.7852313016927905,
+       "low": -1.5828335726488183,
+       "high": -0.21423697146300552,
+       "p_not_ahead": 0.992
+      },
+      "sharpe_gap": -0.7852313016927908,
+      "worst_month_return": -0.030939121068242523,
+      "weight_into_worst": 0.4133,
+      "weight_after_worst": 0.2207,
+      "weight_cut_share": 0.46600532300992015,
+      "exposure_into_worst": 2.0665,
+      "exposure_after_worst": 1.1035,
+      "exposure_cut_share": 0.46600532300992015,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.06837464953283545
+     },
+     "max Sharpe": {
+      "ann_return": 0.036801395408496834,
+      "ann_vol": 0.09195240875188619,
+      "sharpe": 0.40022220089739563,
+      "worst_month": -0.07184940737966253,
+      "hit_rate": 0.6153846153846154,
+      "vs_equal_weight": {
+       "gap": -0.940844091622223,
+       "low": -1.6367508343561115,
+       "high": 0.6772020442750194,
+       "p_not_ahead": 0.863
+      },
+      "sharpe_gap": -0.9408440916222232,
+      "worst_month_return": -0.07184940737966253,
+      "weight_into_worst": 0.7465,
+      "weight_after_worst": 0.3552,
+      "weight_cut_share": 0.5241795043536503,
+      "exposure_into_worst": 3.7325000000000004,
+      "exposure_after_worst": 1.776,
+      "exposure_cut_share": 0.5241795043536503,
+      "months_behind_after_worst": 2,
+      "return_after_worst": 0.11278240050094568
+     }
+    }
+   },
+   "60": {
+    "worst_month": "2025-04",
+    "months_traded": 32,
+    "worst_in_ordinary_months": 18.24885794772313,
+    "vol_multiplier": 1.1953975808405655,
+    "predicted_multiplier": 1.1346721842873322,
+    "leverage_into_worst": 5.0,
+    "leverage_after_worst": 4.728927147100553,
+    "uncapped_leverage_into_worst": 5.652948071615278,
+    "uncapped_leverage_after_worst": 4.728927147100553,
+    "vol_into_worst": 0.017689884770412535,
+    "vol_after_worst": 0.021146445459899507,
+    "cap_binds_into_worst": true,
+    "cap_binds_after_worst": false,
+    "cap_binds_share": 0.03571428571428571,
+    "cap_binds_share_holdout": 0.15384615384615385,
+    "own_cut": 0.05421457057988943,
+    "predicted_own_cut": 0.11868818690740834,
+    "sleeve": {
+     "ann_return": 0.18078364510297532,
+     "ann_vol": 0.145691336394524,
+     "sharpe": 1.2408675050754103,
+     "worst_month": -0.11081948998987749,
+     "hit_rate": 0.8461538461538461,
+     "worst_month_return": -0.11081948998987749,
+     "raw_worst_month_return": -0.0221638979979755,
+     "return_after_worst": 0.3141580043274492,
+     "raw_return_after_worst": 0.05789356327411688,
+     "mean_leverage_holdout": 4.744096833269226
+    },
+    "schemes": {
+     "equal weight": {
+      "ann_return": 0.0779392712726507,
+      "ann_vol": 0.05980560359417622,
+      "sharpe": 1.303210177453009,
+      "worst_month": -0.020098425131133593,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": 0.0,
+       "low": 0.0,
+       "high": 0.0,
+       "p_not_ahead": 1.0
+      },
+      "sharpe_gap": 0.0,
+      "worst_month_return": -0.018108043898779062,
+      "weight_into_worst": 0.3333,
+      "weight_after_worst": 0.3333,
+      "weight_cut_share": 0.0,
+      "exposure_into_worst": 1.6664999999999999,
+      "exposure_after_worst": 1.5761514181286143,
+      "exposure_cut_share": 0.05421457057988932,
+      "months_behind_after_worst": 0,
+      "return_after_worst": 0.10739933266091439
+     },
+     "inverse vol": {
+      "ann_return": 0.05285866345665087,
+      "ann_vol": 0.0629759106154334,
+      "sharpe": 0.8393473463120816,
+      "worst_month": -0.029333786950873943,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.4638628311409272,
+       "low": -0.9333669508245801,
+       "high": -0.08036362151990828,
+       "p_not_ahead": 0.9795
+      },
+      "sharpe_gap": -0.4638628311409273,
+      "worst_month_return": -0.029333786950873943,
+      "weight_into_worst": 0.4078,
+      "weight_after_worst": 0.2854,
+      "weight_cut_share": 0.30014713094654244,
+      "exposure_into_worst": 2.039,
+      "exposure_after_worst": 1.3496358077824977,
+      "exposure_cut_share": 0.33808935371137927,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.08826968497680698
+     },
+     "risk parity": {
+      "ann_return": 0.05334121238025763,
+      "ann_vol": 0.0631122379957065,
+      "sharpe": 0.8451801754183778,
+      "worst_month": -0.029333786950873943,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.45803000203463107,
+       "low": -0.9333669508245805,
+       "high": -0.0733369765086185,
+       "p_not_ahead": 0.9785
+      },
+      "sharpe_gap": -0.4580300020346312,
+      "worst_month_return": -0.029333786950873943,
+      "weight_into_worst": 0.4078,
+      "weight_after_worst": 0.2854,
+      "weight_cut_share": 0.30014713094654244,
+      "exposure_into_worst": 2.039,
+      "exposure_after_worst": 1.3496358077824977,
+      "exposure_cut_share": 0.33808935371137927,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.08826968497680698
+     },
+     "HRP": {
+      "ann_return": 0.030251451561064242,
+      "ann_vol": 0.0689172950889321,
+      "sharpe": 0.4389529728644636,
+      "worst_month": -0.04059646209787238,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.8642572045885453,
+       "low": -1.6024192348674533,
+       "high": -0.1383573571202526,
+       "p_not_ahead": 0.979
+      },
+      "sharpe_gap": -0.8642572045885453,
+      "worst_month_return": -0.04059646209787238,
+      "weight_into_worst": 0.4842,
+      "weight_after_worst": 0.2394,
+      "weight_cut_share": 0.5055762081784387,
+      "exposure_into_worst": 2.4210000000000003,
+      "exposure_after_worst": 1.1321051590158724,
+      "exposure_cut_share": 0.5323811817365253,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.07123020212996356
+     },
+     "min variance": {
+      "ann_return": 0.031293797123031396,
+      "ann_vol": 0.06908560080025884,
+      "sharpe": 0.45297133933174316,
+      "worst_month": -0.04059646239751151,
+      "hit_rate": 0.5384615384615384,
+      "vs_equal_weight": {
+       "gap": -0.8502388381212655,
+       "low": -1.6022781426554833,
+       "high": -0.11914469477332575,
+       "p_not_ahead": 0.978
+      },
+      "sharpe_gap": -0.8502388381212658,
+      "worst_month_return": -0.04059646239751151,
+      "weight_into_worst": 0.4842,
+      "weight_after_worst": 0.2394,
+      "weight_cut_share": 0.5055762081784387,
+      "exposure_into_worst": 2.4210000000000003,
+      "exposure_after_worst": 1.1321051590158724,
+      "exposure_cut_share": 0.5323811817365253,
+      "months_behind_after_worst": 7,
+      "return_after_worst": 0.07123019551750565
+     },
+     "max Sharpe": {
+      "ann_return": 0.027466634303827682,
+      "ann_vol": 0.09407945955824827,
+      "sharpe": 0.29195144649849963,
+      "worst_month": -0.07571066939006994,
+      "hit_rate": 0.6153846153846154,
+      "vs_equal_weight": {
+       "gap": -1.0112587309545091,
+       "low": -1.749718262731308,
+       "high": 0.6220908560251779,
+       "p_not_ahead": 0.877
+      },
+      "sharpe_gap": -1.0112587309545094,
+      "worst_month_return": -0.07571066939006994,
+      "weight_into_worst": 0.7716,
+      "weight_after_worst": 0.3191,
+      "weight_cut_share": 0.5864437532400207,
+      "exposure_into_worst": 3.8579999999999997,
+      "exposure_after_worst": 1.5090006526397863,
+      "exposure_cut_share": 0.6088645275687438,
+      "months_behind_after_worst": 2,
+      "return_after_worst": 0.10586650260185149
+     }
+    }
+   }
+  }
+ },
+ "sleeve_window_verdicts": {
+  "windows": [
+   6,
+   12,
+   24,
+   36,
+   60
+  ],
+  "cap_binds_into_worst": [
+   true,
+   true,
+   true,
+   true,
+   true
+  ],
+  "cap_binds_after_worst": [
+   false,
+   false,
+   false,
+   true,
+   false
+  ],
+  "cap_binds_share": [
+   0.8392857142857143,
+   0.8571428571428571,
+   0.6607142857142857,
+   0.5892857142857143,
+   0.03571428571428571
+  ],
+  "cap_binds_share_holdout": [
+   0.38461538461538464,
+   0.38461538461538464,
+   0.38461538461538464,
+   1.0,
+   0.15384615384615385
+  ],
+  "own_cut": [
+   0.4506418529459041,
+   0.3278202773026929,
+   0.06146482819438304,
+   0.0,
+   0.05421457057988943
+  ],
+  "predicted_own_cut": [
+   0.4564583612090065,
+   0.35986302180814966,
+   0.2803969166261874,
+   0.24124620046814715,
+   0.11868818690740834
+  ],
+  "own_cut_within_five_points": [
+   true,
+   true,
+   false,
+   false,
+   false
+  ],
+  "own_cut_shrinks_with_window": false,
+  "equal_weight_exposure_cut_is_own_cut": [
+   true,
+   true,
+   true,
+   true,
+   true
+  ],
+  "risk_based_exposure_cut_above_own": {
+   "inverse vol": true,
+   "risk parity": true,
+   "HRP": true,
+   "min variance": true
+  },
+  "exposure_cut": {
+   "equal weight": [
+    0.4506418529459041,
+    0.3278202773026928,
+    0.06146482819438304,
+    0.0,
+    0.05421457057988932
+   ],
+   "inverse vol": [
+    0.5974581093374844,
+    0.5055808677804604,
+    0.30966417234426247,
+    0.2644539614561028,
+    0.33808935371137927
+   ],
+   "risk parity": [
+    0.5974581093374844,
+    0.5055808677804604,
+    0.30966417234426247,
+    0.2644539614561028,
+    0.33808935371137927
+   ],
+   "HRP": [
+    0.7081780209788866,
+    0.64105960609897,
+    0.4988272140878305,
+    0.46600532300992015,
+    0.5323811817365253
+   ],
+   "min variance": [
+    0.7081780209788866,
+    0.64105960609897,
+    0.4988272140878305,
+    0.46600532300992015,
+    0.5323811817365253
+   ],
+   "max Sharpe": [
+    0.7421215428825926,
+    0.6801631111827415,
+    0.5534257293699194,
+    0.5241795043536503,
+    0.6088645275687438
+   ]
+  },
+  "exposure_cut_at_shipped": {
+   "equal weight": 0.0,
+   "inverse vol": 0.2644539614561028,
+   "risk parity": 0.2644539614561028,
+   "HRP": 0.46600532300992015,
+   "min variance": 0.46600532300992015,
+   "max Sharpe": 0.5241795043536503
+  },
+  "sleeve_april": [
+   -0.11081948998987749,
+   -0.11081948998987749,
+   -0.11081948998987749,
+   -0.11081948998987749,
+   -0.11081948998987749
+  ],
+  "sleeve_april_worst_at": 6,
+  "sleeve_sharpe": [
+   0.7914739324889145,
+   0.7858813727691872,
+   1.155470911662469,
+   1.285336454105593,
+   1.2408675050754103
+  ],
+  "sleeve_sharpe_rises_with_window": false,
+  "sleeve_best_window": 36,
+  "leverage_into": [
+   5.0,
+   5.0,
+   5.0,
+   5.0,
+   5.0
+  ],
+  "weight_cut": {
+   "equal weight": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "inverse vol": [
+    0.2672505307855626,
+    0.2644539614561028,
+    0.2644539614561028,
+    0.2644539614561028,
+    0.30014713094654244
+   ],
+   "risk parity": [
+    0.2672505307855626,
+    0.2644539614561028,
+    0.2644539614561028,
+    0.2644539614561028,
+    0.30014713094654244
+   ],
+   "HRP": [
+    0.4687946641257742,
+    0.46600532300992015,
+    0.46600532300992015,
+    0.46600532300992015,
+    0.5055762081784387
+   ],
+   "min variance": [
+    0.4687946641257742,
+    0.46600532300992015,
+    0.46600532300992015,
+    0.46600532300992015,
+    0.5055762081784387
+   ],
+   "max Sharpe": [
+    0.530582264957265,
+    0.5241795043536503,
+    0.5241795043536503,
+    0.5241795043536503,
+    0.5864437532400207
+   ]
+  },
+  "weight_cut_deepest_at": {
+   "inverse vol": 60,
+   "risk parity": 60,
+   "HRP": 60,
+   "min variance": 60
+  },
+  "sharpe_gap": {
+   "equal weight": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "inverse vol": [
+    -0.32136261924036436,
+    -0.32946003499360477,
+    -0.40621799301756056,
+    -0.42960432194315323,
+    -0.4638628311409273
+   ],
+   "risk parity": [
+    -0.315792959193122,
+    -0.32396731846930527,
+    -0.4011475950818062,
+    -0.42372275127593084,
+    -0.4580300020346312
+   ],
+   "HRP": [
+    -0.5959521509163888,
+    -0.6010497365362837,
+    -0.7498666697756728,
+    -0.7975937300336235,
+    -0.8642572045885453
+   ],
+   "min variance": [
+    -0.5823850338036609,
+    -0.5877846632103676,
+    -0.7370501428202424,
+    -0.7852313016927908,
+    -0.8502388381212658
+   ],
+   "max Sharpe": [
+    -0.9714685080665372,
+    -0.9563291556207073,
+    -0.9446056547998055,
+    -0.9408440916222232,
+    -1.0112587309545094
+   ]
+  },
+  "months_behind": {
+   "equal weight": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "inverse vol": [
+    5,
+    7,
+    7,
+    7,
+    7
+   ],
+   "risk parity": [
+    5,
+    7,
+    7,
+    7,
+    7
+   ],
+   "HRP": [
+    7,
+    7,
+    7,
+    7,
+    7
+   ],
+   "min variance": [
+    7,
+    7,
+    7,
+    7,
+    7
+   ],
+   "max Sharpe": [
+    2,
+    2,
+    2,
+    2,
+    2
+   ]
+  }
  }
 }

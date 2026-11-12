@@ -1824,6 +1824,147 @@ holdout is the same 13 months in every row. And a hump in six points is a
 hump in six points: the 12-to-24 trough is three windows wide and the
 ends are one each.
 
+### 21. Sweep the window the sleeve sizes itself on, and find the dial was pinned — the 5× cap binds going into April at every window, and at the shipped one it never lets go
+
+Reproduce with: `python holdout.py` (written beside sections 19 and 20 in
+the same results file)
+
+Section 20 closed on the other dial. Before the allocator sees the vol
+sleeve, the sleeve sizes itself: section 12 scales every month by a 10%
+target over its trailing vol, on a 36-month window, capped at 5×. So April
+2025 enters two variance estimates, the sleeve's and the allocator's, and
+section 20 only swept the second. Here the sleeve's window is run at 6,
+12, 24, 36 and 60 months — the sleeve has history from 2007, so five years
+is available before the panel starts in 2021 — with the allocator's held
+at the shipped 24, and the thing read is the product the earlier sections
+never wrote down: each book's *exposure* to the raw strategy, the
+allocator's weight times the sleeve's leverage, going into April and the
+month after.
+
+Written before it ran: (1) the sleeve's own cut is set by the same ratio
+section 20 found — April worth k ordinary months of variance moves the
+estimate by √((w − 1 + k) / w) and the leverage by the inverse — so the
+sleeve should cut itself by about 56% at 6 months, 43% at 12, 30% at 24,
+23% at 36 and 16% at 60, and nothing the allocator does can put that back;
+(2) equal weight is not immune: sections 19 and 20 said it "cuts nothing",
+and it cuts no *weight*, but the sleeve under it cut itself by a quarter at
+the shipped window, so every book's exposure fell by at least that and the
+risk-based books' by that compounded with their own, roughly half at
+36/24; (3) the window sets what the sleeve took into April — a short
+window is the calm of late 2024 and levers up into it, a long one still
+remembers 2022 — so the scaled April loss is largest at 6 months and the
+sleeve's own holdout Sharpe rises with the window; (4) the allocator's cut,
+as a share of its weight, is deepest at the shortest sleeve window, because
+the April its variance sees is the scaled one.
+
+**The sleeve by itself, going into April 2025 and out of it** — the vol it
+saw, the leverage the target asks for, the leverage the cap allows, its own
+cut (and what the ratio predicted), how often the target asks for more than
+the cap, and the scaled sleeve's April, recovery and holdout Sharpe:
+
+| window | vol in | asks | gets | vol out | asks | gets | own cut | predicted | cap binds (panel / holdout) | April | 8 months after | holdout Sharpe |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 6 mo | 1.57% | 6.4× | 5.0× | 3.64% | 2.7× | 2.7× | 45% | 46% | 84% / 38% | −11.1% | +21.6% | +0.79 |
+| 12 mo | 1.69% | 5.9× | 5.0× | 2.98% | 3.4× | 3.4× | 33% | 36% | 86% / 38% | −11.1% | +20.8% | +0.79 |
+| 24 mo | 1.33% | 7.5× | 5.0× | 2.13% | 4.7× | 4.7× | 6% | 28% | 66% / 38% | −11.1% | +28.6% | +1.16 |
+| 36 mo | 1.27% | 7.9× | 5.0× | 1.89% | 5.3× | 5.0× | **0%** | 24% | 59% / **100%** | −11.1% | +31.9% | +1.29 |
+| 60 mo | 1.77% | 5.6× | 5.0× | 2.11% | 4.7× | 4.7× | 5% | 12% | 4% / 15% | −11.1% | +31.4% | +1.24 |
+
+**The dial was pinned.** The vol sleeve has made 1.9% a year of volatility
+over its whole history, and a 10% target on 1.9% asks for 5.2×. So the cap
+is not an edge case of the vol targeting on this sleeve; it is the usual
+case — the sleeve asks for more than 5× in 59% of the panel's months at the
+shipped window (section 12 had it at 47% on the shorter panel) and in
+every one of the 13 holdout months. Going into April the sleeve was at the
+cap at all five windows: the 36-month estimate was 1.27% and asked for
+7.9×, the 60-month 1.77% and asked for 5.6×, and both got 5.0×. So the
+window set nothing about April. The sleeve went in at 5× whatever the
+window and lost 11.1% whatever the window, and prediction 3's "largest at
+6 months, smallest at 60" is wrong because the five numbers are the same
+number. Section 20's closing line — that the sleeve's own 36-month window
+"also de-levers the vol sleeve after April" — is wrong too, and it is the
+more useful miss: at 36 months the estimate after April is 1.89%, which
+asks for 5.3×, which is still over the cap, so the sleeve the shipped
+settings traded did not de-lever at all. Its own cut was zero. The one
+sleeve-side cut on the sweep is at the short windows, where April pushes
+the estimate over 2% and the cap lets go — 2.7× at 6 months, 3.4× at 12 —
+and there the ratio's prediction is right to within a point, 45% against
+46% and 33% against 36%. The ratio was right about the estimate at every
+window; what it did not know is that the estimate was not the leverage.
+
+**Each book's exposure to the raw strategy, weight × leverage, going into
+April → the month after, and the cut as a share:**
+
+| window | equal weight | inverse vol | HRP | min variance | max Sharpe |
+|---|---|---|---|---|---|
+| 6 mo | 1.67 → 0.92 (45%) | 1.88 → 0.76 (60%) | 2.10 → 0.61 (71%) | 2.10 → 0.61 (71%) | 3.74 → 0.97 (74%) |
+| 12 mo | 1.67 → 1.12 (33%) | 1.87 → 0.92 (51%) | 2.07 → 0.74 (64%) | 2.07 → 0.74 (64%) | 3.73 → 1.19 (68%) |
+| 24 mo | 1.67 → 1.56 (6%) | 1.87 → 1.29 (31%) | 2.07 → 1.04 (50%) | 2.07 → 1.04 (50%) | 3.73 → 1.67 (55%) |
+| 36 mo | 1.67 → 1.67 (**0%**) | 1.87 → 1.37 (26%) | 2.07 → 1.10 (47%) | 2.07 → 1.10 (47%) | 3.73 → 1.78 (52%) |
+| 60 mo | 1.67 → 1.58 (5%) | 2.04 → 1.35 (34%) | 2.42 → 1.13 (53%) | 2.42 → 1.13 (53%) | 3.86 → 1.51 (61%) |
+
+(Risk parity is inverse vol to the second decimal at every window; it is
+in the results file.)
+
+**Prediction 2 was right about the arithmetic and wrong about the number.**
+Equal weight's exposure cut is the sleeve's own cut at every window, to
+the sixth decimal — it has to be, a third of the book times whatever the
+sleeve does — and every risk-based book's cut is above it at every window,
+because it is the sleeve's cut compounded with the allocator's. But at the
+shipped 36/24 the sleeve's cut was zero, so equal weight's exposure after
+April was its exposure before, 1.67 raw dollars per dollar of book, and
+"1/N cuts nothing" was literally true at the settings that shipped rather
+than true only of the weight. The compounding is visible where the cap
+lets go: at 6 months inverse vol keeps 73% of its weight and 55% of its
+leverage and ends with 40% of its exposure, HRP 53% of its weight and
+29% of its exposure. The quarter that prediction 2 attributed to the
+sleeve at 36 months went into the risk-based books' 47% as zero; all 47
+points of it are the allocator's.
+
+**Prediction 4 fails for the same reason.** The allocator's cut as a share
+of its weight is 26–27% for inverse vol and 47% for HRP at every window
+from 6 to 36, and deepest at 60 (30% and 51%), not at 6: the April the
+allocator's variance sees is the scaled one, the scaled April is −11.1% at
+every window because the leverage into it was 5× at every window, and so
+the allocator sees the same month whatever the sleeve's window and cuts
+the same share. The 60-month row is the one row the cap mostly does not
+bind on (4% of the panel), so its scaled series has a different history
+behind April, and the allocator holds more going in (2.42 against 2.07 for
+HRP) and cuts more after.
+
+**And the sleeve's holdout Sharpe is best at 36 months, not 60, with the
+same five Aprils.** The window decides the recovery: at 6 and 12 months
+the sleeve has de-levered itself to 2.7× and 3.4× for the eight up months
+and takes +21–22% out of them; at 36 it is still at 5× and takes +31.9%;
+at 60 the estimate stays over 2% and it runs the recovery at 4.7× for
++31.4%. Prediction 3's "rises with the window" is a hump with the shipped
+window on top, and the reason is not that 36 months is a good estimate —
+it is that 36 months is the window at which the cap binds through the
+whole holdout, so the sleeve that "targets 10%" ran a fixed 5× through
+April and the recovery alike. Which is the finding, put plainly: at the
+settings sections 12 through 20 shipped, the vol sleeve's vol targeting
+is a 5× fixed leverage with a floor on the estimate, and in the thirteen
+holdout months the floor never came off. The cut after April was the
+allocator's and only the allocator's, and section 20's sweep of the
+allocator's window was, as it happens, the sweep of the only dial that
+was turning.
+
+So: the sleeve's window is not the next dial, because the cap is standing
+on it. Every number sections 19 and 20 report about the risk-based rules
+cutting after April is a number about those rules alone, and the sleeve
+under 1/N was the same 5× sleeve throughout. The window would matter at a
+lower target, a higher cap, or on a sleeve with more vol in it, and in all
+three the ratio in section 20 says what it would do.
+
+What this does not do: the sweep holds the allocator at 24 months and the
+momentum sleeve at 36, and it does not move the target or the cap, which
+is what would unpin the dial — a 5% target asks for 2.6× on this sleeve
+and would bind rarely, and that is the obvious next row. And a sleeve
+that runs at a fixed 5× through a month the VIX printed 50 in is a
+statement about the cap's size as much as the window's: section 12
+chose 5× against a prime broker's 16×, and this is the section that says
+what the number was doing.
+
 ### What this does not establish
 
 - ~~**Two sleeves is not a portfolio.**~~ Partly answered in section 8. A

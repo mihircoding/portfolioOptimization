@@ -180,13 +180,23 @@ are the ones that remember April all year, finish 2–5% behind on the
 recovery, and are the only windows at which the bootstrap can tell the
 rules from 1/N at all.
 
+Section 21 turns the other dial — the 36-month window the vol sleeve
+sizes itself on before the allocator sees it — and finds it was pinned:
+the sleeve makes 1.9% a year of volatility, a 10% target on that asks
+for more than the 5× cap in most months and in every holdout month, so
+the sleeve went into April at 5× whatever the window, lost 11.1%
+whatever the window, and at the shipped window did not de-lever at all
+afterwards. The cut after April was the allocator's alone; the sleeve
+under 1/N was a fixed 5× throughout, and "1/N cuts nothing" was true of
+the exposure and not only the weight.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-366 tests.
+370 tests.
 
 ```bash
 pip install -r requirements.txt

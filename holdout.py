@@ -109,9 +109,13 @@ def agreement(extended: pd.Series, shipped: pd.Series) -> dict:
 # ---------- the panel of sections 11-18, on the longer tape ----------
 
 def frames(volcarry: pd.Series, target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
-           beta_window: int = BETA_WINDOW_MONTHS) -> dict:
+           beta_window: int = BETA_WINDOW_MONTHS, volcarry_window: int | None = None) -> dict:
     """multi_strategy.sleeve_frames with the vol sleeve handed in, so the
-    only thing different from section 11 is how long that sleeve runs."""
+    only thing different from section 11 is how long that sleeve runs.
+
+    `volcarry_window` sizes the vol sleeve on its own window and leaves the
+    momentum sleeve on `window`; None is the shipped setting, both on 36.
+    """
     market = market_monthly()
     xsmom = beta_hedged(xsmom_monthly(), market, beta_window)["hedged"].rename("xsmom")
     statarb = statarb_monthly()
@@ -119,7 +123,7 @@ def frames(volcarry: pd.Series, target: float = VOL_TARGET, window: int = VOL_WI
     volcarry = volcarry.copy()
     volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
     return {"statarb": vol_targeted(statarb, statarb_trailing_vol(), target),
-            "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, window), target),
+            "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, volcarry_window or window), target),
             "xsmom": vol_targeted(xsmom, trailing_vol(xsmom, window), target)}
 
 
@@ -368,6 +372,229 @@ def print_window_sweep(sweep: dict, verdicts: dict) -> None:
           f"{verdicts['gap_negative_at_every_window']['max Sharpe']}")
 
 
+# ---------- the sleeve's own window ----------
+
+# Before the allocator sees the vol sleeve, the sleeve sizes itself: section
+# 12 scales every month by target / trailing vol, on a 36-month window,
+# capped at 5x. So April 2025 enters two variance estimates, not one, and
+# section 20 only swept the allocator's. The sleeve has history from 2007,
+# so 60 months is available before the panel starts in 2021; 6 is the
+# shortest section 20 ran.
+SLEEVE_WINDOWS = (6, 12, 24, 36, 60)
+
+
+def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
+                        lookback: int = LOOKBACK_MONTHS, holdout_from: str = HOLDOUT_FROM,
+                        sleeve: str = "volcarry", cap: float = LEVERAGE_CAP) -> dict:
+    """Section 20's question asked of the other dial: the window the vol
+    sleeve sizes itself on, with the allocator's held at `lookback`.
+
+    The sleeve's leverage in month t is target over the trailing vol at
+    t-1, so the month after April the sleeve cuts itself by one minus the
+    inverse of the vol multiplier section 20 measured - before any
+    allocator moves a weight. The book's exposure to the raw strategy is
+    the allocator's weight times the sleeve's leverage, and that product
+    is what this sweep reads, going into April and the month after, for
+    every scheme and every sleeve window.
+
+    Written before it ran:
+
+    1. The sleeve's own cut is set by the same ratio as section 20's: with
+       April worth k ordinary months of variance, the vol estimate goes
+       x sqrt((w - 1 + k) / w) and the leverage the inverse of that, so
+       the sleeve cuts itself by about 56% at 6 months, 43% at 12, 30% at
+       24, 23% at 36 and 16% at 60 - and nothing the allocator does can
+       put that back.
+    2. Equal weight is not immune. Sections 19 and 20 said 1/N "cuts
+       nothing"; it cuts no WEIGHT, and the sleeve under it cut itself by
+       a quarter at the shipped window. Every book's exposure to the raw
+       strategy fell after April by at least the sleeve's own cut, and the
+       risk-based books' fell by that compounded with theirs - roughly
+       half at 36/24, the shipped pair.
+    3. The window sets what the sleeve took into April: a short window is
+       the calm of late 2024 and levers up into it, a long one still
+       remembers 2022 and does not. So the sleeve's April loss on the
+       scaled series is largest at 6 months and smallest at 60, and its
+       own holdout Sharpe rises with the window - the long window took
+       less into April and gave less back after it.
+    4. The allocator's cut, as a share of its weight, is deepest at the
+       shortest sleeve window, because the April the allocator's 24-month
+       variance sees is the scaled one, and the scaled April is largest
+       where the leverage into it was.
+    """
+    out = {"holdout_from": holdout_from, "sleeve": sleeve, "lookback": lookback, "windows": {}}
+    for window in windows:
+        fr = frames(volcarry, volcarry_window=window)
+        panel = capped_panel(fr)
+        own = fr[sleeve].loc[panel.index]
+        leverage = own["leverage"].clip(upper=cap)
+        raw = own["raw"]
+        worst = raw.loc[holdout_from:].idxmin()
+        hold = panel.loc[holdout_from:].index
+        after = hold[hold > worst]
+        prior = raw.loc[:worst].iloc[:-1]
+        # the raw sleeve's worst holdout month against an ordinary one, on
+        # the months the sleeve itself has - the k in prediction 1
+        k = float(raw.loc[worst] ** 2 / (prior.iloc[-window:] ** 2).mean())
+        paths, held = walk_forward_paths(panel, lookback)
+        part = paths.loc[holdout_from:]
+        ew = part["equal weight"]
+        lev_into = float(leverage.loc[worst])
+        lev_after = float(leverage.loc[after[0]]) if len(after) else None
+        scaled = panel[sleeve]
+        row = {"worst_month": f"{worst:%Y-%m}", "months_traded": int(len(paths)),
+               "worst_in_ordinary_months": k,
+               "vol_multiplier": float(own.loc[after[0], "vol"] / own.loc[worst, "vol"]) if len(after) else None,
+               "predicted_multiplier": float(np.sqrt((window - 1 + k) / window)),
+               "leverage_into_worst": lev_into, "leverage_after_worst": lev_after,
+               "uncapped_leverage_into_worst": float(own.loc[worst, "leverage"]),
+               "uncapped_leverage_after_worst": float(own.loc[after[0], "leverage"]) if len(after) else None,
+               "vol_into_worst": float(own.loc[worst, "vol"]),
+               "vol_after_worst": float(own.loc[after[0], "vol"]) if len(after) else None,
+               "cap_binds_into_worst": bool(own.loc[worst, "leverage"] > cap),
+               "cap_binds_after_worst": bool(own.loc[after[0], "leverage"] > cap) if len(after) else None,
+               # how much of the time the target asks for more than the cap
+               # allows: the share of months the "vol targeting" is the cap
+               "cap_binds_share": float((own["leverage"] > cap).mean()),
+               "cap_binds_share_holdout": float((own.loc[holdout_from:, "leverage"] > cap).mean()),
+               "own_cut": None if lev_after is None else float(1 - lev_after / lev_into),
+               "predicted_own_cut": float(1 - 1 / np.sqrt((window - 1 + k) / window)),
+               "sleeve": {**performance(scaled.loc[holdout_from:]),
+                          "worst_month_return": float(scaled.loc[worst]),
+                          "raw_worst_month_return": float(raw.loc[worst]),
+                          "return_after_worst": float((1 + scaled.loc[after]).prod() - 1),
+                          "raw_return_after_worst": float((1 + raw.loc[after]).prod() - 1),
+                          "mean_leverage_holdout": float(leverage.loc[holdout_from:].mean())},
+               "schemes": {}}
+        for name in part.columns:
+            w_into = float(held.loc[worst][name][sleeve])
+            w_after = float(held.loc[after[0]][name][sleeve]) if len(after) else None
+            x_into = w_into * lev_into
+            x_after = None if w_after is None else w_after * lev_after
+            row["schemes"][name] = {
+                **performance(part[name]),
+                "vs_equal_weight": paired_sharpe_bootstrap(part[name].to_numpy(), ew.to_numpy()),
+                "sharpe_gap": float(performance(part[name])["sharpe"] - performance(ew)["sharpe"]),
+                "worst_month_return": float(part.loc[worst, name]),
+                "weight_into_worst": w_into, "weight_after_worst": w_after,
+                "weight_cut_share": None if w_after is None or w_into == 0 else float(1 - w_after / w_into),
+                "exposure_into_worst": x_into, "exposure_after_worst": x_after,
+                "exposure_cut_share": None if x_after is None or x_into == 0 else float(1 - x_after / x_into),
+                "months_behind_after_worst": int((part.loc[after, name] < ew.loc[after]).sum()),
+                "return_after_worst": float((1 + part.loc[after, name]).prod() - 1),
+            }
+        out["windows"][str(window)] = row
+    return out
+
+
+def sleeve_window_verdicts(sweep: dict, risk_based=RISK_BASED) -> dict:
+    """The four predictions, scored on the sweep."""
+    windows = sorted(int(w) for w in sweep["windows"])
+    by = {int(w): v for w, v in sweep["windows"].items()}
+    # a worst month that is the last month has no month after, and no cut
+    own = [np.nan if by[w]["own_cut"] is None else by[w]["own_cut"] for w in windows]
+    predicted = [by[w]["predicted_own_cut"] for w in windows]
+    sleeve_april = [by[w]["sleeve"]["worst_month_return"] for w in windows]
+    sleeve_sharpe = [by[w]["sleeve"]["sharpe"] for w in windows]
+    names = list(by[windows[0]]["schemes"])
+    exposure = {n: [np.nan if by[w]["schemes"][n]["exposure_cut_share"] is None
+                    else by[w]["schemes"][n]["exposure_cut_share"] for w in windows] for n in names}
+    weight = {n: [np.nan if by[w]["schemes"][n]["weight_cut_share"] is None
+                  else by[w]["schemes"][n]["weight_cut_share"] for w in windows] for n in names}
+    return {
+        "windows": windows,
+        # the thing none of the predictions allowed for
+        "cap_binds_into_worst": [by[w]["cap_binds_into_worst"] for w in windows],
+        "cap_binds_after_worst": [by[w]["cap_binds_after_worst"] for w in windows],
+        "cap_binds_share": [by[w]["cap_binds_share"] for w in windows],
+        "cap_binds_share_holdout": [by[w]["cap_binds_share_holdout"] for w in windows],
+        # 1. the sleeve's own cut, against the ratio's prediction
+        "own_cut": own, "predicted_own_cut": predicted,
+        "own_cut_within_five_points": [abs(a - b) < 0.05 for a, b in zip(own, predicted)],
+        "own_cut_shrinks_with_window": all(b < a for a, b in zip(own, own[1:])),
+        # 2. every book's exposure fell by at least the sleeve's own cut, and
+        #    the risk-based books' by more
+        "equal_weight_exposure_cut_is_own_cut": [abs(exposure["equal weight"][i] - own[i]) < 1e-6
+                                                 for i in range(len(windows))],
+        "risk_based_exposure_cut_above_own": {n: all(e > o for e, o in zip(exposure[n], own))
+                                              for n in risk_based},
+        "exposure_cut": exposure,
+        "exposure_cut_at_shipped": {n: by[36]["schemes"][n]["exposure_cut_share"] for n in names} if 36 in by else None,
+        # 3. April largest at the shortest window, the sleeve's Sharpe rising with it
+        "sleeve_april": sleeve_april,
+        "sleeve_april_worst_at": windows[int(np.argmin(sleeve_april))],
+        "sleeve_sharpe": sleeve_sharpe,
+        "sleeve_sharpe_rises_with_window": all(b > a for a, b in zip(sleeve_sharpe, sleeve_sharpe[1:])),
+        "sleeve_best_window": windows[int(np.argmax(sleeve_sharpe))],
+        "leverage_into": [by[w]["leverage_into_worst"] for w in windows],
+        # 4. the allocator's own cut deepest at the shortest sleeve window
+        "weight_cut": weight,
+        "weight_cut_deepest_at": {n: windows[int(np.argmax(weight[n]))] for n in risk_based},
+        "sharpe_gap": {n: [by[w]["schemes"][n]["sharpe_gap"] for w in windows] for n in names},
+        "months_behind": {n: [by[w]["schemes"][n]["months_behind_after_worst"] for w in windows] for n in names},
+    }
+
+
+def print_sleeve_window_sweep(sweep: dict, verdicts: dict) -> None:
+    windows = verdicts["windows"]
+    by = {int(w): v for w, v in sweep["windows"].items()}
+    first = by[windows[0]]
+    print(f"\nTHE SLEEVE'S OWN WINDOW   the {sweep['sleeve']} sleeve sized on 6 to 60 months, the "
+          f"allocator on {sweep['lookback']}; worst holdout month {first['worst_month']} at "
+          f"{first['sleeve']['raw_worst_month_return']:+.1%} raw")
+    print(f"\n   the sleeve by itself: leverage into {first['worst_month']} -> the month after, the cut "
+          f"it made on its own (and what the ratio predicts), its scaled {first['worst_month']}, "
+          f"and its holdout Sharpe:")
+    print(f"\n{'window':>7} {'vol in':>7} {'asks':>6} {'lev in':>7} {'vol out':>8} {'asks':>6} {'lev out':>8} "
+          f"{'own cut':>8} {'predicted':>10} {'cap binds':>10} {'April':>7} {'after':>7} {'Sharpe':>7}")
+    for w in windows:
+        r = by[w]
+        print(f"{w:>5}mo {r['vol_into_worst']:>7.2%} {r['uncapped_leverage_into_worst']:>5.2f}x "
+              f"{r['leverage_into_worst']:>6.2f}x {r['vol_after_worst']:>8.2%} "
+              f"{r['uncapped_leverage_after_worst']:>5.2f}x {r['leverage_after_worst']:>7.2f}x "
+              f"{r['own_cut']:>8.0%} {r['predicted_own_cut']:>10.0%} "
+              f"{r['cap_binds_share']:>4.0%}/{r['cap_binds_share_holdout']:>4.0%} "
+              f"{r['sleeve']['worst_month_return']:>+7.1%} {r['sleeve']['return_after_worst']:>+7.1%} "
+              f"{r['sleeve']['sharpe']:>+7.2f}")
+    print(f"\n   (asks = target / vol, before the {LEVERAGE_CAP:.0f}x cap; cap binds = share of panel "
+          f"months / holdout months the sleeve asks for more than the cap)")
+    names = list(first["schemes"])
+    print(f"\n   each book's exposure to the raw strategy (weight x leverage) going in -> after, "
+          f"and the cut as a share:")
+    print(f"\n{'window':>7} " + " ".join(f"{n[:12]:>22}" for n in names))
+    for w in windows:
+        print(f"{w:>5}mo " + " ".join(
+            f"{by[w]['schemes'][n]['exposure_into_worst']:>5.2f} -> {by[w]['schemes'][n]['exposure_after_worst']:>4.2f} "
+            f"({by[w]['schemes'][n]['exposure_cut_share']:>4.0%})" for n in names))
+    print(f"\n   the allocator's own cut as a share of its weight, months behind 1/N of the "
+          f"{len(by[windows[0]]['schemes'][names[0]]) and 8} after, and the holdout Sharpe gap [bootstrap 90%]:")
+    print(f"\n{'window':>7} " + " ".join(f"{n[:12]:>26}" for n in names))
+    for w in windows:
+        cells = []
+        for n in names:
+            s = by[w]["schemes"][n]
+            b = s["vs_equal_weight"]
+            cut = "   -" if s["weight_cut_share"] is None else f"{s['weight_cut_share']:>4.0%}"
+            cells.append(f"{cut} {s['months_behind_after_worst']:>1}/8 {s['sharpe_gap']:>+5.2f} "
+                         f"[{b['low']:>+5.2f},{b['high']:>+5.2f}]")
+        print(f"{w:>5}mo " + " ".join(f"{c:>26}" for c in cells))
+    v = verdicts
+    print(f"\n   the predictions:")
+    print(f"   0. the cap binds going into {first['worst_month']} at "
+          f"{sum(v['cap_binds_into_worst'])} of {len(windows)} windows, and the month after at "
+          f"{sum(v['cap_binds_after_worst'])}")
+    print(f"   1. own cut within five points of the ratio's: "
+          f"{sum(v['own_cut_within_five_points'])} of {len(windows)} windows; shrinks with the window "
+          f"{v['own_cut_shrinks_with_window']}")
+    print(f"   2. equal weight's exposure cut is the sleeve's own cut at every window: "
+          f"{all(v['equal_weight_exposure_cut_is_own_cut'])}; risk-based books cut more than that at every "
+          f"window: " + ", ".join(f"{n} {ok}" for n, ok in v["risk_based_exposure_cut_above_own"].items()))
+    print(f"   3. the sleeve's April is worst at {v['sleeve_april_worst_at']}mo; its Sharpe rises with the "
+          f"window {v['sleeve_sharpe_rises_with_window']}, best at {v['sleeve_best_window']}mo")
+    print(f"   4. the allocator's cut is deepest at: " + ", ".join(
+        f"{n} {w}mo" for n, w in v["weight_cut_deepest_at"].items()))
+
+
 # ---------- reporting ----------
 
 def print_holdout(study: dict) -> None:
@@ -411,6 +638,10 @@ def main() -> None:
     study["window_sweep"] = window_sweep(panel, WINDOWS, HOLDOUT_FROM)
     study["window_verdicts"] = window_verdicts(study["window_sweep"])
     print_window_sweep(study["window_sweep"], study["window_verdicts"])
+    study["sleeve_window_sweep"] = sleeve_window_sweep(volcarry_extended(), SLEEVE_WINDOWS,
+                                                       LOOKBACK_MONTHS, HOLDOUT_FROM)
+    study["sleeve_window_verdicts"] = sleeve_window_verdicts(study["sleeve_window_sweep"])
+    print_sleeve_window_sweep(study["sleeve_window_sweep"], study["sleeve_window_verdicts"])
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
         json.dump(study, fh, indent=1, default=float)
