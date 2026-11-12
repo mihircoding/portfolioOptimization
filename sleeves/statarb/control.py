@@ -114,7 +114,7 @@ def main() -> None:
           f"at 5%, {len(rejected):,} rejected.")
     print(f"Trading window {trading.index[0].date()} -> {trading.index[-1].date()}, "
           f"{len(trading):,} days. Same rules for both groups: {ZSCORE_WINDOW}-day "
-          f"z-score,\nentry 2.0, exit 0.5, 5bps a side, hedge ratio from formation.\n")
+          "z-score,\nentry 2.0, exit 0.5, 5bps a side, hedge ratio from formation.\n")
 
     print("Backtesting every pair, including the rejects (the slow part)...")
     stats = backtest_group(scan, trading)
@@ -200,7 +200,7 @@ def main() -> None:
             encoding="utf-8")
         print(f"\nwrote {SITE_OUT} ({SITE_OUT.stat().st_size / 1024:.0f} KB)")
 
-    print(f"\nSpearman correlation, formation p-value vs out-of-sample Sharpe, "
+    print("\nSpearman correlation, formation p-value vs out-of-sample Sharpe, "
           f"all pairs: {rho:+.3f}")
     print("A screen that works would make this strongly negative: lower p-value,")
     print("higher Sharpe. Over the full range of the test, not just the tenth of it")

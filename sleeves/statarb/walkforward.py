@@ -243,7 +243,7 @@ def main() -> None:
         print(f"Loaded cached scan: {len(scan):,} pair-quarters\n")
     else:
         print(f"Scanning {len(starts) * 4950:,} pair-quarters "
-              f"(this takes a while)...")
+              "(this takes a while)...")
         scan = scan_all_quarters(history, starts)
         scan.to_parquet(SCAN_CACHE, index=False)
         print()
@@ -277,7 +277,7 @@ def main() -> None:
     per_quarter = survivors.groupby("date").size()
     print(f"\nPairs passing at 5% per quarter: min {per_quarter.min()}, "
           f"median {int(per_quarter.median())}, max {per_quarter.max()} "
-          f"(out of 4,950)")
+          "(out of 4,950)")
 
     # How stable is the screen's verdict? A pair that is cointegrated for real
     # should keep passing; one that passed by luck should not. This is the same
@@ -289,7 +289,7 @@ def main() -> None:
     print(f"Of 4,950 pairs: {never:,} never pass, {always} pass in all "
           f"{len(starts)} quarters, "
           f"{len(counts) - always:,} pass in some but not all")
-    print(f"Median quarters passed, among pairs that ever pass: "
+    print("Median quarters passed, among pairs that ever pass: "
           f"{int(counts.median())} of {len(starts)}")
 
     payload = {v["label"]: {k: v[k] for k in v if k != "equity"} for v in variants}

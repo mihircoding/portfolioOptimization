@@ -12,7 +12,6 @@ the page is solved from a bid-ask mid by black_scholes.implied_vol.
 """
 
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from yfinance.exceptions import YFRateLimitError

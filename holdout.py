@@ -340,7 +340,7 @@ def print_window_sweep(sweep: dict, verdicts: dict) -> None:
           f"{sweep['worst_month_in_ordinary_months']:.0f} ordinary months of variance; "
           f"the {n_after} months after it: "
           f"{sweep['sleeve_after_worst']['up_months']} up, {sweep['sleeve_after_worst']['return']:+.1%}")
-    print(f"\n   the sleeve's vol estimate the month after, over the month before: " + ", ".join(
+    print("\n   the sleeve's vol estimate the month after, over the month before: " + ", ".join(
         f"{w}mo x{by[w]['sleeve_vol_multiplier']:.2f}" for w in windows))
     names = list(by[windows[0]]["schemes"])
     print(f"\n   weight on the sleeve going into {sweep['worst_month']} -> the month after (cut in points):")
@@ -350,7 +350,7 @@ def print_window_sweep(sweep: dict, verdicts: dict) -> None:
             f"{by[w]['schemes'][n]['weight_into_worst']:>6.0%} -> {by[w]['schemes'][n]['weight_after_worst']:>4.0%} "
             f"({by[w]['schemes'][n]['cut'] * 100:>+4.0f})" for n in names))
     print(f"\n   {sweep['worst_month']} return, then months behind equal weight of the {n_after} after it, "
-          f"and the holdout Sharpe gap to equal weight [bootstrap 90%]:")
+          "and the holdout Sharpe gap to equal weight [bootstrap 90%]:")
     print(f"\n{'window':>7} " + " ".join(f"{n[:12]:>28}" for n in names))
     for w in windows:
         cells = []
@@ -360,7 +360,7 @@ def print_window_sweep(sweep: dict, verdicts: dict) -> None:
             cells.append(f"{s['worst_month_return']:>+6.1%} {s['months_behind_after_worst']:>2}/{n_after} "
                          f"{s['sharpe_gap']:>+5.2f} [{b['low']:>+5.2f},{b['high']:>+5.2f}]")
         print(f"{w:>5}mo " + " ".join(f"{c:>28}" for c in cells))
-    print(f"\n   the predictions:")
+    print("\n   the predictions:")
     for name in RISK_BASED:
         print(f"   {name:>13}: cut shrinks with the window {str(verdicts['cut_shrinks_with_window'][name]):<5} "
               f"(42mo cut is {verdicts['cut_longest_over_shortest'][name]:.2f} of 6mo's; 1/window says "
@@ -544,7 +544,7 @@ def print_sleeve_window_sweep(sweep: dict, verdicts: dict) -> None:
           f"{first['sleeve']['raw_worst_month_return']:+.1%} raw")
     print(f"\n   the sleeve by itself: leverage into {first['worst_month']} -> the month after, the cut "
           f"it made on its own (and what the ratio predicts), its scaled {first['worst_month']}, "
-          f"and its holdout Sharpe:")
+          "and its holdout Sharpe:")
     print(f"\n{'window':>7} {'vol in':>7} {'asks':>6} {'lev in':>7} {'vol out':>8} {'asks':>6} {'lev out':>8} "
           f"{'own cut':>8} {'predicted':>10} {'cap binds':>10} {'April':>7} {'after':>7} {'Sharpe':>7}")
     for w in windows:
@@ -557,16 +557,16 @@ def print_sleeve_window_sweep(sweep: dict, verdicts: dict) -> None:
               f"{r['sleeve']['worst_month_return']:>+7.1%} {r['sleeve']['return_after_worst']:>+7.1%} "
               f"{r['sleeve']['sharpe']:>+7.2f}")
     print(f"\n   (asks = target / vol, before the {LEVERAGE_CAP:.0f}x cap; cap binds = share of panel "
-          f"months / holdout months the sleeve asks for more than the cap)")
+          "months / holdout months the sleeve asks for more than the cap)")
     names = list(first["schemes"])
-    print(f"\n   each book's exposure to the raw strategy (weight x leverage) going in -> after, "
-          f"and the cut as a share:")
+    print("\n   each book's exposure to the raw strategy (weight x leverage) going in -> after, "
+          "and the cut as a share:")
     print(f"\n{'window':>7} " + " ".join(f"{n[:12]:>22}" for n in names))
     for w in windows:
         print(f"{w:>5}mo " + " ".join(
             f"{by[w]['schemes'][n]['exposure_into_worst']:>5.2f} -> {by[w]['schemes'][n]['exposure_after_worst']:>4.2f} "
             f"({by[w]['schemes'][n]['exposure_cut_share']:>4.0%})" for n in names))
-    print(f"\n   the allocator's own cut as a share of its weight, months behind 1/N of the "
+    print("\n   the allocator's own cut as a share of its weight, months behind 1/N of the "
           f"{len(by[windows[0]]['schemes'][names[0]]) and 8} after, and the holdout Sharpe gap [bootstrap 90%]:")
     print(f"\n{'window':>7} " + " ".join(f"{n[:12]:>26}" for n in names))
     for w in windows:
@@ -579,19 +579,19 @@ def print_sleeve_window_sweep(sweep: dict, verdicts: dict) -> None:
                          f"[{b['low']:>+5.2f},{b['high']:>+5.2f}]")
         print(f"{w:>5}mo " + " ".join(f"{c:>26}" for c in cells))
     v = verdicts
-    print(f"\n   the predictions:")
+    print("\n   the predictions:")
     print(f"   0. the cap binds going into {first['worst_month']} at "
           f"{sum(v['cap_binds_into_worst'])} of {len(windows)} windows, and the month after at "
           f"{sum(v['cap_binds_after_worst'])}")
-    print(f"   1. own cut within five points of the ratio's: "
+    print("   1. own cut within five points of the ratio's: "
           f"{sum(v['own_cut_within_five_points'])} of {len(windows)} windows; shrinks with the window "
           f"{v['own_cut_shrinks_with_window']}")
-    print(f"   2. equal weight's exposure cut is the sleeve's own cut at every window: "
+    print("   2. equal weight's exposure cut is the sleeve's own cut at every window: "
           f"{all(v['equal_weight_exposure_cut_is_own_cut'])}; risk-based books cut more than that at every "
-          f"window: " + ", ".join(f"{n} {ok}" for n, ok in v["risk_based_exposure_cut_above_own"].items()))
+          "window: " + ", ".join(f"{n} {ok}" for n, ok in v["risk_based_exposure_cut_above_own"].items()))
     print(f"   3. the sleeve's April is worst at {v['sleeve_april_worst_at']}mo; its Sharpe rises with the "
           f"window {v['sleeve_sharpe_rises_with_window']}, best at {v['sleeve_best_window']}mo")
-    print(f"   4. the allocator's cut is deepest at: " + ", ".join(
+    print("   4. the allocator's cut is deepest at: " + ", ".join(
         f"{n} {w}mo" for n, w in v["weight_cut_deepest_at"].items()))
 
 
@@ -622,8 +622,8 @@ def print_holdout(study: dict) -> None:
                 b = sc["vs_equal_weight"]
                 cells.append(f"{sc['sharpe']:>+6.2f}  [{b['low']:>+5.2f},{b['high']:>+5.2f}] p{b['p_not_ahead']:.2f}")
             print(f"{name:>14} " + " ".join(f"{c:>30}" for c in cells))
-        print(f"\n   worst holdout month: " + ", ".join(f"{n} {d}" for n, d in lb["worst_holdout_month"].items()))
-        print(f"\n   the holdout month by month, and the weight on the vol sleeve going into it:")
+        print("\n   worst holdout month: " + ", ".join(f"{n} {d}" for n, d in lb["worst_holdout_month"].items()))
+        print("\n   the holdout month by month, and the weight on the vol sleeve going into it:")
         names = list(lb["holdout_path"])
         print(f"\n{'month':>8} " + " ".join(f"{n[:12]:>19}" for n in names))
         for k, (d, _) in enumerate(lb["holdout_path"][names[0]]):

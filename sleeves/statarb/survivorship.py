@@ -358,16 +358,16 @@ def main() -> None:
     print(f"Formation window as cached: {formation.index[0].date()} to "
           f"{formation.index[-1].date()}, {formation.shape[1]} names\n")
     print("1. What the selection looks like from the inside\n")
-    print(f"  median surviving name's formation return   "
+    print("  median surviving name's formation return   "
           f"{perf.median():>8.0%}")
-    print(f"  mean                                        "
+    print("  mean                                        "
           f"{perf.mean():>8.0%}")
     if bench is not None:
         print(f"  {BENCH} over the same window                    "
               f"{bench:>8.0%}")
         beat = float((perf > bench).mean())
         print(f"  share of the universe that beat it          {beat:>8.0%}")
-    print(f"  worst / best                               "
+    print("  worst / best                               "
           f"{perf.iloc[0]:>8.0%} / {perf.iloc[-1]:.0%}")
     print(f"  names in the list at all:                  {perf.index[0]} "
           f"is the weakest, {perf.index[-1]} the strongest")

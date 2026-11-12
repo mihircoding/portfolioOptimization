@@ -146,7 +146,7 @@ of the relationships the screen found had stopped existing by the time you trade
         sd = results["sharpe"].std()
         st.caption(
             f"Centred on zero with standard deviation {sd:.2f}. A handful of winners is exactly "
-            f"what a distribution this shape produces by chance — the tail is not a discovery."
+            "what a distribution this shape produces by chance — the tail is not a discovery."
         )
 
     with right:
@@ -162,9 +162,9 @@ of the relationships the screen found had stopped existing by the time you trade
         ax.spines[["top", "right"]].set_visible(False)
         st.pyplot(fig, width="stretch")
         st.caption(
-            f"Correlation between in-sample p-value and out-of-sample Sharpe: "
+            "Correlation between in-sample p-value and out-of-sample Sharpe: "
             f"**{results['pvalue'].corr(results['sharpe']):+.3f}**. Essentially none. Ranking "
-            f"candidates by p-value does not sort them by how well they will actually trade."
+            "candidates by p-value does not sort them by how well they will actually trade."
         )
 
     st.subheader("Same sector vs cross sector")

@@ -220,15 +220,15 @@ def main() -> None:
     print(f"{len(scan):,} pairs, {n_obs:,} formation observations\n")
 
     print(f"1. Size of the test, {N_SIM:,} simulated pairs of unrelated "
-          f"random walks")
+          "random walks")
     size = empirical_size(n_obs)
     print(f"   {'test':<44} {'rejects at 5%':>14} {'at 1%':>8}")
     print(f"   {'adfuller on the OLS residual (the screen)':<44} "
           f"{size['naive_size']:>13.1%} {size['naive_size_1pct']:>8.1%}")
     print(f"   {'Engle-Granger critical values (coint)':<44} "
           f"{size['proper_size']:>13.1%} {size['proper_size_1pct']:>8.1%}")
-    print(f"\n   A 5% test rejects 5% of the time on data with nothing in it.")
-    print(f"   The screen's own p-value of 0.05 corresponds to a true 5% test at "
+    print("\n   A 5% test rejects 5% of the time on data with nothing in it.")
+    print("   The screen's own p-value of 0.05 corresponds to a true 5% test at "
           f"{size['honest_threshold']:.4f}.")
 
     print(f"\n2. The same {len(scan):,} pairs, correct critical values")
@@ -242,14 +242,14 @@ def main() -> None:
     print(f"   pass with the right table         {proper_pass:>6,}  "
           f"({proper_pass / len(rechecked):.1%})")
     print(f"   pass both                         {both:>6,}")
-    print(f"   rank correlation of the two p-values "
+    print("   rank correlation of the two p-values "
           f"{rechecked['pvalue'].corr(rechecked['eg_pvalue'], method='spearman'):.3f}")
 
-    print(f"\n3. Multiple testing, on the corrected p-values")
+    print("\n3. Multiple testing, on the corrected p-values")
     eg = rechecked["eg_pvalue"].to_numpy()
     pi0 = storey_pi0(eg)
     print(f"   estimated share of pairs with nothing there   {pi0:>6.1%}")
-    print(f"   expected false positives at a flat 5%         "
+    print("   expected false positives at a flat 5%         "
           f"{pi0 * len(eg) * ALPHA:>6.0f}")
     for q in (0.05, 0.10, 0.20):
         keep = benjamini_hochberg(eg, q)
@@ -258,7 +258,7 @@ def main() -> None:
     bonf = int((eg < ALPHA / len(eg)).sum())
     print(f"   survive Bonferroni                            {bonf:>6,}")
 
-    print(f"\n4. Do the survivors trade any better?")
+    print("\n4. Do the survivors trade any better?")
     traded = trade_survivors(rechecked)
     print(f"   {'group':<36} {'pairs':>6} {'mean sharpe':>12} {'book sharpe':>12}")
     for name, row in traded.items():
@@ -282,7 +282,7 @@ def main() -> None:
     write_site(payload, rechecked)
     rechecked[["a", "b", "pvalue", "eg_pvalue"]].to_parquet(
         RESULTS / "screen_validity.parquet", index=False)
-    print(f"\nwrote results/screen_validity.json and .parquet")
+    print("\nwrote results/screen_validity.json and .parquet")
 
 
 if __name__ == "__main__":

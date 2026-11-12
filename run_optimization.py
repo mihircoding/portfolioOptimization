@@ -200,7 +200,7 @@ def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
         print(f"{name:<26} " + " ".join(f"{x:>6.0%}" for x in rc))
     ew_rc = risk_contributions(portfolios["Equal weight"], cov)
     worst = UNIVERSE[int(np.argmax(ew_rc))]
-    print(f"\nEqual weight puts 20% of capital in every asset and "
+    print("\nEqual weight puts 20% of capital in every asset and "
           f"{ew_rc.max():.0%} of its RISK\nin {worst} alone. "
           "That is the gap ERC exists to close.")
 
@@ -221,7 +221,7 @@ def in_sample(prices: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, dict]:
 
     lw_alpha = ledoit_wolf_alpha(daily_returns(prices).values)
     print(f"\nSHRINKAGE={SHRINKAGE} above was hand-picked. Ledoit-Wolf's own "
-          f"analytic optimum\non this data (whole-history daily returns) is "
+          "analytic optimum\non this data (whole-history daily returns) is "
           f"alpha = {lw_alpha:.3f}.")
     w_lw = min_variance_weights(shrink_covariance(cov, lw_alpha))
     print(f"{'min-var on LW-shrunk cov':<26} {weight_string(w_lw)}")

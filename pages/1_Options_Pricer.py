@@ -99,13 +99,13 @@ st.info(
 
 col1, col2 = st.columns(2)
 col1.markdown(
-    f"<div style='background:#98e698;padding:14px;border-radius:8px;"
-    f"text-align:center;font-size:26px;font-weight:bold;color:#111'>"
+    "<div style='background:#98e698;padding:14px;border-radius:8px;"
+    "text-align:center;font-size:26px;font-weight:bold;color:#111'>"
     f"CALL: ${call_val:.2f}</div>", unsafe_allow_html=True,
 )
 col2.markdown(
-    f"<div style='background:#ffb3b3;padding:14px;border-radius:8px;"
-    f"text-align:center;font-size:26px;font-weight:bold;color:#111'>"
+    "<div style='background:#ffb3b3;padding:14px;border-radius:8px;"
+    "text-align:center;font-size:26px;font-weight:bold;color:#111'>"
     f"PUT: ${put_val:.2f}</div>", unsafe_allow_html=True,
 )
 

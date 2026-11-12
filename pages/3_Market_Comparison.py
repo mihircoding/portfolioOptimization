@@ -14,7 +14,6 @@ volatility SMILE (different implied vol per strike), while our model uses
 one flat historical vol for everything.
 """
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st

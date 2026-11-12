@@ -19,7 +19,7 @@ than a number to take on trust.
 import numpy as np
 import pytest
 
-from sleeves.volcarry.black_scholes import price, vega
+from sleeves.volcarry.black_scholes import vega
 from sleeves.volcarry.hedging_study import HEDGE_DAYS, RATE, T_YEARS, trade
 
 import pandas as pd

@@ -486,9 +486,9 @@ def spread_comovement(lookback: int = LOOKBACK_MONTHS,
 
 def print_spread_comovement(study: dict) -> None:
     rows = study["rows"]
-    print(f"\n8. AND THE SPREAD IS NOT THE SAME WIDTH EVERY MONTH")
-    print(f"   Section 7 bounded how WIDE the spread is. This is about when it "
-          f"is wide: the")
+    print("\n8. AND THE SPREAD IS NOT THE SAME WIDTH EVERY MONTH")
+    print("   Section 7 bounded how WIDE the spread is. This is about when it "
+          "is wide: the")
     print(f"   half-spread becomes {study['spread_vol_pts']:.2f} vol points at "
           f"VIX {study['anchor']:.1f} and scales with VIX from there.")
     print(f"\n{'spread charged':>23} {'avg half-spread':>16} "
@@ -504,8 +504,8 @@ def print_spread_comovement(study: dict) -> None:
               f"{r['volcarry']['sharpe']:>7.2f} {r['gap_tstat']:>7.2f} "
               f"{r['w_statarb_max_sharpe']:>13.0%}")
 
-    print(f"\n   Cost as a share of the premium sold, by how volatile the "
-          f"month was:")
+    print("\n   Cost as a share of the premium sold, by how volatile the "
+          "month was:")
     print(f"\n{'months':>8} {'avg VIX':>9} {'premium':>9} "
           f"{'half-spread':>12} {'proportional':>13} {'constant':>10}")
     for b in study["by_vol"]:
@@ -516,40 +516,40 @@ def print_spread_comovement(study: dict) -> None:
               f"{b['constant_share_of_premium']:>9.2%}")
 
     shares = [b["proportional_share_of_premium"] for b in study["by_vol"]]
-    print(f"\n   That second-to-last column is flat to four decimal places, "
-          f"and it is the")
-    print(f"   whole answer. The premium scales with volatility and so does "
-          f"the spread, so")
+    print("\n   That second-to-last column is flat to four decimal places, "
+          "and it is the")
+    print("   whole answer. The premium scales with volatility and so does "
+          "the spread, so")
     print(f"   the cost is {np.mean(shares):.2%} of what was sold in every "
-          f"regime. The constant spread")
-    print(f"   is the one that is regime-dependent: "
+          "regime. The constant spread")
+    print("   is the one that is regime-dependent: "
           f"{study['by_vol'][0]['constant_share_of_premium']:.2%} of premium in "
-          f"the calm third and")
+          "the calm third and")
     print(f"   {study['by_vol'][-1]['constant_share_of_premium']:.2%} in the "
-          f"loud third, so it overcharges quiet months and")
-    print(f"   undercharges exactly the ones the sleeve has most on.")
+          "loud third, so it overcharges quiet months and")
+    print("   undercharges exactly the ones the sleeve has most on.")
 
     prop, matched = rows["proportional"], rows["level_matched"]
     const = rows["constant"]
-    print(f"\n   So the honest answer to the objection is that it is real and "
-          f"it is small.")
+    print("\n   So the honest answer to the objection is that it is real and "
+          "it is small.")
     print(f"   Return goes {const['volcarry']['ann_return']:.2%} to "
           f"{prop['volcarry']['ann_return']:.2%} and the gap t-stat "
           f"{const['gap_tstat']:.2f} to {prop['gap_tstat']:.2f}.")
-    print(f"   A constant spread at the same average width gives "
+    print("   A constant spread at the same average width gives "
           f"{matched['volcarry']['ann_return']:.2%} and "
           f"{matched['gap_tstat']:.2f},")
-    print(f"   so essentially all of the difference is the average width and "
-          f"not the timing.")
-    print(f"\n   Worth contrasting with the order-book repo, where the same "
-          f"question came out")
-    print(f"   the other way: there the strategy's size was fixed and the "
-          f"depth moved, so 81%")
-    print(f"   of the extra cost was the co-movement. Here the exposure moves "
-          f"with the same")
-    print(f"   variable the cost does, and they cancel. Cost co-movement bites "
-          f"when your")
-    print(f"   position size does not co-move with it.")
+    print("   so essentially all of the difference is the average width and "
+          "not the timing.")
+    print("\n   Worth contrasting with the order-book repo, where the same "
+          "question came out")
+    print("   the other way: there the strategy's size was fixed and the "
+          "depth moved, so 81%")
+    print("   of the extra cost was the co-movement. Here the exposure moves "
+          "with the same")
+    print("   variable the cost does, and they cancel. Cost co-movement bites "
+          "when your")
+    print("   position size does not co-move with it.")
 
 
 # ---------- 9. a third sleeve, so that "allocation" is more than one number ----------
@@ -672,7 +672,7 @@ def third_sleeve_study(lookback: int = LOOKBACK_MONTHS) -> dict:
 
 def print_third_sleeve(study: dict) -> None:
     full = study["full_history"]
-    print(f"\n9. A THIRD SLEEVE: CROSS-SECTIONAL MOMENTUM ON THE SAME 102 NAMES")
+    print("\n9. A THIRD SLEEVE: CROSS-SECTIONAL MOMENTUM ON THE SAME 102 NAMES")
     print(f"   Full history {full['first']} to {full['last']}, "
           f"{full['months']} months, net of 10 bps a side:")
     print(f"   {full['ann_return']:+.2%} a year at {full['ann_vol']:.2%} "
@@ -680,25 +680,25 @@ def print_third_sleeve(study: dict) -> None:
           f"{full['worst_month']:.2%}")
 
     years = study["by_year"]
-    print(f"\n   By calendar year:")
+    print("\n   By calendar year:")
     line = "   " + "  ".join(f"{y}" for y in years)
     print(line)
     print("   " + "  ".join(f"{v:+.0%}".rjust(4) for v in years.values()))
     signs = [np.sign(v) for v in years.values()]
     flips = sum(1 for a, b in zip(signs, signs[1:]) if a != b)
     print(f"   The sign flips {flips} times in {len(signs) - 1} year-to-year "
-          f"steps. A twelve-month signal on a\n   hundred names is one bet a "
-          f"year, and in mega-caps that bet keeps reversing.")
+          "steps. A twelve-month signal on a\n   hundred names is one bet a "
+          "year, and in mega-caps that bet keeps reversing.")
 
-    print(f"\n   Its three worst months, with what the market did around them:")
+    print("\n   Its three worst months, with what the market did around them:")
     print(f"\n{'month':>10} {'xsmom':>8} {'market, that month':>19} "
           f"{'market, prior 3m':>17}")
     for c in study["crashes"]:
         print(f"{c['month']:>10} {c['xsmom']:>8.1%} "
               f"{c['market_that_month']:>19.1%} {c['market_prior_3m']:>17.1%}")
-    print(f"   Every one is a rally. That is the momentum crash: the short "
-          f"leg is full of what\n   fell hardest, so the rebound is where it "
-          f"loses, not the fall.")
+    print("   Every one is a rally. That is the momentum crash: the short "
+          "leg is full of what\n   fell hardest, so the rebound is where it "
+          "loses, not the fall.")
 
     ov = study["overlap"]
     print(f"\n   On the overlap  {ov['first']} to {ov['last']}, "
@@ -712,29 +712,29 @@ def print_third_sleeve(study: dict) -> None:
               f"{corr['volcarry']:>16.3f}")
     rho = ov["correlation"]["xsmom"]["statarb"]
     print(f"\n   {rho:+.2f} against statarb is the number to notice. The "
-          f"pairs book is long the\n   lagging leg and short the leading "
-          f"one; momentum is the reverse. On one universe\n   they are "
-          f"opposite sides of the same trade, and the correlation says how "
-          f"much.")
+          "pairs book is long the\n   lagging leg and short the leading "
+          "one; momentum is the reverse. On one universe\n   they are "
+          "opposite sides of the same trade, and the correlation says how "
+          "much.")
 
     dr = study["diversification_ratio"]
-    print(f"\n   diversification ratio, equal weight:   "
+    print("\n   diversification ratio, equal weight:   "
           f"{dr['two_sleeves_equal']:.2f} with two sleeves, "
           f"{dr['three_sleeves_equal']:.2f} with three")
-    print(f"   diversification ratio, inverse vol:    "
+    print("   diversification ratio, inverse vol:    "
           f"{dr['three_sleeves_inverse_vol']:.2f} with three")
-    print(f"   Equal weight gets WORSE with the third sleeve because the "
-          f"sleeve is ten times\n   as volatile as the other two, so 1/N is "
-          f"not a third each - it is the momentum\n   sleeve with a small "
-          f"hedge on. Size it by risk and the ratio goes the other way, "
+    print("   Equal weight gets WORSE with the third sleeve because the "
+          "sleeve is ten times\n   as volatile as the other two, so 1/N is "
+          "not a third each - it is the momentum\n   sleeve with a small "
+          "hedge on. Size it by risk and the ratio goes the other way, "
           f"past the\n   {dr['ceiling_three']:.2f} that three uncorrelated "
-          f"sleeves could reach. Only negative correlation\n   gets a book "
+          "sleeves could reach. Only negative correlation\n   gets a book "
           f"above that line, and the {rho:+.2f} is what gets it there.")
 
     wf = study["walk_forward"]
     ref = study["two_sleeve_reference"]
     print(f"\n   Allocated out of sample, {wf['months_traded']} months, the "
-          f"same walk-forward as section 2:")
+          "same walk-forward as section 2:")
     print(f"\n{'scheme':<14} {'ann return':>11} {'ann vol':>9} {'sharpe':>8} "
           f"{'2-sleeve':>9}   {'w statarb':>9} {'w volcarry':>10} {'w xsmom':>8}")
     rows = sorted(wf["schemes"].items(), key=lambda kv: -kv[1]["sharpe"])
@@ -747,31 +747,31 @@ def print_third_sleeve(study: dict) -> None:
     print(f"\n   Equal weight goes from {ref['equal weight']['sharpe']:.2f} to "
           f"{ew['sharpe']:.2f} and its volatility from "
           f"{ref['equal weight']['ann_vol']:.2%} to {ew['ann_vol']:.2%}.")
-    print(f"   That is the first clean loss for 1/N in this repository, and "
-          f"it is not a\n   subtle one. 1/N only ever beat the optimizer "
-          f"among things of similar scale;\n   hand it one stream ten "
-          f"times the size of the others and it is not diversified,\n   it is "
-          f"concentrated. Inverse vol - which is 1/N after scaling - holds "
+    print("   That is the first clean loss for 1/N in this repository, and "
+          "it is not a\n   subtle one. 1/N only ever beat the optimizer "
+          "among things of similar scale;\n   hand it one stream ten "
+          "times the size of the others and it is not diversified,\n   it is "
+          "concentrated. Inverse vol - which is 1/N after scaling - holds "
           f"{iv['mean_weight']['xsmom']:.1%} in it\n   and is back to "
           f"{iv['sharpe']:.2f}.")
     hrp, rp = wf["schemes"]["HRP"], wf["schemes"]["risk parity"]
-    print(f"\n   HRP finally has something to cluster, and look at what it "
+    print("\n   HRP finally has something to cluster, and look at what it "
           f"does with it: {hrp['mean_weight']['xsmom']:.1%},\n   against "
           f"risk parity's {rp['mean_weight']['xsmom']:.1%}. The tree puts "
-          f"momentum in a cluster of its own, which\n   is right, and then "
-          f"splits capital between clusters by inverse variance alone -\n   "
-          f"the correlation that made the split is not used at the step "
-          f"that sizes it.\n   Risk parity reads the whole matrix and takes "
-          f"the hedge; HRP reads it and then\n   forgets it. That is the "
-          f"method's known blind spot, and this is the first panel\n   in "
-          f"the repository where it had anything to be blind to.")
+          "momentum in a cluster of its own, which\n   is right, and then "
+          "splits capital between clusters by inverse variance alone -\n   "
+          "the correlation that made the split is not used at the step "
+          "that sizes it.\n   Risk parity reads the whole matrix and takes "
+          "the hedge; HRP reads it and then\n   forgets it. That is the "
+          "method's known blind spot, and this is the first panel\n   in "
+          "the repository where it had anything to be blind to.")
     print(f"\n   Mean-variance puts {wf['schemes']['max Sharpe']['mean_weight']['xsmom']:.1%} "
-          f"in the sleeve, for the same reason it puts almost\n   nothing in "
-          f"statarb: it does not make money, and that is the one thing "
-          f"mean-variance\n   can see. A sleeve with no return cannot "
-          f"diversify a return. It can only\n   diversify risk, and the "
-          f"risk-based four all find the same answer about how\n   much of "
-          f"it to take for that: a few percent.")
+          "in the sleeve, for the same reason it puts almost\n   nothing in "
+          "statarb: it does not make money, and that is the one thing "
+          "mean-variance\n   can see. A sleeve with no return cannot "
+          "diversify a return. It can only\n   diversify risk, and the "
+          "risk-based four all find the same answer about how\n   much of "
+          "it to take for that: a few percent.")
 
 
 # ---------- 10. what the -0.46 is worth in return units ----------
@@ -903,10 +903,10 @@ def factor_exposure_study(panel: pd.DataFrame | None = None,
 
 def print_factor_exposures(study: dict) -> None:
     cv = study["correlation_vs_variance_share"]
-    print(f"\n10. THE -0.46 IN RETURN UNITS")
+    print("\n10. THE -0.46 IN RETURN UNITS")
     print(f"   Section 9 read a correlation of {cv['correlation']:+.2f} as "
-          f"\"nearly half\" of the stat-arb variance.")
-    print(f"   The variance share is the correlation squared: "
+          "\"nearly half\" of the stat-arb variance.")
+    print("   The variance share is the correlation squared: "
           f"{cv['variance_share']:.0%}. A fifth, not a half.")
 
     r = study["statarb_on_xsmom"]
@@ -917,11 +917,11 @@ def print_factor_exposures(study: dict) -> None:
     print(f"     Sharpe raw {r['raw']['sharpe']:+.2f} at {r['raw']['ann_vol']:.2%} vol"
           f"  ->  momentum-hedged {r['hedged']['sharpe']:+.2f} at "
           f"{r['hedged']['ann_vol']:.2%} vol")
-    print(f"     Hedging the tilt cuts the vol and cuts the return by more. "
-          f"The short-momentum\n     position was earning money this window "
-          f"because momentum was losing it.")
+    print("     Hedging the tilt cuts the vol and cuts the return by more. "
+          "The short-momentum\n     position was earning money this window "
+          "because momentum was losing it.")
 
-    print(f"\n   Market beta of each sleeve, on the equal-weight universe:")
+    print("\n   Market beta of each sleeve, on the equal-weight universe:")
     print(f"\n{'sleeve':>10} {'beta':>8} {'t':>6} {'alpha/yr':>10} {'t':>6} "
           f"{'R2':>6} {'Sharpe':>8} {'hedged':>8}")
     for name, r in study["on_market"].items():
@@ -930,7 +930,7 @@ def print_factor_exposures(study: dict) -> None:
               f"{r['alpha_t']:>+6.1f} {r['r2']:>6.2f} "
               f"{r['raw']['sharpe']:>+8.2f} {r['hedged']['sharpe']:>+8.2f}")
 
-    print(f"\n   Both factors at once:")
+    print("\n   Both factors at once:")
     print(f"\n{'sleeve':>10} {'b_mkt':>8} {'t':>6} {'b_mom':>8} {'t':>6} "
           f"{'alpha/yr':>10} {'t':>6} {'R2':>6}")
     for name, r in study["on_market_and_xsmom"].items():
@@ -1071,14 +1071,14 @@ def hedged_momentum_study(lookback: int = LOOKBACK_MONTHS,
 
 def print_hedged_momentum(study: dict) -> None:
     tb = study["trailing_beta"]
-    print(f"\n11. BETA-HEDGE THE MOMENTUM SLEEVE BEFORE IT GOES IN")
-    print(f"   Full-window beta to the market, the one section 10 reported: "
+    print("\n11. BETA-HEDGE THE MOMENTUM SLEEVE BEFORE IT GOES IN")
+    print("   Full-window beta to the market, the one section 10 reported: "
           f"{study['full_window_beta']:+.2f} (t {study['full_window_beta_t']:+.1f}).")
     print(f"   Trailing {study['beta_window_months']}-month beta a desk "
           f"could actually have run, over the same {study['overlap']['n_months']} months:")
     print(f"     mean {tb['mean']:+.2f}, range {tb['min']:+.2f} to "
           f"{tb['max']:+.2f}, negative in {tb['share_of_months_negative']:.0%} "
-          f"of months,")
+          "of months,")
     print(f"     {tb['at_overlap_start']:+.2f} at the start of the window and "
           f"{tb['at_overlap_end']:+.2f} at the end.")
     if tb["at_crash_months"]:
@@ -1100,7 +1100,7 @@ def print_hedged_momentum(study: dict) -> None:
         r = ov[name]
         print(f"{name:>14} {r['ann_return']:>+8.2%} {r['ann_vol']:>8.2%} "
               f"{r['sharpe']:>+8.2f} {r['worst_month']:>+10.2%}")
-    print(f"   Market beta of the hedged sleeve, measured after the fact: "
+    print("   Market beta of the hedged sleeve, measured after the fact: "
           f"{ov['market_beta_after_hedge']:+.2f}.")
     print(f"   Correlation with statarb: {ov['correlation_raw']['statarb']['xsmom']:+.2f} "
           f"raw, {ov['correlation_hedged']['statarb']['xsmom']:+.2f} hedged; "
@@ -1108,7 +1108,7 @@ def print_hedged_momentum(study: dict) -> None:
           f"{ov['correlation_hedged']['volcarry']['xsmom']:+.2f} hedged.")
 
     print(f"\n   Walk-forward, {lookback_label(study)} months traded, "
-          f"raw momentum sleeve against hedged:")
+          "raw momentum sleeve against hedged:")
     print(f"\n{'scheme':>14} {'Sharpe raw':>11} {'hedged':>8} {'vol raw':>9} "
           f"{'hedged':>8} {'w(xsmom) raw':>13} {'hedged':>8}")
     for name in study["walk_forward_raw"]["schemes"]:
@@ -1301,7 +1301,7 @@ def print_vol_target(study: dict) -> None:
     print(f"\n12. LEVER EVERY SLEEVE TO {study['target']:.0%} VOL BEFORE ALLOCATING")
     print(f"   Trailing {study['window_months']}-month vol for volcarry and xsmom, "
           f"trailing {study['window_days_statarb']}-day vol from daily P&L for statarb, "
-          f"all shifted one month.")
+          "all shifted one month.")
     print(f"   {study['n_months']} months, {study['first']} to {study['last']}.\n")
     print(f"{'sleeve':>10} {'vol raw':>8} {'scaled':>8} {'Sharpe raw':>11} {'scaled':>8} "
           f"{'worst raw':>10} {'scaled':>8} {'lev mean':>9} {'range':>13}")
@@ -1316,7 +1316,7 @@ def print_vol_target(study: dict) -> None:
         print(f"   {name}: leverage going into its worst raw month ({s['worst_raw_month']}) "
               f"was {s['leverage_into_worst_raw_month']:.1f}x; into its worst scaled "
               f"month ({s['worst_scaled_month']}) {s['leverage_into_worst_scaled_month']:.1f}x.")
-    print(f"\n   On each sleeve's own history, raw -> scaled Sharpe:")
+    print("\n   On each sleeve's own history, raw -> scaled Sharpe:")
     for name, s in study["sleeves"].items():
         print(f"     {name:>9} from {s['own_history_first']} ({s['own_history_months']} months): "
               f"{s['own_history_raw']['sharpe']:+.2f} -> {s['own_history_scaled']['sharpe']:+.2f}")
@@ -1479,8 +1479,8 @@ def implied_sizing_study(levered: dict, lookback: int = LOOKBACK_MONTHS,
 
 
 def print_implied_sizing(study: dict) -> None:
-    print(f"\n13. SIZE THE VOL SLEEVE ON THE VOL IT SELLS")
-    print(f"   Implied vol at the sale, times an expanding ratio fitted on the months "
+    print("\n13. SIZE THE VOL SLEEVE ON THE VOL IT SELLS")
+    print("   Implied vol at the sale, times an expanding ratio fitted on the months "
           f"before, against the trailing {VOL_WINDOW_MONTHS}-month rule of section 12.")
     print(f"   {study['n_months']} months, {study['first']} to {study['last']}; "
           f"the two forecasts correlate {study['forecast_correlation']:+.2f}.\n")
@@ -1796,10 +1796,10 @@ def financing_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
 
 
 def print_financing(study: dict) -> None:
-    print(f"\n14. CHARGE THE LEVERAGE")
+    print("\n14. CHARGE THE LEVERAGE")
     print(f"   {study['spread_bps']:.0f}bp funding spread each side of Fed funds, "
           f"{study['borrow_fee_bps']:.0f}bp borrow on short stock; the vol sleeve's hedge "
-          f"is a margin loan at Fed funds + spread past 1x.")
+          "is a margin loan at Fed funds + spread past 1x.")
     print(f"   Margin line: {study['gross_limit']:.1f}x gross ({study['margin_rate']:.0%} on gross).")
     for rule, r in study["rules"].items():
         print(f"\n   Vol sleeve sized on {rule}; {r['n_months']} months, {r['first']} to {r['last']}.")
@@ -1814,7 +1814,7 @@ def print_financing(study: dict) -> None:
                   f"{s['own_history_gross']['sharpe']:>+13.2f} {s['own_history_net']['sharpe']:>+7.2f} "
                   f"{s['own_history_gross_capped']['sharpe']:>+13.2f} "
                   f"{s['own_history_net_capped']['sharpe']:>+7.2f} {s['fed_funds_mean']:>6.2%}")
-        print(f"   On the overlap (Fed funds averaged "
+        print("   On the overlap (Fed funds averaged "
               f"{r['sleeves']['volcarry']['fed_funds_mean_overlap']:.2%}): "
               + ", ".join(f"{n} {s['overlap_gross']['sharpe']:+.2f} -> {s['overlap_net']['sharpe']:+.2f} "
                           f"(drag {s['drag_overlap']:.1%}, capped {s['overlap_net_capped']['sharpe']:+.2f})"
@@ -1834,8 +1834,8 @@ def print_financing(study: dict) -> None:
             print(f"{name:>14} {g['schemes'][name]['sharpe']:>+7.2f} {n['schemes'][name]['sharpe']:>+7.2f} "
                   f"{gc['schemes'][name]['sharpe']:>+13.2f} {nc['schemes'][name]['sharpe']:>+7.2f} "
                   f"{w['statarb']:>14.2f} / {w['volcarry']:.2f} / {w['xsmom']:.2f}")
-    print(f"\n   Sensitivity (implied rule, capped): broker terms scaled together, "
-          f"the rate on or off.")
+    print("\n   Sensitivity (implied rule, capped): broker terms scaled together, "
+          "the rate on or off.")
     print(f"{'FF':>4} {'spread':>7} {'borrow':>7} {'statarb':>8} {'volcarry':>9} {'xsmom':>7}   "
           f"{'equal weight':>12} {'max Sharpe':>11} {'risk parity':>12}")
     for row in study["sensitivity"]:
@@ -2051,8 +2051,8 @@ def funding_forecast_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_
 
 
 def print_funding_forecast(study: dict) -> None:
-    print(f"\n15. PRICE THE SLEEVE AT TODAY'S FUNDING")
-    print(f"   The window re-charged at the rate known on day one (last month's average), "
+    print("\n15. PRICE THE SLEEVE AT TODAY'S FUNDING")
+    print("   The window re-charged at the rate known on day one (last month's average), "
           f"before the optimizer sees it. Capped {study['leverage_cap']:.0f}x, {study['lookback']}-month window.")
     for rule, r in study["rules"].items():
         seen = r["first_window"]
@@ -2071,7 +2071,7 @@ def print_funding_forecast(study: dict) -> None:
             print(f"{name:>14} " + " ".join(f"{runs[k]['schemes'][name]['sharpe']:>+16.2f}" for k in keys)
                   + f"   {runs[keys[0]]['schemes'][name]['mean_weight']['volcarry']:>16.2f} -> "
                   f"{runs[keys[1]]['schemes'][name]['mean_weight']['volcarry']:.2f}")
-        print(f"\n   Every window re-charged at one rate, whatever the Fed did:")
+        print("\n   Every window re-charged at one rate, whatever the Fed did:")
         print(f"{'rate':>6} {'volcarry in 1st window':>23} {'w(volcarry), max Sharpe':>24} "
               f"{'max Sharpe':>11} {'equal weight':>13}")
         for row in r["rate_sweep"]:
@@ -2079,7 +2079,7 @@ def print_funding_forecast(study: dict) -> None:
                   f"{row['max_sharpe_weight_on_volcarry']:>24.2f} {row['max_sharpe']:>+11.2f} "
                   f"{row['equal_weight']:>+13.2f}")
         path = r["path"]
-        print(f"\n   max Sharpe's weight on the vol sleeve, month by month:")
+        print("\n   max Sharpe's weight on the vol sleeve, month by month:")
         print(f"{'month':>8} {'window rate':>12} {'rate priced':>12} " + " ".join(f"{k:>16}" for k in keys))
         for i, d in enumerate(path["dates"]):
             print(f"{d:>8} {path['rate_window_mean'][i]:>12.2%} {path['rate_priced'][i]:>12.2%} "
@@ -2270,8 +2270,8 @@ def shrinkage_study(lookback: int = LOOKBACK_MONTHS, target: float = VOL_TARGET,
 
 
 def print_shrinkage(study: dict) -> None:
-    print(f"\n16. SHRINK THE MEAN ON PURPOSE")
-    print(f"   Max Sharpe on the net capped panel, the window's mean pulled toward a prior "
+    print("\n16. SHRINK THE MEAN ON PURPOSE")
+    print("   Max Sharpe on the net capped panel, the window's mean pulled toward a prior "
           f"before it allocates. Capped {study['leverage_cap']:.0f}x, {study['lookback']}-month window.")
     for rule, r in study["rules"].items():
         print(f"\n   Vol sleeve sized on {rule}. Equal weight {r['equal_weight']:+.2f}, "
@@ -2423,7 +2423,7 @@ def chosen_strength_study(target: float = VOL_TARGET, window: int = VOL_WINDOW_M
 
 
 def print_chosen_strength(study: dict) -> None:
-    print(f"\n17. CHOOSE THE STRENGTH OUT OF SAMPLE")
+    print("\n17. CHOOSE THE STRENGTH OUT OF SAMPLE")
     print(f"   Toward 1/N, capped {study['leverage_cap']:.0f}x. Each month the strength with "
           f"the best Sharpe over the last {study['memory']} traded months, after "
           f"{study['min_months']} months of record.")
@@ -2437,7 +2437,7 @@ def print_chosen_strength(study: dict) -> None:
                 print(f"      chosen {r['chosen']['sharpe']:+.2f}   1/N {r['equal_weight']:+.2f}   "
                       f"unshrunk {r['unshrunk']:+.2f}   best single strength on the same months "
                       f"{r['hindsight']['strength']:.2f} at {r['hindsight']['sharpe']:+.2f}")
-                print(f"      held: " + ", ".join(f"{s} x{n}" for s, n in r["months_at"].items() if n)
+                print("      held: " + ", ".join(f"{s} x{n}" for s, n in r["months_at"].items() if n)
                       + f"; {r['switches']} switches")
 
 
@@ -2612,8 +2612,8 @@ def regime_gate_study(target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTH
 
 
 def print_regime_gate(study: dict) -> None:
-    print(f"\n18. RUN THE REGIME TEST ON THE WINDOW")
-    print(f"   Section 3's t-statistic on the trailing window each month. At or above the line, "
+    print("\n18. RUN THE REGIME TEST ON THE WINDOW")
+    print("   Section 3's t-statistic on the trailing window each month. At or above the line, "
           f"the window's mean; below it, 1/N. Capped {study['leverage_cap']:.0f}x.")
     for rule, by_lookback in study["rules"].items():
         for lb, r in by_lookback.items():
@@ -2626,14 +2626,14 @@ def print_regime_gate(study: dict) -> None:
                 print(f"{t:>9} {g['sharpe']:>+7.2f} {g['months_trusting_window']:>4}/{r['months_traded']:<2} "
                       f"{g['switches']:>9} {r['inverted'][t]['sharpe']:>+9.2f} "
                       + (f"{agree['agree_months']:>9}/{agree['of']}" if agree else ""))
-            print(f"      corr(|t|, next month's edge of the window's mean over 1/N) "
+            print("      corr(|t|, next month's edge of the window's mean over 1/N) "
                   f"{r['corr_tstat_next_edge']:+.2f}; that edge averages "
                   f"{r['edge_when_separable'] * 100:+.2f}%/mo when |t| is above its median "
                   f"({r['median_tstat']:.2f}) and {r['edge_when_not'] * 100:+.2f}%/mo below it")
-            print(f"      each sleeve's trailing mean vs its next month: " + ", ".join(
+            print("      each sleeve's trailing mean vs its next month: " + ", ".join(
                 f"{k} {v:+.2f}" for k, v in r["persistence"].items()))
             if lb == "12":
-                print(f"      |t| path: " + " ".join(f"{abs(s):.1f}" for s in r["tstat_path"]))
+                print("      |t| path: " + " ".join(f"{abs(s):.1f}" for s in r["tstat_path"]))
 
 
 # ---------- 18. ask the market instead of the window ----------
@@ -2768,8 +2768,8 @@ def implied_gate_study(target: float = VOL_TARGET, window: int = VOL_WINDOW_MONT
 
 
 def print_implied_gate(study: dict) -> None:
-    print(f"\n19. ASK THE MARKET INSTEAD OF THE WINDOW")
-    print(f"   Window's mean when the implied vol is calm (at or under its trailing "
+    print("\n19. ASK THE MARKET INSTEAD OF THE WINDOW")
+    print("   Window's mean when the implied vol is calm (at or under its trailing "
           f"{study['memory']}-month median, or down over {study['change_months']} months); "
           f"1/N otherwise. Capped {study['leverage_cap']:.0f}x.")
     for rule, by_lookback in study["rules"].items():
@@ -2798,7 +2798,7 @@ def print_sleeves(panel: pd.DataFrame, gap: dict, dr: float) -> None:
               f"{p['hit_rate']:>9.0%}")
     print(f"\n   correlation between them: {gap['correlation']:+.3f}")
     print(f"   diversification ratio:    {dr:.2f}   (1.00 is no benefit, "
-          f"1.41 is the ceiling for two sleeves)")
+          "1.41 is the ceiling for two sleeves)")
 
 
 def print_walk_forward(result: dict) -> None:
@@ -2817,23 +2817,23 @@ def print_walk_forward(result: dict) -> None:
 def print_blind_spot(result: dict, panel: pd.DataFrame) -> None:
     schemes = result["schemes"]
     risk_based = ["inverse vol", "risk parity", "HRP", "min variance"]
-    print(f"\n3. WHY THE RISK-BASED METHODS LOSE HERE")
+    print("\n3. WHY THE RISK-BASED METHODS LOSE HERE")
     worst = max(risk_based, key=lambda n: schemes[n]["weight_on_statarb"])
     print(f"   None of {', '.join(risk_based)} reads an expected return. They "
-          f"weight by\n   volatility, and the sleeve that earns nothing is "
-          f"also the quieter one:")
+          "weight by\n   volatility, and the sleeve that earns nothing is "
+          "also the quieter one:")
     for name in panel.columns:
         print(f"      {name:<10} {panel[name].std(ddof=1) * np.sqrt(12):>7.2%} "
               f"annualized vol, {performance(panel[name])['ann_return']:>+7.2%} "
-              f"annualized return")
+              "annualized return")
     print(f"\n   So they allocate toward it. {worst} puts "
           f"{schemes[worst]['weight_on_statarb']:.0%} of the book in the sleeve "
-          f"with\n   the lower return, and max Sharpe puts "
+          "with\n   the lower return, and max Sharpe puts "
           f"{schemes['max Sharpe']['weight_on_statarb']:.0%}.")
 
 
 def print_regime_test(gap: dict) -> None:
-    print(f"\n4. THE TEST THAT SAYS WHICH REGIME YOU ARE IN")
+    print("\n4. THE TEST THAT SAYS WHICH REGIME YOU ARE IN")
     print(f"   return gap      {gap['annualized_gap']:>+8.2%} a year "
           f"({gap['monthly_gap']:+.4%} a month)")
     print(f"   standard error  {gap['std_error']:>8.4%} a month, on "
@@ -2843,14 +2843,14 @@ def print_regime_test(gap: dict) -> None:
                else "suggestive but not decisive" if abs(gap["tstat"]) > 1
                else "indistinguishable from noise")
     print(f"\n   The difference in mean return is {verdict}. That is the "
-          f"condition under\n   which mean-variance can beat equal weighting, "
-          f"and it is computable before\n   choosing an allocator rather than "
-          f"after.")
+          "condition under\n   which mean-variance can beat equal weighting, "
+          "and it is computable before\n   choosing an allocator rather than "
+          "after.")
 
 
 def print_window_bias(bias: dict) -> None:
     full, win = bias["full"], bias["overlap"]
-    print(f"\n5. WHAT THE OVERLAP WINDOW LEAVES OUT")
+    print("\n5. WHAT THE OVERLAP WINDOW LEAVES OUT")
     print(f"\n{'volcarry over':<22} {'months':>7} {'ann return':>11} "
           f"{'ann vol':>9} {'sharpe':>8} {'worst month':>12}")
     for label, r in (("its full history", full), ("the overlap only", win)):
@@ -2861,7 +2861,7 @@ def print_window_bias(bias: dict) -> None:
         months = ", ".join(f"{d[:7]} {v:+.2%}"
                            for d, v in bias["worst_excluded"].items())
         print(f"\n   Worst months excluded by the overlap: {months}")
-    print(f"   Sharpe inflation from the window: "
+    print("   Sharpe inflation from the window: "
           f"{bias['sharpe_inflation']:+.2f}")
 
 
@@ -2869,7 +2869,7 @@ def print_lookback(rows: list[dict]) -> None:
     if not rows:
         return
     names = [k for k in rows[0] if k not in ("lookback", "months_traded")]
-    print(f"\n6. AT EVERY ESTIMATION WINDOW   (out-of-sample Sharpe)")
+    print("\n6. AT EVERY ESTIMATION WINDOW   (out-of-sample Sharpe)")
     header = "".join(f"{n[:12]:>14}" for n in names)
     print(f"\n{'lookback':>9} {'months':>7}{header}")
     for r in rows:
@@ -2923,9 +2923,9 @@ def spread_sensitivity(spreads=SPREAD_VOL_SWEEP,
 
 
 def print_spread_sensitivity(rows: list[dict]) -> None:
-    print(f"\n7. THE COST THE SLEEVES WERE NOT MATCHED ON")
-    print(f"   volcarry sold the option at the mid. Charging the half-spread, "
-          f"in vol points:")
+    print("\n7. THE COST THE SLEEVES WERE NOT MATCHED ON")
+    print("   volcarry sold the option at the mid. Charging the half-spread, "
+          "in vol points:")
     print(f"\n{'half-spread':>11} {'volcarry ret':>13} {'sharpe':>7} "
           f"{'gap t':>7} {'maxSharpe':>10} {'1/N':>7} "
           f"{'w(statarb) MV':>14} {'w(statarb) IV':>14}")
@@ -2939,18 +2939,18 @@ def print_spread_sensitivity(rows: list[dict]) -> None:
     live = [r for r in rows if r["gap_tstat"] >= 2.0]
     if live:
         edge = max(r["spread_vol_pts"] for r in live)
-        print(f"\n   The return gap stays significant out to a half-spread of "
+        print("\n   The return gap stays significant out to a half-spread of "
               f"{edge:.2f} vol points,")
         print(f"   which is about {edge / 0.10:.0f}x SPY's front-month market. "
-              f"At the realistic 0.10 the")
+              "At the realistic 0.10 the")
         print(f"   sleeve gives up {rows[0]['volcarry']['ann_return'] - rows[1]['volcarry']['ann_return']:.2%} "
               f"of return and {rows[0]['volcarry']['sharpe'] - rows[1]['volcarry']['sharpe']:.2f} of Sharpe.")
-    print(f"\n   The last column is the finding from section 4 again, harder: "
-          f"inverse volatility")
-    print(f"   holds the same weight on statarb at EVERY spread, including the "
-          f"ones where the")
-    print(f"   other sleeve stops making money. It is not reacting slowly - it "
-          f"is not reacting.")
+    print("\n   The last column is the finding from section 4 again, harder: "
+          "inverse volatility")
+    print("   holds the same weight on statarb at EVERY spread, including the "
+          "ones where the")
+    print("   other sleeve stops making money. It is not reacting slowly - it "
+          "is not reacting.")
 
 
 def main() -> None:

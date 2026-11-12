@@ -200,7 +200,7 @@ def main() -> None:
     base = pd.DataFrame([trade(w) for w in windows]).set_index("date")
 
     print(f"Short one at-the-money {TICKER} call per month, delta-hedged daily "
-          f"to expiry.")
+          "to expiry.")
     print(f"{len(base)} non-overlapping trades, {base.index[0].date()} to "
           f"{base.index[-1].date()}.")
     print("All P&L figures are per $100 of underlying.\n")

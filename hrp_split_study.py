@@ -282,7 +282,7 @@ def main() -> None:
     for label, px in books:
         table = walk_forward(px)
         print(f"\n{label}  ({table.attrs['rebalances']} quarterly "
-              f"rebalances)\n")
+              "rebalances)\n")
         print(f"{'':<28} {'pred':>6} {'real':>6} {'ratio':>6} {'ret':>7} "
               f"{'sharpe':>7} {'turn':>6} {'eff n':>6}")
         for _, r in table.sort_values("realized").iterrows():
@@ -300,7 +300,7 @@ def main() -> None:
         print(f"{label:<24} {a['clustered']:>10.2%} {a['random']:>10.2%} "
               f"{a['random_sd']:>7.2%} {a['gain']:>7.2%} "
               f"{a['sigmas']:>7.1f}")
-    print(f"\nPredicted portfolio volatility, averaged over rebalances, with "
+    print("\nPredicted portfolio volatility, averaged over rebalances, with "
           f"{draws} random orders\nper date. 'gain' is how much lower the "
           "clustered order's volatility is; 'sigmas' is\nthat gain measured "
           "in standard deviations of the random draws.")

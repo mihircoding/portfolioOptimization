@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from statarb_nb.signals import compute_spread, generate_positions, half_life, rolling_zscore
 

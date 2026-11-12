@@ -139,7 +139,6 @@ class TestMatchedWindow:
                                                                   pairs):
         # Acquire one named stock directly rather than drawing, so the test is
         # about the effect on other pairs and not about which seed came up.
-        rng = np.random.default_rng(4)
         modified = prices.copy()
         i = 500
         offer = float(modified["AAA"].iloc[i - 1]) * 1.30

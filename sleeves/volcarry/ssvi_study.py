@@ -115,9 +115,9 @@ def main() -> None:
               f"{f['rmse_vol_points'] * 100:>8.2f}p {atm:>7.1%}")
 
     cal = slice_calendar_violations(fits)
-    print(f"\nEvery slice has a positive density on its own. Between slices, "
+    print("\nEvery slice has a positive density on its own. Between slices, "
           f"{cal['total']} of\n{cal['grid']} grid points price a calendar "
-          f"spread at a negative value.")
+          "spread at a negative value.")
     for r in cal["pairs"]:
         print(f"    {r['from']} -> {r['to']}: {r['points']} points, worst "
               f"total variance drop {r['worst_w']:.5f} at k={r['at_k']:+.2f}")
@@ -129,7 +129,7 @@ def main() -> None:
     fit = ssvi.fit_ssvi(slices)
     p = fit["params"]
     print(f"  rho    {p.rho:>+8.4f}   one skew tilt for the whole surface; "
-          f"negative is the equity sign")
+          "negative is the equity sign")
     print(f"  eta    {p.eta:>8.4f}   smile width scale")
     print(f"  gamma  {p.gamma:>8.4f}   how the width decays as variance grows")
     print(f"\n  {fit['n_params']} parameters against "
@@ -141,20 +141,20 @@ def main() -> None:
               f"{np.sqrt(theta / sl['T']):>7.1%}")
 
     print("\n  conditions, from the parameters:")
-    print(f"    butterfly (theta*phi*(1+|rho|) < 4)        "
+    print("    butterfly (theta*phi*(1+|rho|) < 4)        "
           f"{'satisfied' if fit['butterfly_ok'] else 'FAILED'}")
-    print(f"    calendar  (d(theta*phi)/dtheta in range)   "
+    print("    calendar  (d(theta*phi)/dtheta in range)   "
           f"{'satisfied' if fit['calendar_ok'] else 'FAILED'}"
-          f"   (free for this phi - see the header)")
-    print(f"    theta non-decreasing in maturity           "
+          "   (free for this phi - see the header)")
+    print("    theta non-decreasing in maturity           "
           f"{'satisfied' if fit['theta_monotone'] else 'FAILED'}"
-          f"   (this is the one doing the work)")
+          "   (this is the one doing the work)")
     print("\n  verified independently, on the fitted surface rather than on "
           "the parameters:")
-    print(f"    negative-density grid points   "
+    print("    negative-density grid points   "
           f"{ssvi.density_violations(p)}   (svi.durrleman_g, 400 strikes x "
           f"{len(slices)} expiries)")
-    print(f"    negative calendar spreads      "
+    print("    negative calendar spreads      "
           f"{ssvi.calendar_violations(p)}   (81 strikes x "
           f"{len(slices) - 1} adjacent pairs)")
 
@@ -171,13 +171,13 @@ def main() -> None:
     fp = free["params"]
     ok = ssvi.admissible(fp.rho, fp.eta, fp.gamma)
     worse = (fit["rmse_w"] / free["rmse_w"] - 1.0) * 100 if free["rmse_w"] else 0.0
-    print(f"\nDropping the arbitrage conditions from the search fits better, "
+    print("\nDropping the arbitrage conditions from the search fits better, "
           f"as it has to: total\nvariance RMSE {free['rmse_w']:.5f} against "
           f"{fit['rmse_w']:.5f}, so enforcing them costs "
           f"{worse:.1f}%\nof fit. The unconstrained surface is "
           f"{'admissible anyway on this day' if ok else 'NOT admissible'}"
           f"{'' if ok else ' - which is the thing enforcement exists to prevent'}"
-          f", and it\nwould be arbitrageable "
+          ", and it\nwould be arbitrageable "
           f"{'nowhere' if ok else 'at ' + str(ssvi.density_violations(fp) + ssvi.calendar_violations(fp)) + ' of the grid points checked above'}.")
 
     print("\nThe honest summary: 9 parameters reprice a liquid SPY chain worse "

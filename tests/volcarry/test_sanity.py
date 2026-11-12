@@ -156,7 +156,7 @@ check(f"American call = European call when q=0 (premium {prem_call_no_div:.2e})"
 #       strike now instead of waiting. Premium should be strictly positive
 #       for a put that's meaningfully in the money.
 prem_put_itm = bino.early_exercise_premium("put", 70.0, 100.0, T, r, sigma, q=0.0, steps=300)
-check(f"American put has positive early-exercise premium when deep ITM "
+check("American put has positive early-exercise premium when deep ITM "
       f"({prem_put_itm:.4f})", prem_put_itm > 0.01)
 
 #    d) With a dividend, American calls CAN be worth exercising early too
@@ -274,7 +274,7 @@ for _ in range(100):
 calls_per_solve = _n_calls[0] / 100
 bs.price = _price
 check(f"implied vol converges in {calls_per_solve:.1f} pricing calls "
-      f"(bisection needs ~31 for the same tolerance)", calls_per_solve < 15)
+      "(bisection needs ~31 for the same tolerance)", calls_per_solve < 15)
 
 
 # 12. Volatility surface construction, on a chain built from a known smile
@@ -308,7 +308,7 @@ T_h, sigma_h = 30 / 252, 0.20
 # or accounting error in the loop shows up here as a residual.
 flat = np.full(31, 100.0)
 flat_result = hedge.delta_hedge(flat, 100.0, T_h, 0.0, sigma_h)
-check(f"a motionless stock pays the whole premium "
+check("a motionless stock pays the whole premium "
       f"(P&L {flat_result['pnl']:.6f} vs premium {flat_result['premium']:.6f})",
       abs(flat_result["pnl"] - flat_result["premium"]) < 1e-9)
 
@@ -320,7 +320,7 @@ check(f"a motionless stock pays the whole premium "
 parity_path = gbm_paths(1, 30, 100.0, T_h, 0.25, seed=11)[0]
 call_hedge = hedge.delta_hedge(parity_path, 100.0, T_h, 0.0, sigma_h, "call")
 put_hedge = hedge.delta_hedge(parity_path, 100.0, T_h, 0.0, sigma_h, "put")
-check(f"hedged call and hedged put earn the same P&L "
+check("hedged call and hedged put earn the same P&L "
       f"(difference {call_hedge['pnl'] - put_hedge['pnl']:.2e})",
       abs(call_hedge["pnl"] - put_hedge["pnl"]) < 1e-9)
 
@@ -334,10 +334,10 @@ sold_high = np.array([hedge.delta_hedge(path, 100.0, T_h, 0.0, 0.30)["pnl"]
                       for path in cheap])
 sold_low = np.array([hedge.delta_hedge(path, 100.0, T_h, 0.0, 0.20)["pnl"]
                      for path in rich])
-check(f"selling vol above what the stock realizes wins "
+check("selling vol above what the stock realizes wins "
       f"({float((sold_high > 0).mean()):.0%} of paths)",
       (sold_high > 0).mean() > 0.95)
-check(f"selling vol below what the stock realizes loses "
+check("selling vol below what the stock realizes loses "
       f"({float((sold_low < 0).mean()):.0%} of paths)",
       (sold_low < 0).mean() > 0.95)
 
@@ -348,7 +348,7 @@ fair = gbm_paths(400, 30, 100.0, T_h, sigma_h, seed=5)
 fair_pnl = np.array([hedge.delta_hedge(path, 100.0, T_h, 0.0, sigma_h)["pnl"]
                      for path in fair])
 standard_error = fair_pnl.std(ddof=1) / np.sqrt(len(fair_pnl))
-check(f"hedging at the path's own vol has zero expected P&L "
+check("hedging at the path's own vol has zero expected P&L "
       f"(mean {fair_pnl.mean():+.4f}, 3 s.e. = {3 * standard_error:.4f})",
       abs(fair_pnl.mean()) < 3 * standard_error)
 
@@ -359,10 +359,10 @@ check(f"hedging at the path's own vol has zero expected P&L "
 decomposed = np.array([hedge.gamma_pnl(path, 100.0, T_h, 0.0, sigma_h)[0]
                        for path in fair])
 gap = np.abs(decomposed - fair_pnl).mean()
-check(f"gamma decomposition reproduces the hedge P&L "
+check("gamma decomposition reproduces the hedge P&L "
       f"(mean error {gap:.4f} on a {flat_result['premium']:.3f} premium)",
       gap < 0.05 * flat_result["premium"])
-check(f"...and tracks it path by path "
+check("...and tracks it path by path "
       f"(r = {float(np.corrcoef(decomposed, fair_pnl)[0, 1]):.4f})",
       np.corrcoef(decomposed, fair_pnl)[0, 1] > 0.95)
 
@@ -376,11 +376,11 @@ for interval in (2, 5, 10):
                                          rebalance_every=interval)["pnl"]
                        for path in fair])
     errors[interval] = coarse - fair_pnl
-check(f"hedging error grows with the interval "
+check("hedging error grows with the interval "
       f"({errors[2].std(ddof=1):.3f} -> {errors[10].std(ddof=1):.3f})",
       errors[2].std(ddof=1) < errors[5].std(ddof=1) < errors[10].std(ddof=1))
 scaled = {k: v.std(ddof=1) / np.sqrt(k) for k, v in errors.items()}
-check(f"...and grows like sqrt(interval), not faster "
+check("...and grows like sqrt(interval), not faster "
       f"(std/sqrt(n): {scaled[2]:.3f}, {scaled[5]:.3f}, {scaled[10]:.3f})",
       max(scaled.values()) / min(scaled.values()) < 1.5)
 check("hedging less often does not change the expected P&L",
@@ -392,7 +392,7 @@ check("hedging less often does not change the expected P&L",
 # is proportional to the trading, not to the position.
 free = hedge.delta_hedge(fair[0], 100.0, T_h, 0.0, sigma_h, cost_bps=0.0)
 paid = hedge.delta_hedge(fair[0], 100.0, T_h, 0.0, sigma_h, cost_bps=10.0)
-check(f"transaction costs reduce P&L by exactly what they charge "
+check("transaction costs reduce P&L by exactly what they charge "
       f"({paid['costs']:.4f})",
       abs((free["pnl"] - paid["pnl"]) - paid["costs"]) < 1e-9)
 
@@ -442,15 +442,15 @@ if vsurf is not None:
 
     smile = vsurf.smile_for_expiry(calls_df, puts_df, T_s, "synthetic")
     recovered = np.array([abs(row.iv - _true_iv(row.strike)) for row in smile.itertuples()])
-    check(f"surface recovers the smile it was built from (worst error "
+    check("surface recovers the smile it was built from (worst error "
           f"{recovered.max():.2e} across {len(smile)} strikes)", recovered.max() < 5e-3)
 
     atm = vsurf.atm_vol(smile)
-    check(f"at-the-money vol interpolates to the smile's own level "
+    check("at-the-money vol interpolates to the smile's own level "
           f"({atm:.4f} vs {_true_iv(F_true):.4f})", abs(atm - _true_iv(F_true)) < 2e-3)
 
     sk = vsurf.skew_25d(smile)
-    check(f"risk reversal is positive for a downward-sloping smile "
+    check("risk reversal is positive for a downward-sloping smile "
           f"({sk['risk_reversal']:.4f})", sk["risk_reversal"] > 0.02)
     check(f"butterfly is positive for a convex smile ({sk['butterfly']:.4f})",
           sk["butterfly"] > 0)
@@ -537,10 +537,10 @@ def _cross_strike_checks():
           len(_bf_curve) == len(_bf_smile))
     check("call price falls as strike rises",
           bool((_bf_curve["call"].diff().dropna() < 0).all()))
-    check(f"clean chain has no vertical violations "
+    check("clean chain has no vertical violations "
           f"({_bf_res['vertical_violations']} found)",
           _bf_res["vertical_violations"] == 0)
-    check(f"clean chain has no butterfly violations "
+    check("clean chain has no butterfly violations "
           f"({_bf_res['butterfly_violations']} found)",
           _bf_res["butterfly_violations"] == 0)
 
@@ -551,7 +551,7 @@ def _cross_strike_checks():
     _bf_b = _bf_res["butterflies"]
     _bf_mass = float((_bf_b["density"] * _bf_b["width"]).sum())
     _bf_mean = float((_bf_b["strike"] * _bf_b["density"] * _bf_b["width"]).sum() / _bf_mass)
-    check(f"implied density integrates to just under 1 over the quoted strikes "
+    check("implied density integrates to just under 1 over the quoted strikes "
           f"(got {_bf_mass:.3f})", 0.93 < _bf_mass <= 1.001)
     check(f"implied density is centred on the forward (got {_bf_mean:.1f} "
           f"vs {_bf_F:.1f})", abs(_bf_mean - _bf_F) < 1.0)
@@ -582,7 +582,7 @@ def _cross_strike_checks():
     _tiny = vsurf.smile_for_expiry(_wide_chain("call", bump=(100.0, 0.5)),
                                    _wide_chain("put", bump=(100.0, 0.5)), _bf_T, "wide")
     _tiny_res = arbi.check_smile(_tiny)
-    check(f"a violation inside the bid-ask spread is not called tradable "
+    check("a violation inside the bid-ask spread is not called tradable "
           f"({_tiny_res['butterfly_violations']} found, "
           f"{_tiny_res['butterfly_tradable']} tradable)",
           _tiny_res["butterfly_violations"] > 0 and _tiny_res["butterfly_tradable"] == 0)
@@ -776,7 +776,7 @@ _slices = [{"T": t, "k": np.linspace(-0.5, 0.5, 31),
             "weights": np.ones(31)}
            for t, th in zip(_true.ts, _true.thetas)]
 _sfit = _ssvi.fit_ssvi(_slices)
-check(f"a surface generated by SSVI is refitted to itself "
+check("a surface generated by SSVI is refitted to itself "
       f"(rmse {_sfit['rmse_w']:.2e})", _sfit["rmse_w"] < 5e-4)
 check("the refit is admissible and its theta is monotone",
       _sfit["butterfly_ok"] and _sfit["calendar_ok"] and _sfit["theta_monotone"])
@@ -820,7 +820,7 @@ for _T in (0.02, 1.0):
     _pp = _svi.SVIParams(a=0.04 * _T, b=0.12 * _T, rho=-0.4, m=0.0, sigma=0.15)
     _fit_u = _svi.fit_svi(_synth_k, _pp.total_variance(_synth_k))
     _vol_rmse = _fit_u["rmse_sqrt_total_var"] / np.sqrt(_T)
-    check(f"sqrt-total-variance and volatility error differ by sqrt(T) "
+    check("sqrt-total-variance and volatility error differ by sqrt(T) "
           f"at T={_T}",
           abs(_vol_rmse * np.sqrt(_T) - _fit_u["rmse_sqrt_total_var"]) < 1e-15)
 check("fit_svi no longer claims to report volatility points",

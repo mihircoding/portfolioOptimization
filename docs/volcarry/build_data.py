@@ -212,7 +212,7 @@ def surface_data():
               f"RR {row['risk_reversal']:+.2%}  fly {row['butterfly']:+.2%}")
     a = data["arbitrage"]
     print(f"  arbitrage: {a['raw']} violations on mids, {a['tradable']} through "
-          f"the spread")
+          "the spread")
     for row in a["rows"]:
         print(f"    {row['expiry']}  {row['strikes']:>4} strikes  "
               f"fly {row['butterfly']:>3}/{row['butterfly_tradable']:<3} "
