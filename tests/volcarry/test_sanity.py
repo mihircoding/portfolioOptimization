@@ -841,3 +841,71 @@ if failures:
     print(f"{len(failures)} FAILURES: {failures}")
     raise SystemExit(1)
 print("All sanity checks passed.")
+
+
+# ---------- which vol goes in the delta ----------
+
+import pandas as pd
+import pytest
+
+
+def test_a_per_step_hedge_vol_is_honoured_and_a_constant_one_is_the_old_path():
+    from sleeves.volcarry.hedging import delta_hedge
+    rng = np.random.default_rng(3)
+    path = 100.0 * np.exp(np.cumsum(rng.normal(0, 0.01, 21)))
+    path = np.concatenate([[100.0], path])
+    scalar = delta_hedge(path, 100.0, 21 / 252, 0.0, 0.20)
+    repeated = delta_hedge(path, 100.0, 21 / 252, 0.0, 0.20, sigma_hedge=np.full(21, 0.20))
+    assert repeated["pnl"] == pytest.approx(scalar["pnl"])
+    assert np.allclose(repeated["deltas"], scalar["deltas"])
+    # a different vol on the first step only changes the first delta
+    bumped = np.full(21, 0.20)
+    bumped[0] = 0.40
+    changed = delta_hedge(path, 100.0, 21 / 252, 0.0, 0.20, sigma_hedge=bumped)
+    assert changed["deltas"][0] != pytest.approx(scalar["deltas"][0])
+    assert np.allclose(changed["deltas"][1:], scalar["deltas"][1:])
+    with pytest.raises(ValueError):
+        delta_hedge(path, 100.0, 21 / 252, 0.0, 0.20, sigma_hedge=np.full(5, 0.20))
+
+
+def test_hedging_at_the_true_vol_collects_the_inception_price_gap():
+    # Ahmad and Wilmott: with the realized vol in the delta the total P&L is
+    # the difference between the two prices at inception, up to the error
+    # of hedging daily instead of continuously
+    from sleeves.volcarry.black_scholes import price
+    from sleeves.volcarry.hedging import delta_hedge
+    rng = np.random.default_rng(11)
+    gaps, pnls, at_implied = [], [], []
+    for _ in range(200):
+        steps = rng.normal(0, 0.30 / np.sqrt(252), 252)
+        path = 100.0 * np.exp(np.concatenate([[0.0], np.cumsum(steps)]))
+        hedged = delta_hedge(path, 100.0, 1.0, 0.0, 0.20, sigma_hedge=None)
+        truth = delta_hedge(path, 100.0, 1.0, 0.0, 0.20, sigma_hedge=hedged["realized_vol"])
+        gaps.append(price("call", 100.0, 100.0, 1.0, 0.0, 0.20)
+                    - price("call", 100.0, 100.0, 1.0, 0.0, hedged["realized_vol"]))
+        pnls.append(truth["pnl"])
+        at_implied.append(hedged["pnl"])
+    error = np.asarray(pnls) - np.asarray(gaps)
+    assert abs(error.mean()) < 0.15
+    # the true-vol hedge's P&L is the gap plus hedging noise; the implied-vol
+    # hedge's is the gamma-weighted path, which is the noisier object here
+    # because every path realizes about the same vol
+    assert error.std() < 0.5 * np.std(at_implied)
+    assert np.mean(pnls) == pytest.approx(np.mean(at_implied), abs=0.3)
+
+
+def test_the_three_arms_share_a_premium_and_differ_only_in_the_delta():
+    from sleeves.volcarry.remark_study import trade_three_ways
+    idx = pd.bdate_range("2020-02-03", periods=22)
+    rng = np.random.default_rng(5)
+    spy = pd.Series(300.0 * np.exp(np.cumsum(rng.normal(0, 0.02, len(idx)))), index=idx)
+    vix = pd.Series(np.linspace(15.0, 60.0, len(idx)), index=idx)
+    row = trade_three_ways(pd.DataFrame({"spy": spy, "vix": vix}), option_spread_vol_pts=0.0,
+                           option_spread_vix_anchor=None)
+    assert row["implied"] == pytest.approx(0.15)
+    assert row["vix_max"] == pytest.approx(0.60, abs=0.03)
+    assert len({round(row[a], 6) for a in ("sold-at", "re-marked", "realized")}) == 3
+    # a flat VIX makes the re-marked arm the sold-at arm exactly
+    flat = trade_three_ways(pd.DataFrame({"spy": spy, "vix": pd.Series(15.0, index=idx)}),
+                            option_spread_vol_pts=0.0, option_spread_vix_anchor=None)
+    assert flat["re-marked"] == pytest.approx(flat["sold-at"])

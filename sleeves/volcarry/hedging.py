@@ -63,7 +63,9 @@ def delta_hedge(path, K, T, r, sigma_implied, option_type="call", q=0.0,
         `sigma_implied`, which is what a desk does. Setting it to something else
         answers a different and genuinely interesting question, because the
         *price* you sold at and the *delta* you hedge with do not have to come
-        from the same number.
+        from the same number. A sequence of length n_steps is one hedge vol
+        per step - a desk re-marking its delta to today's implied - and
+        remark_study.py is the caller.
     rebalance_every : hedge every n steps. 1 is daily on daily data.
     cost_bps : proportional transaction cost on every share traded, including
         the initial hedge and the final liquidation.
@@ -81,6 +83,7 @@ def delta_hedge(path, K, T, r, sigma_implied, option_type="call", q=0.0,
         raise ValueError("path needs at least two points")
     if sigma_hedge is None:
         sigma_hedge = sigma_implied
+    hedge_vols = np.broadcast_to(np.asarray(sigma_hedge, dtype=float), (n_steps,))
 
     dt = T / n_steps
     premium = price(option_type, path[0], K, T, r, sigma_implied, q)
@@ -98,7 +101,7 @@ def delta_hedge(path, K, T, r, sigma_implied, option_type="call", q=0.0,
         # carried, which is what makes a weekly hedge different from a daily one.
         if step % rebalance_every == 0:
             d = delta(option_type, path[step], K, max(time_left, 1e-12), r,
-                      sigma_hedge, q)
+                      hedge_vols[step], q)
             trade = d - shares
             cash -= trade * path[step]
             trade_cost = abs(trade) * path[step] * cost_bps / 10_000

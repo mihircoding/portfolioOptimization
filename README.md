@@ -209,11 +209,11 @@ window contains no 2008 and no March 2020, which inflates the volatility sleeve'
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-376 tests.
+379 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 376 passed
+python -m pytest -q                 # 379 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result
@@ -235,6 +235,7 @@ python sleeves/statarb/walkforward.py     # refit the formation window, trade ou
 
 # the volatility sleeve
 python sleeves/volcarry/hedging_study.py  # sell and hedge an ATM call monthly since 2007
+python -m sleeves.volcarry.remark_study   # the same hedge at today's vol and at the true one
 python sleeves/volcarry/ssvi_study.py     # one arbitrage-free surface, not six smiles
 python sleeves/volcarry/arbitrage_study.py # butterfly and calendar checks on real quotes
 
@@ -321,6 +322,17 @@ implied volatility averages 20.0% against 16.2% realized. The seller earns 0.405
 per $100 a month at a Sharpe of 2.20, and loses 2.675 in March 2020. The gamma
 decomposition reproduces the realized P&L with r = 0.99, which is what makes
 "a delta-hedged option is a bet on variance" a measurement rather than a slogan.
+
+The Γ in that integral is the gamma at the vol in the delta, and which vol
+that is turns out to matter more than the caveats said. Hedge at the vol the
+path actually had and the P&L is the inception price gap to within a 0.22
+hedging error, as the textbook promises — and that gap has a standard
+deviation of 1.00 across months, so the "known" P&L is the most variable of
+the three, −6.9 in March 2020 against −2.7 for the hedge that only knew the
+33% it sold at. Re-marking the delta to each day's VIX, which a desk does and
+which the write-up had assumed damps the tails, makes the worst month 60%
+worse instead, because a higher vol pushes the delta of an out-of-the-money
+short call back toward a half and the desk buys stock on the way down.
 
 That P&L series is what `multi_strategy.py` allocates, and the March 2020 number
 is the one section 4 of RESULTS.md is about.

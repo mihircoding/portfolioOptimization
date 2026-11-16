@@ -707,10 +707,11 @@ volatility, not SPY's, and it is a variance-swap-style index across the whole
 strike range rather than the at-the-money vol the study treats it as - it runs
 roughly a point above ATM vol, so the measured premium is a touch generous.
 Prices are dividend-adjusted and the risk-free rate is zero, folding both carry
-terms into the path. The hedge uses the vol the option was sold at and never
-re-marks, where a desk would re-hedge on current implied, which damps the tails.
-None of these change the shape of any result above; all of them would move the
-second decimal place.
+terms into the path. ~~The hedge uses the vol the option was sold at and never
+re-marks, where a desk would re-hedge on current implied, which damps the tails.~~
+The next section runs the re-marked hedge and finds it does the opposite.
+None of the others change the shape of any result above; all of them would move
+the second decimal place.
 
 The checks in `test_sanity.py` are the part worth reading. A motionless stock
 pays the seller the entire premium to within 1e-9. A hedged call and a hedged
@@ -721,6 +722,86 @@ restated as a statement about hedging. Selling at 30% into a stock that realizes
 40% loses on 100% of them. And hedging at the path's own volatility has a mean
 P&L of zero to within three standard errors, which is the replication argument
 itself, checked rather than assumed.
+
+### `remark_study.py` - which vol goes in the delta
+
+The caveat above said a desk re-hedges on current implied and that this damps
+the tails. It was a sentence, not a measurement, and the one thing the study
+holds fixed that a desk does not is exactly that: every month's option is sold
+at VIX and then hedged to expiry at the delta computed from *that* VIX, never
+re-marked. `remark_study.py` runs the same 238 months three ways on the same
+cached tape (`results/spy_vix_daily.csv`, checked against the main study's
+months to the fourth decimal) - the delta at the sold-at vol, the delta at
+each day's VIX, and the delta at the vol the path turned out to have, which
+is not tradable but is the textbook anchor. Same strike, same premium, so the
+gap between implied and realized is the same in all three; only the path the
+hedge takes to collect it changes. Four predictions were written first and the
+two about the tails both failed.
+
+```
+                            sold-at  re-marked   realized
+average P&L                   0.394      0.412      0.390
+std dev of P&L                0.640      0.704      0.948
+annualized Sharpe              2.13       2.03       1.42
+months profitable             80.3%      81.5%      81.5%
+worst month                  -2.697     -4.324     -6.920
+best month                    3.647      3.567      3.750
+
+price gap at inception        0.427   (std across months 1.001)
+realized-vol hedge minus it  -0.037   (std 0.222)
+```
+
+**Hedging at the true vol has the largest variance, not the smallest.** The
+prediction was Ahmad and Wilmott's: with the actual vol in the delta, the total
+P&L is the difference between the two Black-Scholes prices at inception, path
+by path, and only the daily-hedging error is left - so its standard deviation
+should have been a fraction of the sold-at hedge's 0.64. The first half is
+true on this tape. The realized-vol hedge's P&L is the inception price gap to
+within an error of mean -0.04 and standard deviation 0.22, which is the
+discrete-hedging noise and nothing else. The second half does not follow from
+it, and the number that says why is in the last two lines: the price gap itself
+has a standard deviation of 1.00 across months. The quantity the true-vol hedge
+is guaranteed to collect is the most variable quantity in the trade, because
+realized vol is. In March 2020 the gap between a 33% implied and a 90%
+realized was -6.9 per $100, and the hedge that knows the true vol collected
+all of it; the hedge that only knows the 33% it sold at lost 2.7. In October
+2008 the figures are -5.8 against -1.2.
+
+The sold-at hedge is smoother because its P&L is the gamma-weighted sum along
+the path, sum over days of 1/2 Gamma S^2 (sigma_implied^2 dt - dS^2/S^2), and
+Gamma is the gamma *at the implied vol*. When the spot runs away from the
+strike, a 33%-vol gamma collapses and the position stops losing, whatever the
+realized vol goes on to print. A 90%-vol gamma does not collapse, so that hedge
+keeps trading the whole month and keeps paying. Knowing the P&L in advance is
+not the same as the P&L being small: the true-vol hedge removes the path from
+the P&L and leaves the realized vol in it whole, and the realized vol is where
+the risk was.
+
+**Re-marking fattens the left tail instead of damping it.** The re-marked hedge
+has the same mean as the sold-at one (+0.02, noise), correlates with it at
+0.957, and a standard deviation of 0.70 against 0.64 - with the worst month
+60% worse, -4.32 against -2.70 in March 2020, and October 2008 at -2.26
+against -1.18. The mechanism is what re-marking does to the delta of a short
+call that has gone out of the money in a sell-off: a higher vol pushes the
+delta back toward a half, so the desk that re-marks to a VIX of 83 *buys* more
+stock on the way down, and when the spot keeps falling that is the loss. In
+the 24 months where VIX rose more than ten points inside the trade, the
+re-marked hedge beat the sold-at hedge in 10 and lost to it in 14, averaging
+-0.76 against -0.59. The ten it won are the spikes that reversed inside the
+month - April 2025 (+1.25 better), April 2020, October 2011, March 2009 -
+where the higher delta caught the bounce. Re-marking is a bet that the spike
+comes back before expiry, and on this tape that bet lost more often than it
+won. The caveat had the sign wrong: re-hedging on current implied is what a
+desk does, and on this trade it is a tail that is 60% longer for the same
+mean.
+
+What this does not settle: the re-marked arm uses VIX, a 30-day index of the
+whole strip, as the day's at-the-money vol for an option with less than 30
+days left; a desk would mark to the strike's own implied, which in a sell-off
+is below VIX for a now-out-of-the-money call. That would put the re-marked
+delta between the two arms here, and the direction of the result would stand.
+And the realized-vol arm is run at the whole month's realized vol from day
+one, which is the textbook experiment and not a strategy.
 
 ## Things to notice when comparing to the market
 

@@ -35,6 +35,8 @@ so the spread is crossed once rather than round-tripped - an option that
 expires needs no exit trade, which is worth half the cost of one that does.
 """
 
+import os
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -94,8 +96,20 @@ SPREAD_VOL_PTS = (0.0, 0.05, 0.10, 0.25, 1.00)
 OPTION_SPREAD_VIX_ANCHOR = 17.5
 
 
-def load() -> pd.DataFrame:
-    data = yf.download([TICKER, "^VIX"], start=START, end=END, progress=False,
+DAILY_CACHE = "results/spy_vix_daily.csv"
+
+
+def load(start: str = START, end: str = END, cache: str | None = DAILY_CACHE) -> pd.DataFrame:
+    """SPY and VIX closes. Read from the cached tape when it covers the
+    window, so a re-run is the same tape and not Yahoo's latest
+    re-adjustment of it; download otherwise.
+    """
+    if cache and os.path.exists(cache):
+        data = pd.read_csv(cache, index_col=0, parse_dates=True)
+        data = data.rename(columns={TICKER: "spy", "^VIX": "vix"})
+        if data.index[0] <= pd.Timestamp(start) + pd.Timedelta(days=7) and data.index[-1] >= pd.Timestamp(end) - pd.Timedelta(days=7):
+            return data.loc[start:end]
+    data = yf.download([TICKER, "^VIX"], start=start, end=end, progress=False,
                        auto_adjust=True)["Close"].dropna()
     return data.rename(columns={TICKER: "spy", "^VIX": "vix"})
 
