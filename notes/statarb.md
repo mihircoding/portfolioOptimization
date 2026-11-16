@@ -459,10 +459,94 @@ the remaining candidates are the data and the universe rather than the method:
 point-in-time index membership (the survivorship caveat below is real and
 unaddressed), intraday rather than daily bars, and a universe chosen by
 economic relationship rather than by running every pair through a test. All
-three are ways of making the *screen* unnecessary. That is probably the actual
+three are ways of making the *screen* unnecessary. (The third is tested in the
+next section, on the one proxy for it the project has, and it comes out
+backwards: the same-sector pairs are the ones that do not revert.) That is probably the actual
 lesson of this project, and the size measurement above is the sharpest version
 of it: the screen was not merely unhelpful, it was miscalibrated by a factor of
 three, and correcting it changed nothing about what trades.
+
+## The universe by economic relationship, instead of by the screen
+
+The paragraph above names three ways of making the screen unnecessary, and the only one this
+project can test with the data it has is the third. GICS sector is the one proxy for "an economic
+reason these two should track" on hand, and until now it had only been read on the 930 survivors,
+where the 119 same-sector pairs did a little worse than the 811 cross-sector ones — a reading on the
+screen's sample, not the sector's. `sector_study.py` reads it on all 4,950 pairs with the control
+group's backtest, so that "trade same-sector pairs and skip the test" is a book that can be put next
+to the screened one. Four predictions were written before the backtest ran and three failed.
+
+| group | pairs | passed the screen | mean Sharpe | profitable | round trips | book Sharpe | book return |
+|---|---|---|---|---|---|---|---|
+| same sector | 585 | 20.3% | **−0.043** | 39.1% | 20.6 | **−0.37** | −3.43% |
+| cross sector | 4,365 | 18.6% | +0.013 | 45.6% | 20.6 | −0.09 | −1.19% |
+| same sector, passed | 119 | — | −0.094 | 31.1% | 21.1 | −0.49 | −4.95% |
+| same sector, rejected | 466 | — | −0.030 | 41.2% | 20.4 | −0.31 | −3.06% |
+| cross sector, passed | 811 | — | +0.004 | 43.4% | 20.9 | −0.15 | −1.72% |
+| cross sector, rejected | 3,554 | — | +0.015 | 46.1% | 20.6 | −0.07 | −1.08% |
+| screened (the 930) | 930 | — | −0.009 | 41.8% | 20.9 | −0.19 | −2.14% |
+| everything | 4,950 | 18.8% | +0.006 | 44.8% | 20.6 | −0.12 | −1.45% |
+
+### Same-sector pairs are the worse pairs, and it is not the screen's doing
+
+The prediction was that, with the screen out of the way, same-sector pairs would be no better and
+no worse than cross-sector ones — the gap inside permutation noise. The gap is −0.056 in mean
+out-of-sample Sharpe and the permutation test over 10,000 relabellings puts it at p = 0.002. Same-
+sector pairs are profitable 39% of the time against 46%, and the equal-weight book of all 585,
+with no screen at all, has a Sharpe of −0.37 against −0.09 for the cross-sector book and −0.19 for
+the screened 930. The third prediction — that the sector would be at least as good a filter as the
+test — fails in the direction nobody would have picked: the sector is a *worse* filter than the
+test, and the test, as every section above found, is not a filter at all.
+
+Two things the 585 could have been that they are not. They are not one bad sector: within every
+sector with more than a handful of pairs, the pairs with both legs in it do worse than the pairs
+with one leg in it — Financials −0.027 against +0.062, Information Technology −0.058 against
++0.005, Health Care −0.059 against +0.013, Consumer Staples −0.085 against +0.058, Communication
+Services −0.287 against −0.132 — and dropping any one sector leaves the gap between −0.036 and
+−0.073. And they are not costlier to trade: same-sector pairs round-trip 20.6 times in the window,
+the same as cross-sector pairs to the decimal (the second prediction said they would trip more, and
+they do not), and at zero cost the gap is −0.050, so the 5bps a side is not where it comes from.
+They lose gross.
+
+### Where it comes from: a two-sigma move between peers does not come back
+
+The backtest's edge, measured directly. For every fresh crossing of |z| = 2 in the trading window —
+191,500 of them across the cross-sector pairs, 25,761 across the same-sector ones — the spread's
+move over the next 5, 10 and 20 days, in units of the 60-day standard deviation the z-score was
+built on, signed so that positive means the spread kept going the way it had gone. A mean-reversion
+trade is paid when this number is negative. (This measurement was made after the backtest, to find
+out why, and is labelled post hoc in the code.)
+
+| after a fresh entry | 5 days | 10 days | 20 days |
+|---|---|---|---|
+| cross-sector spread | −0.002σ | **−0.026σ** | −0.021σ |
+| same-sector spread | +0.007σ | −0.006σ | **+0.018σ** |
+
+Cross-sector spreads come back, by a few hundredths of a sigma — which is all the edge this
+strategy has ever had, and it is the edge that nets to a Sharpe of +0.01 after costs. Same-sector
+spreads do not come back at all: at 20 days they have kept going, and the share of entries that
+continued is 50.0%, a coin. The reading is the one the pairs-trading literature would give and this
+project had been arguing against since the 12-ticker version: a two-sigma relative move between
+two names in different sectors is mostly the 60-day window mis-estimating its own mean, and noise
+reverts; a two-sigma relative move between two names in the *same* sector is more often the market
+re-ranking two competitors, and a re-ranking sticks. The economic relationship is real. It is why
+the spread does not revert.
+
+The one prediction that held is the fourth: inside the 585 the formation p-value still ranks
+nothing, Spearman +0.041 against out-of-sample Sharpe. And the sector dummy, put on the same
+footing as the p-value, has a rank correlation of −0.046 with the Sharpe — which makes it the
+best ranker this project has found, and it points the wrong way.
+
+### What this does not fix
+
+GICS sector is still a blunt instrument, the 585 are concentrated in four sectors, and the
+permutation test treats pairs that share tickers and sectors as exchangeable, so its p = 0.002
+is the p-value of a test whose independence assumption is wrong in the direction that flatters
+it; the within-sector comparison, which holds in five of seven sectors, is the better evidence.
+And "economic relationship" here means a classification code. A universe built from actual
+business links — suppliers and customers, the two halves of a duopoly — is a different proxy,
+and this result says to expect it to behave like the same-sector pairs, not like the
+cross-sector ones.
 
 ## Stretch goals
 

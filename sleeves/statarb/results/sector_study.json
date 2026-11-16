@@ -1,0 +1,271 @@
+{
+ "groups": {
+  "same sector": {
+   "pairs": 585,
+   "pass_rate": 0.20341880341880342,
+   "mean_sharpe": -0.04337127916628128,
+   "median_sharpe": -0.05715392927979307,
+   "share_profitable": 0.39145299145299145,
+   "median_return": -0.04798435787590838,
+   "round_trips": 20.58803418803419,
+   "book": {
+    "total_return": -0.034339091237828745,
+    "sharpe": -0.37089403953415384,
+    "n": 585
+   }
+  },
+  "cross sector": {
+   "pairs": 4365,
+   "pass_rate": 0.18579610538373426,
+   "mean_sharpe": 0.012538043232785036,
+   "median_sharpe": 0.013352281028319807,
+   "share_profitable": 0.4558991981672394,
+   "median_return": -0.025053040254786607,
+   "round_trips": 20.624513172966783,
+   "book": {
+    "total_return": -0.011902885935003882,
+    "sharpe": -0.08848531192646772,
+    "n": 4365
+   }
+  },
+  "same sector, passed": {
+   "pairs": 119,
+   "pass_rate": 1.0,
+   "mean_sharpe": -0.09438337258620469,
+   "median_sharpe": -0.1351848296447185,
+   "share_profitable": 0.31092436974789917,
+   "median_return": -0.0781291365253205,
+   "round_trips": 21.134453781512605,
+   "book": {
+    "total_return": -0.04946311998870967,
+    "sharpe": -0.4939139576710575,
+    "n": 119
+   }
+  },
+  "same sector, rejected": {
+   "pairs": 466,
+   "pass_rate": 0.0,
+   "mean_sharpe": -0.030344585782223585,
+   "median_sharpe": -0.041628281767919634,
+   "share_profitable": 0.41201716738197425,
+   "median_return": -0.04107259508534916,
+   "round_trips": 20.448497854077253,
+   "book": {
+    "total_return": -0.030556651089308717,
+    "sharpe": -0.3132971052032625,
+    "n": 466
+   }
+  },
+  "cross sector, passed": {
+   "pairs": 811,
+   "pass_rate": 1.0,
+   "mean_sharpe": 0.003584289697138565,
+   "median_sharpe": 0.006773432395210004,
+   "share_profitable": 0.43403205918618987,
+   "median_return": -0.02499149479259033,
+   "round_trips": 20.914919852034526,
+   "book": {
+    "total_return": -0.017220007040193108,
+    "sharpe": -0.14770250182858038,
+    "n": 811
+   }
+  },
+  "cross sector, rejected": {
+   "pairs": 3554,
+   "pass_rate": 0.0,
+   "mean_sharpe": 0.014581232348544547,
+   "median_sharpe": 0.015331570586761378,
+   "share_profitable": 0.46088913899831174,
+   "median_return": -0.02516388948131587,
+   "round_trips": 20.558244231851436,
+   "book": {
+    "total_return": -0.010771353853703758,
+    "sharpe": -0.07422486469868567,
+    "n": 3554
+   }
+  },
+  "screened": {
+   "pairs": 930,
+   "pass_rate": 1.0,
+   "mean_sharpe": -0.008951357412235461,
+   "median_sharpe": -0.008018756016166029,
+   "share_profitable": 0.4182795698924731,
+   "median_return": -0.036642853079262905,
+   "round_trips": 20.94301075268817,
+   "book": {
+    "total_return": -0.02135477505294081,
+    "sharpe": -0.1931188280074873,
+    "n": 930
+   }
+  },
+  "everything": {
+   "pairs": 4950,
+   "pass_rate": 0.18787878787878787,
+   "mean_sharpe": 0.005930577858349928,
+   "median_sharpe": 0.006544420588896932,
+   "share_profitable": 0.4482828282828283,
+   "median_return": -0.029315994840224846,
+   "round_trips": 20.62020202020202,
+   "book": {
+    "total_return": -0.014548526091125669,
+    "sharpe": -0.11603919464525261,
+    "n": 4950
+   }
+  }
+ },
+ "tests": {
+  "same_vs_cross": {
+   "difference": -0.05590932239906632,
+   "p_value": 0.0018998100189981002
+  },
+  "same_passed_vs_rejected": {
+   "difference": -0.0640387868039811,
+   "p_value": 0.1040895910408959
+  }
+ },
+ "spearman": {
+  "pvalue_all": -0.0011310997190677788,
+  "pvalue_same_sector": 0.04053311611168454,
+  "same_sector_dummy": -0.0462896822931124
+ },
+ "sectors": [
+  {
+   "sector": "Financials",
+   "pairs": 153,
+   "pass_rate": 0.1503267973856209,
+   "mean_sharpe": -0.026680115573485864,
+   "share_profitable": 0.43790849673202614,
+   "round_trips": 21.098039215686274
+  },
+  {
+   "sector": "Information Technology",
+   "pairs": 120,
+   "pass_rate": 0.21666666666666667,
+   "mean_sharpe": -0.05831886493374513,
+   "share_profitable": 0.31666666666666665,
+   "round_trips": 20.225
+  },
+  {
+   "sector": "Health Care",
+   "pairs": 91,
+   "pass_rate": 0.2967032967032967,
+   "mean_sharpe": -0.05859239854151746,
+   "share_profitable": 0.43956043956043955,
+   "round_trips": 20.406593406593405
+  },
+  {
+   "sector": "Industrials",
+   "pairs": 78,
+   "pass_rate": 0.05128205128205128,
+   "mean_sharpe": -0.004279227498864666,
+   "share_profitable": 0.4230769230769231,
+   "round_trips": 21.294871794871796
+  },
+  {
+   "sector": "Consumer Discretionary",
+   "pairs": 55,
+   "pass_rate": 0.2,
+   "mean_sharpe": 0.07609032060711979,
+   "share_profitable": 0.509090909090909,
+   "round_trips": 20.454545454545453
+  },
+  {
+   "sector": "Consumer Staples",
+   "pairs": 45,
+   "pass_rate": 0.35555555555555557,
+   "mean_sharpe": -0.08467896488803377,
+   "share_profitable": 0.3333333333333333,
+   "round_trips": 19.6
+  },
+  {
+   "sector": "Communication Services",
+   "pairs": 36,
+   "pass_rate": 0.3055555555555556,
+   "mean_sharpe": -0.2874525150347198,
+   "share_profitable": 0.1111111111111111,
+   "round_trips": 20.11111111111111
+  },
+  {
+   "sector": "Energy",
+   "pairs": 3,
+   "pass_rate": 0.0,
+   "mean_sharpe": 0.15871265663105513,
+   "share_profitable": 0.6666666666666666,
+   "round_trips": 18.666666666666668
+  },
+  {
+   "sector": "Utilities",
+   "pairs": 3,
+   "pass_rate": 0.3333333333333333,
+   "mean_sharpe": 0.043968781069884603,
+   "share_profitable": 0.3333333333333333,
+   "round_trips": 21.333333333333332
+  },
+  {
+   "sector": "Real Estate",
+   "pairs": 1,
+   "pass_rate": 0.0,
+   "mean_sharpe": 0.7396431894247602,
+   "share_profitable": 1.0,
+   "round_trips": 20.0
+  }
+ ],
+ "after_entry": {
+  "same sector": {
+   "5": {
+    "entries": 25761,
+    "mean_move": 0.006752404127275705,
+    "share_continued": 0.4950118396024999
+   },
+   "10": {
+    "entries": 25668,
+    "mean_move": -0.006113117407257929,
+    "share_continued": 0.48955898394888575
+   },
+   "20": {
+    "entries": 25438,
+    "mean_move": 0.018383116197544656,
+    "share_continued": 0.4995675760673009
+   }
+  },
+  "cross sector": {
+   "5": {
+    "entries": 191500,
+    "mean_move": -0.001569160814092979,
+    "share_continued": 0.49285117493472586
+   },
+   "10": {
+    "entries": 190842,
+    "mean_move": -0.0259205770231831,
+    "share_continued": 0.48512905964095954
+   },
+   "20": {
+    "entries": 189015,
+    "mean_move": -0.02082077683749771,
+    "share_continued": 0.49149538396423564
+   }
+  }
+ },
+ "verdicts": [
+  {
+   "claim": "unscreened, same-sector is no better than cross-sector: p > 0.10",
+   "measured": "gap -0.056, p = 0.002",
+   "held": false
+  },
+  {
+   "claim": "same-sector pairs round-trip more and the gap in Sharpe is at or below zero",
+   "measured": "round trips 20.6 vs 20.6, gap -0.056",
+   "held": false
+  },
+  {
+   "claim": "the same-sector book is at least the screened book, and neither beats everything by more than noise",
+   "measured": "books: same-sector -0.37, screened -0.19, everything -0.12",
+   "held": false
+  },
+  {
+   "claim": "inside the same-sector pairs the p-value still does not rank: |rho| < 0.05",
+   "measured": "Spearman +0.041",
+   "held": true
+  }
+ ]
+}
