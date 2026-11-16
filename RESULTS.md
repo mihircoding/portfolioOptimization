@@ -1957,13 +1957,158 @@ lower target, a higher cap, or on a sleeve with more vol in it, and in all
 three the ratio in section 20 says what it would do.
 
 What this does not do: the sweep holds the allocator at 24 months and the
-momentum sleeve at 36, and it does not move the target or the cap, which
+momentum sleeve at 36, ~~and it does not move the target or the cap, which
 is what would unpin the dial — a 5% target asks for 2.6× on this sleeve
-and would bind rarely, and that is the obvious next row. And a sleeve
+and would bind rarely, and that is the obvious next row.~~ Section 22
+moves both. And a sleeve
 that runs at a fixed 5× through a month the VIX printed 50 in is a
 statement about the cap's size as much as the window's: section 12
 chose 5× against a prime broker's 16×, and this is the section that says
 what the number was doing.
+
+### 22. Unpin the dial, and find the ratio was written on the wrong variance — the sleeve cuts itself ten points more than section 20 said, because the estimator throws away the mean, and a Sharpe-2 sleeve keeps a third of its variance there
+
+Reproduce with: `python holdout.py` (written beside sections 19–21 in the
+same results file)
+
+Section 21 found the sleeve's window set nothing because the 5× cap was
+standing on it. This takes the cap off, two ways, and runs the same
+sweep: the shipped 10% target at a 10× cap and uncapped, and a 5% target
+at the shipped 5× and at 10×. The target and the cap are the book's and
+move every sleeve, so each row is still a book against a book. Four
+predictions, written first: (1) with the cap off going in and coming
+out, the sleeve's own cut is section 20's ratio within five points at
+every window — the 46/36/28/24/12% section 21 predicted and could not
+see; (2) the hump goes, and the sleeve's holdout Sharpe rises with the
+window as section 21's prediction 3 said; (3) the April is worse at 10× —
+7.9× into it instead of 5× at the shipped window, about −17% against
+−11% — so the allocator cuts deeper than section 21's 47% at every
+window; (4) nothing here rescues the risk-based books from 1/N.
+
+Three of the four failed, and the fourth held.
+
+**The sleeve by itself, at each setting** — leverage into April and out
+of it, the cut it made on its own, its scaled April, the eight months
+after, and its holdout Sharpe. The settings are scale-invariant in pairs:
+5% / 5× is 10% / 10× to the digit and 5% / 10× is 10% / uncapped except
+at 6 months, because halving the target and halving the cap is the same
+sleeve, so only the three distinct rows are shown.
+
+| window | 10% / 5× (shipped) | | | | 10% / 10× | | | | 10% / uncapped | | | |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| | in → out | own cut | April / after | Sharpe | in → out | own cut | April / after | Sharpe | in → out | own cut | April / after | Sharpe |
+| 6 mo | 5.0 → 2.7× | 45% | −11.1% / +21.6% | +0.79 | 6.4 → 2.7× | 57% | −14.1% / +34.1% | +0.90 | 6.4 → 2.7× | 57% | −14.1% / +42.9% | +1.05 |
+| 12 mo | 5.0 → 3.4× | 33% | −11.1% / +20.8% | +0.79 | 5.9 → 3.4× | 43% | −13.2% / +20.8% | +0.59 | 5.9 → 3.4× | 43% | −13.2% / +20.8% | +0.59 |
+| 24 mo | 5.0 → 4.7× | 6% | −11.1% / +28.6% | +1.16 | 7.5 → 4.7× | 37% | −16.6% / +28.6% | +0.65 | 7.5 → 4.7× | 37% | −16.6% / +28.6% | +0.65 |
+| 36 mo | 5.0 → 5.0× | 0% | −11.1% / +31.9% | **+1.29** | 7.9 → 5.3× | 33% | −17.4% / +33.8% | +0.76 | 7.9 → 5.3× | 33% | −17.4% / +33.8% | +0.76 |
+| 60 mo | 5.0 → 4.7× | 5% | −11.1% / +31.4% | +1.24 | 5.6 → 4.7× | 16% | −12.5% / +31.4% | +1.06 | 5.6 → 4.7× | 16% | −12.5% / +31.4% | +1.06 |
+
+The cap binds in 84 / 86 / 66 / 59 / 4% of panel months at the shipped
+setting, in 32 / 14 / 2 / 0 / 0% at 10×, and nowhere uncapped. The 60-month
+row barely moves between settings because the cap barely bound there to
+begin with.
+
+**Prediction 1 failed, and section 21's "within a point" was the cap.**
+Unpinned, the sleeve cuts itself by 57 / 43 / 37 / 33 / 16% at 6 / 12 /
+24 / 36 / 60 months. The ratio said 46 / 36 / 28 / 24 / 12. It is under
+by eight to eleven points at every window but 60, and it was under in
+section 21 too: the measured vol multiplier there was 2.32 at 6 months
+against the ratio's 1.84, 1.49 at 36 against 1.32. The agreement section
+21 reported at 6 and 12 months — 45% against 46%, 33% against 36% — was
+1 − 2.75 / 5 and 1 − 3.36 / 5, the capped leverage going in over the
+uncapped leverage coming out, and that happened to land near the ratio.
+Take the cap off the numerator and the cut is 1 − 2.75 / 6.38, which is
+57%.
+
+The ratio is wrong because it was written on the mean square and the
+sleeve sizes itself on the sample variance. `trailing_vol()` is
+`rolling(window).std(ddof=1)`, which subtracts the window's mean, and
+this sleeve has a Sharpe of 2: its monthly mean is about 0.6 of its
+monthly standard deviation, so the mean is a third of its mean square.
+Subtract it and the ordinary month April is measured against shrinks by
+a third, and April is worth more of them — 33 instead of 15 at 6 months,
+25 instead of 18 at 12, 41 instead of 23 at 24, 44 instead of 28 at 36.
+Put the demeaned k into the same formula and the multiplier is 1.74 /
+1.64 / 1.48 / 1.20 at 12 / 24 / 36 / 60 months against the measured
+1.77 / 1.60 / 1.49 / 1.20. At 6 months it overshoots, 2.52 against 2.32,
+because a six-month mean moves when April enters it, which the formula
+holds fixed; everywhere else the ratio is right once it is given the
+variance the sleeve actually uses. So section 20's "one month was worth
+twenty-six" is the mean-square figure; on the estimator the sleeve
+sizes on, April 2025 was worth forty-four ordinary months at the
+shipped window. A sleeve that makes its volatility in its mean carries a
+third of its variance where the vol estimator cannot see it, and loses
+that third the month a loss arrives.
+
+**Prediction 2 failed: the hump did not go, it moved.** Unpinned, the
+sleeve's holdout Sharpe is +1.05 / +0.59 / +0.65 / +0.76 / +1.06 — a
+trough at 12 months, not a line rising to 60. The two ends are the two
+ways to survive April: a 6-month window cuts hardest (57%) and then
+forgets April by October, re-levers, and takes +42.9% out of the
+recovery; a 60-month window never levered up much to begin with (5.6×
+into April, −12.5%) and barely cuts (16%). The windows between cut by a
+third and remember it all year, which is section 20's finding about the
+allocator's window now standing on the sleeve's own: 12 to 36 months is
+long enough to carry April through the whole recovery and short enough
+for April to be most of what is carried. And every unpinned row is
+below the shipped one except 6 months. The cap was not only pinning the
+dial; at 36 months it was holding the sleeve at 5× through an April the
+target would have sent it into at 7.9×, and the +1.29 section 21 called
+the top of the hump was the cap's.
+
+**Prediction 3 failed where the sleeve had already cut itself.** The
+allocator's cut as a share of its HRP weight, shipped against unpinned:
+
+| sleeve window | 6 | 12 | 24 | 36 | 60 |
+|---|---|---|---|---|---|
+| shipped, 10% / 5× | 47% | 47% | 47% | 47% | 51% |
+| 10% / uncapped | **20%** | **22%** | 47% | 58% | 56% |
+| HRP weight into April, shipped → uncapped | 0.42 → 0.11 | 0.41 → 0.12 | 0.41 → 0.19 | 0.41 → 0.27 | 0.48 → 0.50 |
+
+Deeper at 24, 36 and 60, as predicted, and the deepest cut on the whole
+sweep is now at the shipped 36 months, 58%, where the sleeve went in at
+7.9× and handed the allocator a −17.4% month that is 49 ordinary months
+of the scaled series' 24-month variance. But at 6 and 12 months the
+allocator cut *less* — 20% and 22% — and the reason is in the third row.
+Uncapped on a 6-month window, the sleeve's leverage swings between 2.7×
+and 6.4× with the calm of each half-year, and the "10% target" sleeve
+the allocator was handed ran at 16.7% of trailing vol going into April.
+The allocator had already given it 0.11 of the book instead of 0.42,
+and a −14.1% month in a series that volatile is twelve ordinary months,
+not forty-nine. The sleeve's own dial and the allocator's are not two
+cuts that compound; the first changes what the second is looking at.
+Section 21 found the risk-based books' exposure cut was the allocator's
+alone, 47% at every window, because the sleeve's was zero. Unpinned it
+is 66 / 56 / 67 / 72 / 63% for HRP — the sleeve's 57% and the allocator's
+20% at 6 months, the sleeve's 33% and the allocator's 58% at 36 — and
+the shipped window is now where the book cuts most.
+
+**Prediction 4 held.** Every risk-based book is behind equal weight at
+every window at every setting: the HRP gap is −0.66 / −0.42 / −0.57 /
+−0.76 / −0.92 uncapped against −0.60 / −0.60 / −0.75 / −0.80 / −0.86
+shipped. Unpinning the dial changed how the sleeve sizes itself and how
+hard the allocator cut it, and in no row did that make cutting it the
+right call: the eight months after April were up at every setting, and
+the book that held on took them.
+
+So: the sleeve's window does turn once the cap comes off, and what it
+sets is the shape section 20 found on the other window — a short window
+forgets and re-levers, a long one never levered, and the ones between
+carry the month. The ratio that predicts the cut is section 20's with
+one correction, the variance the sleeve actually sizes on, and that
+correction is not small on a sleeve like this one: a third of its
+variance is its mean, and the estimator starts from the other two
+thirds. And the cap, which section 21 found was pinning the dial, was
+also the best setting on the sweep — not because 5× is a good estimate
+of anything, but because the target would have sent a 1.9%-vol sleeve
+into a VIX-50 month at eight times, and the cap would not let it.
+
+What this does not do: the allocator stays at 24 months and the momentum
+sleeve at 36 throughout; the five settings are the vol target and the
+cap, not the estimator — an EWMA, or a mean-square estimator that keeps
+the third the sample variance throws away, is the row this section
+points at; and the 6-month overshoot (2.52 predicted against 2.32) is
+left as the formula's error, not corrected for the moving mean.
 
 ### What this does not establish
 

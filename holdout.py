@@ -385,7 +385,8 @@ SLEEVE_WINDOWS = (6, 12, 24, 36, 60)
 
 def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
                         lookback: int = LOOKBACK_MONTHS, holdout_from: str = HOLDOUT_FROM,
-                        sleeve: str = "volcarry", cap: float = LEVERAGE_CAP) -> dict:
+                        sleeve: str = "volcarry", cap: float = LEVERAGE_CAP,
+                        target: float = VOL_TARGET) -> dict:
     """Section 20's question asked of the other dial: the window the vol
     sleeve sizes itself on, with the allocator's held at `lookback`.
 
@@ -421,11 +422,16 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
        shortest sleeve window, because the April the allocator's 24-month
        variance sees is the scaled one, and the scaled April is largest
        where the leverage into it was.
+
+    `cap` and `target` are the book's, applied to every sleeve: section 22
+    moves them to see what the window does when the cap is not standing
+    on it.
     """
-    out = {"holdout_from": holdout_from, "sleeve": sleeve, "lookback": lookback, "windows": {}}
+    out = {"holdout_from": holdout_from, "sleeve": sleeve, "lookback": lookback,
+           "cap": cap, "target": target, "windows": {}}
     for window in windows:
-        fr = frames(volcarry, volcarry_window=window)
-        panel = capped_panel(fr)
+        fr = frames(volcarry, target=target, volcarry_window=window)
+        panel = capped_panel(fr, cap)
         own = fr[sleeve].loc[panel.index]
         leverage = own["leverage"].clip(upper=cap)
         raw = own["raw"]
@@ -595,6 +601,140 @@ def print_sleeve_window_sweep(sweep: dict, verdicts: dict) -> None:
         f"{n} {w}mo" for n, w in v["weight_cut_deepest_at"].items()))
 
 
+# ---------- section 22: unpin the dial ----------
+
+UNPINNED = (("10% / 5x", 0.10, 5.0), ("10% / 10x", 0.10, 10.0), ("10% / uncapped", 0.10, np.inf),
+            ("5% / 5x", 0.05, 5.0), ("5% / 10x", 0.05, 10.0))
+
+
+def unpinned_sweep(volcarry: pd.Series, settings=UNPINNED, windows=SLEEVE_WINDOWS,
+                   lookback: int = LOOKBACK_MONTHS, holdout_from: str = HOLDOUT_FROM) -> dict:
+    """Section 21 again, at settings where the cap is not the leverage.
+
+    Section 21 swept the vol sleeve's own window and found it set nothing,
+    because a 10% target on a sleeve that makes under 2% of vol asks for
+    five to eight times and the 5x cap gave five whatever the window. This
+    runs the same sweep with the dial unpinned two ways: a higher cap at
+    the same target, and the shipped cap at half the target. Both are the
+    book's settings and move every sleeve, so the comparison stays a book
+    against a book.
+
+    Written before it ran:
+
+    1. Unpinned, the window does what section 20's ratio says. With the
+       cap off the leverage going into April, the sleeve's own cut after it
+       is one minus the inverse of the vol multiplier, within five points,
+       at every window - the 56/43/30/23/16% section 21 predicted and could
+       not see. At 10x the cap should still bind at the two shortest
+       windows going in (the calm of late 2024 asks for more than ten), so
+       the clean reading is the 5% target.
+    2. The hump goes. Section 21 found the sleeve's holdout Sharpe best at
+       36 months because 36 was where the cap never let go, so a fixed 5x
+       took the whole recovery. With the cap off, the sleeve's Sharpe
+       should rise with the window, as section 21's prediction 3 said:
+       the long window took less into April and gives less back after.
+    3. The April is worse at 10x. The sleeve goes in at 7.9x instead of 5x
+       at the shipped window, so the scaled April is about -17% against
+       -11%, and the allocator's cut is deeper than section 21's at every
+       window - the April the 24-month variance sees is the scaled one.
+    4. Nothing here rescues the risk-based books. The Sharpe gap to 1/N
+       stays negative for all four at the shipped lookback in every
+       setting; unpinning the dial changes how the sleeve sizes itself,
+       not whether the allocator should have cut it.
+    """
+    out = {"holdout_from": holdout_from, "lookback": lookback, "settings": {}}
+    for label, target, cap in settings:
+        out["settings"][label] = sleeve_window_sweep(volcarry, windows, lookback, holdout_from,
+                                                     cap=cap, target=target)
+    return out
+
+
+def unpinned_verdicts(sweep: dict, risk_based=RISK_BASED) -> dict:
+    """The four predictions, scored across the settings."""
+    labels = list(sweep["settings"])
+    per = {label: sleeve_window_verdicts(sweep["settings"][label], risk_based) for label in labels}
+    shipped = per[labels[0]]
+    windows = shipped["windows"]
+
+    def cap_free(label):
+        v = per[label]
+        return [not (a or b) for a, b in zip(v["cap_binds_into_worst"], v["cap_binds_after_worst"])]
+
+    def within(label):
+        v = per[label]
+        return [ok for ok, free in zip(v["own_cut_within_five_points"], cap_free(label)) if free]
+
+    # 3. the allocator's cut against the shipped setting's, by scheme and window
+    deeper = {}
+    for label in labels[1:]:
+        deeper[label] = {n: [a > b for a, b in zip(per[label]["weight_cut"][n], shipped["weight_cut"][n])]
+                         for n in risk_based}
+    return {
+        "settings": labels, "windows": windows,
+        "cap_binds_into_worst": {label: per[label]["cap_binds_into_worst"] for label in labels},
+        "cap_binds_share": {label: per[label]["cap_binds_share"] for label in labels},
+        "cap_free_windows": {label: cap_free(label) for label in labels},
+        # 1. where the cap is off both going in and coming out, the ratio predicts the cut
+        "own_cut": {label: per[label]["own_cut"] for label in labels},
+        "predicted_own_cut": shipped["predicted_own_cut"],
+        "ratio_within_five_points_where_cap_free": {label: within(label) for label in labels},
+        "ratio_holds_where_cap_free": {label: bool(within(label)) and all(within(label)) for label in labels},
+        # 2. the hump
+        "sleeve_sharpe": {label: per[label]["sleeve_sharpe"] for label in labels},
+        "sleeve_best_window": {label: per[label]["sleeve_best_window"] for label in labels},
+        "sleeve_sharpe_rises_with_window": {label: per[label]["sleeve_sharpe_rises_with_window"]
+                                            for label in labels},
+        # 3. the April and the allocator's cut
+        "sleeve_april": {label: per[label]["sleeve_april"] for label in labels},
+        "leverage_into": {label: per[label]["leverage_into"] for label in labels},
+        "weight_cut": {label: per[label]["weight_cut"] for label in labels},
+        "allocator_cuts_deeper_than_shipped": {label: {n: all(d) for n, d in deeper[label].items()}
+                                               for label in labels[1:]},
+        # 4. the gap to 1/N
+        "sharpe_gap": {label: per[label]["sharpe_gap"] for label in labels},
+        "risk_based_behind_equal_weight_everywhere": {
+            label: all(g < 0 for n in risk_based for g in per[label]["sharpe_gap"][n]) for label in labels},
+    }
+
+
+def print_unpinned(sweep: dict, verdicts: dict) -> None:
+    v = verdicts
+    windows = v["windows"]
+    print("\nUNPIN THE DIAL   section 21's sweep at settings where the cap is not the leverage")
+    print("\n   the sleeve by itself at each setting: leverage into the worst month -> after, the cut it "
+          "made on its own\n   (the ratio predicts " + ", ".join(f"{p:.0%}" for p in v["predicted_own_cut"])
+          + f" at {', '.join(f'{w}mo' for w in windows)}), its scaled April, and its holdout Sharpe:")
+    for label, s in sweep["settings"].items():
+        by = {int(w): r for w, r in s["windows"].items()}
+        binds = ", ".join(f"{by[w]['cap_binds_share']:.0%}" for w in windows)
+        print(f"\n   {label}   (cap binds in {binds} of panel months)")
+        print(f"{'window':>7} {'lev in':>7} {'lev out':>8} {'own cut':>8} {'April':>7} {'after':>7} {'Sharpe':>7}")
+        for w in windows:
+            r = by[w]
+            cut = "   -" if r["own_cut"] is None else f"{r['own_cut']:>4.0%}"
+            print(f"{w:>5}mo {r['leverage_into_worst']:>6.2f}x {r['leverage_after_worst']:>7.2f}x "
+                  f"{cut:>8} {r['sleeve']['worst_month_return']:>+7.1%} "
+                  f"{r['sleeve']['return_after_worst']:>+7.1%} {r['sleeve']['sharpe']:>+7.2f}")
+    print("\n   the allocator's own cut as a share of its weight, HRP and min variance, and the Sharpe gap to 1/N:")
+    print(f"\n{'setting':>15} " + " ".join(f"{w:>5}mo" for w in windows) + "   " + " ".join(f"{w:>5}mo" for w in windows))
+    for label in v["settings"]:
+        for n in ("HRP", "min variance"):
+            cuts = " ".join("    -" if c != c else f"{c:>6.0%}" for c in v["weight_cut"][label][n])
+            gaps = " ".join(f"{g:>+6.2f}" for g in v["sharpe_gap"][label][n])
+            print(f"{label:>15} {cuts}   {gaps}   {n}")
+    print("\n   the predictions:")
+    print("   1. where the cap is off going in and coming out, the own cut is within five points of the ratio: "
+          + ", ".join(f"{label} {sum(ok)}/{len(ok)}" for label, ok in v["ratio_within_five_points_where_cap_free"].items()))
+    print("   2. the sleeve's Sharpe rises with the window: " + ", ".join(
+        f"{label} {'yes' if ok else 'no'} (best {v['sleeve_best_window'][label]}mo)"
+        for label, ok in v["sleeve_sharpe_rises_with_window"].items()))
+    print("   3. the allocator cuts deeper than at the shipped setting, every window: " + ", ".join(
+        f"{label} " + "/".join("yes" if ok else "no" for ok in d.values())
+        for label, d in v["allocator_cuts_deeper_than_shipped"].items()))
+    print("   4. every risk-based book behind 1/N at every window: " + ", ".join(
+        f"{label} {'yes' if ok else 'no'}" for label, ok in v["risk_based_behind_equal_weight_everywhere"].items()))
+
+
 # ---------- reporting ----------
 
 def print_holdout(study: dict) -> None:
@@ -642,6 +782,10 @@ def main() -> None:
                                                        LOOKBACK_MONTHS, HOLDOUT_FROM)
     study["sleeve_window_verdicts"] = sleeve_window_verdicts(study["sleeve_window_sweep"])
     print_sleeve_window_sweep(study["sleeve_window_sweep"], study["sleeve_window_verdicts"])
+    study["unpinned_sweep"] = unpinned_sweep(volcarry_extended(), UNPINNED, SLEEVE_WINDOWS,
+                                             LOOKBACK_MONTHS, HOLDOUT_FROM)
+    study["unpinned_verdicts"] = unpinned_verdicts(study["unpinned_sweep"])
+    print_unpinned(study["unpinned_sweep"], study["unpinned_verdicts"])
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
         json.dump(study, fh, indent=1, default=float)

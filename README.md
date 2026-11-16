@@ -190,17 +190,30 @@ afterwards. The cut after April was the allocator's alone; the sleeve
 under 1/N was a fixed 5× throughout, and "1/N cuts nothing" was true of
 the exposure and not only the weight.
 
+Section 22 takes the cap off — a 10× cap, no cap, and a 5% target — and
+finds the dial turns, and turns more than the ratio said: the sleeve
+cuts itself by 57% at six months and 33% at the shipped 36, ten points
+past section 20's prediction at every window, because the estimator it
+sizes on subtracts the mean and a Sharpe-2 sleeve keeps a third of its
+variance there. On the variance it actually uses, April was worth
+forty-four ordinary months, not twenty-six. The hump moves rather than
+going — a 6-month window forgets April and re-levers into the recovery,
+a 60-month one never levered up, and 12 to 36 carry the month — and the
+cap that was pinning the dial was also the best setting on the sweep,
+because it held the sleeve at 5× through a month the target would have
+entered at 7.9×.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-370 tests.
+372 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 366 passed
+python -m pytest -q                 # 372 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result

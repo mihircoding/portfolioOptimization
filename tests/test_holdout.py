@@ -311,3 +311,64 @@ def test_the_sleeve_verdicts_score_the_cap_first_and_then_the_four_predictions(m
     assert set(v["weight_cut_deepest_at"]) == set(RISK_BASED)
     assert v["exposure_cut_at_shipped"] is None   # 36 is not in this sweep
     assert SLEEVE_WINDOWS == (6, 12, 24, 36, 60)
+
+
+# ---------- section 22: unpin the dial ----------
+
+from holdout import UNPINNED, print_unpinned, unpinned_sweep, unpinned_verdicts
+
+
+def test_the_cap_and_the_target_reach_the_panel_and_halving_both_is_the_same_sleeve(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    # a sleeve at 1.3% a year asks for about 8x: capped at 5 it is the cap,
+    # at 10 it is the ask, and a 5% target at 5x is the 10% target at 10x
+    quiet = (volcarry * 0.33).rename("ret")
+    quiet.iloc[-9] = -0.02
+    since = f"{first_new:%Y-%m-01}"
+    capped = sleeve_window_sweep(quiet, windows=(36,), lookback=12, holdout_from=since)["windows"]["36"]
+    loose = sleeve_window_sweep(quiet, windows=(36,), lookback=12, holdout_from=since,
+                                cap=10.0)["windows"]["36"]
+    half = sleeve_window_sweep(quiet, windows=(36,), lookback=12, holdout_from=since,
+                               cap=5.0, target=0.05)["windows"]["36"]
+    assert capped["leverage_into_worst"] == 5.0 and capped["own_cut"] == 0.0
+    assert 5.0 < loose["uncapped_leverage_into_worst"] < 10.0
+    assert loose["leverage_into_worst"] == pytest.approx(loose["uncapped_leverage_into_worst"])
+    assert loose["own_cut"] == pytest.approx(1 - 1 / loose["vol_multiplier"])
+    # the scaled April is the raw month times the leverage the cap allowed,
+    # so the panel saw the cap and not only the report
+    assert capped["sleeve"]["worst_month_return"] == pytest.approx(5.0 * capped["sleeve"]["raw_worst_month_return"])
+    assert loose["sleeve"]["worst_month_return"] == pytest.approx(
+        loose["leverage_into_worst"] * loose["sleeve"]["raw_worst_month_return"])
+    assert half["leverage_into_worst"] == pytest.approx(loose["leverage_into_worst"] / 2)
+    assert half["own_cut"] == pytest.approx(loose["own_cut"])
+    assert half["sleeve"]["sharpe"] == pytest.approx(loose["sleeve"]["sharpe"])
+    assert half["cap_binds_share"] == pytest.approx(loose["cap_binds_share"])
+
+
+def test_the_unpinned_sweep_runs_every_setting_and_the_verdicts_read_them_against_the_first(monkeypatch, capsys):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    volcarry.iloc[-9] = -0.06
+    settings = (("10% / 5x", 0.10, 5.0), ("10% / 10x", 0.10, 10.0), ("5% / 5x", 0.05, 5.0))
+    sweep = unpinned_sweep(volcarry, settings, windows=(6, 12), lookback=12,
+                           holdout_from=f"{first_new:%Y-%m-01}")
+    assert list(sweep["settings"]) == [s[0] for s in settings]
+    for label, target, cap in settings:
+        s = sweep["settings"][label]
+        assert s["cap"] == cap and s["target"] == target
+        assert set(s["windows"]) == {"6", "12"}
+    v = unpinned_verdicts(sweep)
+    assert v["settings"] == [s[0] for s in settings] and v["windows"] == [6, 12]
+    # this sleeve never hits the cap, so every window is cap-free and the
+    # own cut is the ratio's to score, at every setting
+    for label in v["settings"]:
+        assert v["cap_free_windows"][label] == [True, True]
+        assert len(v["ratio_within_five_points_where_cap_free"][label]) == 2
+        assert v["own_cut"][label] == pytest.approx(v["own_cut"][v["settings"][0]])
+    # the first setting has nothing to be compared against
+    assert set(v["allocator_cuts_deeper_than_shipped"]) == {"10% / 10x", "5% / 5x"}
+    for d in v["allocator_cuts_deeper_than_shipped"].values():
+        assert set(d) == set(RISK_BASED)
+    print_unpinned(sweep, v)
+    out = capsys.readouterr().out
+    assert "UNPIN THE DIAL" in out and "the predictions:" in out
+    assert len(UNPINNED) == 5 and UNPINNED[0][1:] == (0.10, 5.0)
