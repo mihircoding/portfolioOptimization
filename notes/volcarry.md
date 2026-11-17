@@ -798,10 +798,86 @@ mean.
 What this does not settle: the re-marked arm uses VIX, a 30-day index of the
 whole strip, as the day's at-the-money vol for an option with less than 30
 days left; a desk would mark to the strike's own implied, which in a sell-off
-is below VIX for a now-out-of-the-money call. That would put the re-marked
-delta between the two arms here, and the direction of the result would stand.
-And the realized-vol arm is run at the whole month's realized vol from day
-one, which is the textbook experiment and not a strategy.
+is below VIX for a now-out-of-the-money call. ~~That would put the re-marked
+delta between the two arms here, and the direction of the result would stand.~~
+The next section runs it, and it does, for two weeks. The realized-vol arm is
+run at the whole month's realized vol from day one, which is the textbook
+experiment and not a strategy.
+
+### The strike's own vol, and a cap on the re-mark
+
+Two more arms on the same 238 months, each taking one thing away from the
+re-marked hedge. The **strike-vol** arm marks the delta to the strike's own
+implied instead of the index's: the day's VIX is the at-the-money level, and
+the strike's vol is read off the SPY surface `ssvi_study.py` fitted (rho
+-0.47, eta 0.76, gamma 0.58, the shape only - the level is reset to each
+day's VIX) at the strike's log-moneyness and the time left. `strike_vol()` is
+the one function, and at k = 0 it hands the at-the-money vol back exactly.
+The **capped** arm marks to the day's VIX but never above the vol the option
+was sold at: it may mark down, it may not mark up. The re-marked arm lost its
+tail by marking up in a spike, so a cap on the vol is the one change that
+asks whether the up-marks were the whole loss, without slowing the hedges that
+were right - a cap on how far the delta may move per day would slow those
+too. Four predictions written first; two failed.
+
+```
+                            sold-at  re-marked   realized strike-vol     capped
+average P&L                   0.394      0.412      0.390      0.393      0.407
+std dev of P&L                0.640      0.704      0.948      0.666      0.644
+annualized Sharpe              2.13       2.03       1.42       2.05       2.19
+months profitable             80.3%      81.5%      81.5%      81.9%      80.7%
+worst month                  -2.697     -4.324     -6.920     -3.845     -2.702
+
+March 2020                   -2.697     -4.324     -6.920     -3.845     -2.702
+October 2008                 -1.184     -2.258     -5.827     -1.738     -1.184
+24 months VIX rose >10 pts   -0.590     -0.759     -1.246     -0.609     -0.595
+  ... of which beat sold-at                 10                     14          7
+```
+
+**The skew puts the strike below the money for two weeks and above it for
+one.** The strike-vol arm sits between the other two on both the std (0.666)
+and the worst month (-3.85), as predicted, and in the 24 spike months it beat
+the sold-at hedge in 14, which the re-marked hedge managed in 10. But the
+mechanism was only half what the caveat said. On the way down in March 2020
+the strike's vol ran 2 to 8 points *below* VIX for thirteen days - a strike
+20% above a spot whose at-the-money vol is 75% sits on the flat part of a
+high-variance smile, below the level - and that is where the arm earned its
+half-point over the re-marked one. Then with a week left the same strike was
+3 to 21 points *above* VIX, because a smile with a few days to run is steep
+in log-moneyness and a strike 16% from the money is on its call wing. Over
+all 4,998 hedge days the strike's vol averaged 3.0 points over VIX, not
+under: +0.8 with more than ten days left, +7.7 with five or fewer, and the
+strike sat above the money on average in 173 of the 238 months. The caveat
+imagined the skew as a tilt; the fitted surface says it is a tilt near the
+money and a bowl away from it, and a strike that was at-the-money three
+weeks ago is usually away from it by expiry. So the strike-vol hedge is not
+"the re-marked hedge less a few points", and the correlation prediction
+failed on that: 0.972 against the 0.98 called for. One caveat the number
+carries: the surface's shortest fitted expiry was eight days, so the last
+week of every trade is the power law extrapolated below the data, and the
++21 at one day left is the extrapolation, not a quote. It moves nothing
+(a 16%-out call with a day left has no delta at either vol); the two weeks
+of below-the-money marks are inside the fitted range.
+
+**The up-marks were the whole tail, and the down-marks were worth a cent.**
+The capped arm reproduces the sold-at arm in March 2020 (-2.702 against
+-2.697; the cap bound on 19 of 21 days, the other two being the first day,
+when the two vols are the same number, and 4 March, when VIX dipped to 32
+under the 33.4% the call was sold at) and
+in October 2008 to the third decimal (bound on 20 of 21). Across the tape
+the cap binds on 42% of hedge days, in no month on every day and in 40
+months on none, and the arm differs from sold-at in 221 of 238 months -
+where it averaged +0.445 against +0.431. That is what the down-marks are
+worth: the re-marked arm's +0.018 of extra mean over sold-at is +0.013 from
+marking down when the market calms and +0.005 from marking up when it does
+not, and the +0.005 came with the 60% longer tail. The std prediction
+failed, though not by anything: 0.644 against 0.640. Marking down lowers
+the delta of an out-of-the-money call in a calming month and that is a
+smaller hedge, not a steadier one. The capped arm is the best Sharpe of
+the five (2.19) by having the sold-at tail and a cent more carry, which is
+the plain reading of the first section's finding: re-hedging on current
+implied is a desk's practice, and the half of it that pays is the half that
+reduces the position.
 
 ## Things to notice when comparing to the market
 

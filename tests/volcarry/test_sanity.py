@@ -894,18 +894,82 @@ def test_hedging_at_the_true_vol_collects_the_inception_price_gap():
     assert np.mean(pnls) == pytest.approx(np.mean(at_implied), abs=0.3)
 
 
-def test_the_three_arms_share_a_premium_and_differ_only_in_the_delta():
-    from sleeves.volcarry.remark_study import trade_three_ways
+def test_the_arms_share_a_premium_and_differ_only_in_the_delta():
+    from sleeves.volcarry.remark_study import trade_five_ways
     idx = pd.bdate_range("2020-02-03", periods=22)
     rng = np.random.default_rng(5)
     spy = pd.Series(300.0 * np.exp(np.cumsum(rng.normal(0, 0.02, len(idx)))), index=idx)
     vix = pd.Series(np.linspace(15.0, 60.0, len(idx)), index=idx)
-    row = trade_three_ways(pd.DataFrame({"spy": spy, "vix": vix}), option_spread_vol_pts=0.0,
-                           option_spread_vix_anchor=None)
+    row = trade_five_ways(pd.DataFrame({"spy": spy, "vix": vix}), option_spread_vol_pts=0.0,
+                          option_spread_vix_anchor=None)
     assert row["implied"] == pytest.approx(0.15)
     assert row["vix_max"] == pytest.approx(0.60, abs=0.03)
     assert len({round(row[a], 6) for a in ("sold-at", "re-marked", "realized")}) == 3
     # a flat VIX makes the re-marked arm the sold-at arm exactly
-    flat = trade_three_ways(pd.DataFrame({"spy": spy, "vix": pd.Series(15.0, index=idx)}),
-                            option_spread_vol_pts=0.0, option_spread_vix_anchor=None)
+    flat = trade_five_ways(pd.DataFrame({"spy": spy, "vix": pd.Series(15.0, index=idx)}),
+                           option_spread_vol_pts=0.0, option_spread_vix_anchor=None)
     assert flat["re-marked"] == pytest.approx(flat["sold-at"])
+
+
+# ---------- the strike's own vol, and a cap on the re-mark ----------
+
+
+def test_the_strike_vol_is_the_atm_vol_at_the_money_and_the_atm_vol_everywhere_on_a_flat_surface():
+    from sleeves.volcarry.remark_study import SPY_SSVI, strike_vol
+    from sleeves.volcarry.ssvi import SSVIParams
+    for atm in (0.10, 0.33, 0.80):
+        for t in (21 / 252, 1 / 252):
+            assert strike_vol(100.0, 100.0, t, atm) == pytest.approx(atm)
+    # eta = 0 is a smile with no width, so every strike carries the level
+    flat = SSVIParams(rho=SPY_SSVI.rho, eta=0.0, gamma=SPY_SSVI.gamma, thetas=(0.0,), ts=(0.0,))
+    strikes = np.array([70.0, 95.0, 100.0, 105.0, 140.0])
+    assert np.allclose(strike_vol(100.0, strikes, 10 / 252, 0.25, flat), 0.25)
+
+
+def test_the_strike_vol_has_the_equity_tilt_and_its_minimum_a_touch_above_the_money():
+    from sleeves.volcarry.remark_study import strike_vol
+    t, atm = 10 / 252, 0.20
+    # a strike below the spot (the put side) is dearer than the same
+    # distance above it, which is what a negative rho means
+    assert strike_vol(100.0, 95.0, t, atm) > strike_vol(100.0, 105.0, t, atm)
+    # just above the money the vol dips below the level, then the call
+    # wing comes back up; the dip is why a now-out-of-the-money short
+    # call hedges at less than VIX in a sell-off, the wing is why it does
+    # not stay there
+    k = np.linspace(0.0, 0.30, 301)
+    vols = strike_vol(100.0, 100.0 * np.exp(k), t, atm)
+    assert vols[1:60].min() < atm
+    assert vols[-1] > atm
+    assert 0.0 < k[np.argmin(vols)] < 0.05
+
+
+def test_the_strike_vol_broadcasts_over_a_month_of_hedge_days():
+    from sleeves.volcarry.remark_study import strike_vol
+    rng = np.random.default_rng(9)
+    spot = 100.0 * np.exp(np.cumsum(rng.normal(0, 0.02, 21)))
+    vix = np.linspace(0.20, 0.50, 21)
+    left = (21 - np.arange(21)) / 252
+    whole = strike_vol(spot, 100.0, left, vix)
+    one_at_a_time = [strike_vol(s, 100.0, t, v) for s, t, v in zip(spot, left, vix)]
+    assert np.allclose(whole, one_at_a_time)
+    assert np.all(whole > 0)
+
+
+def test_the_capped_arm_is_sold_at_when_vix_only_rises_and_re_marked_when_it_only_falls():
+    from sleeves.volcarry.remark_study import trade_five_ways
+    idx = pd.bdate_range("2020-02-03", periods=22)
+    rng = np.random.default_rng(5)
+    spy = pd.Series(300.0 * np.exp(np.cumsum(rng.normal(0, 0.02, len(idx)))), index=idx)
+    rising = trade_five_ways(pd.DataFrame({"spy": spy, "vix": pd.Series(np.linspace(15.0, 60.0, len(idx)), index=idx)}),
+                             option_spread_vol_pts=0.0, option_spread_vix_anchor=None)
+    assert rising["days_cap_binds"] == 20
+    assert rising["capped"] == pytest.approx(rising["sold-at"])
+    assert rising["capped"] != pytest.approx(rising["re-marked"])
+    falling = trade_five_ways(pd.DataFrame({"spy": spy, "vix": pd.Series(np.linspace(60.0, 15.0, len(idx)), index=idx)}),
+                              option_spread_vol_pts=0.0, option_spread_vix_anchor=None)
+    assert falling["days_cap_binds"] == 0
+    assert falling["capped"] == pytest.approx(falling["re-marked"])
+    # the strike-vol arm is its own hedge: it agrees with nobody exactly,
+    # and on the first day, at the money, its vol is the day's VIX
+    assert len({round(rising[a], 6) for a in ("sold-at", "re-marked", "realized", "strike-vol", "capped")}) == 4
+    assert rising["skew_mean_pts"] != 0.0
