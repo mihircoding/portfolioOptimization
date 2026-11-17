@@ -44,12 +44,12 @@ import os
 import numpy as np
 import pandas as pd
 
-from multi_strategy import (BETA_WINDOW_MONTHS, LEVERAGE_CAP, LOOKBACK_MONTHS,
+from multi_strategy import (BETA_WINDOW_MONTHS, LEVERAGE_CAP, LOOKBACK_MONTHS, MONTHS_PER_YEAR,
                             VOL_TARGET, VOL_WINDOW_MONTHS, allocators, beta_hedged,
                             estimate, market_monthly, paired_sharpe_bootstrap,
-                            performance, statarb_monthly, statarb_trailing_vol,
-                            trailing_vol, vol_targeted, volcarry_monthly,
-                            xsmom_monthly)
+                            ewma_vol, performance, statarb_monthly,
+                            statarb_trailing_vol, trailing_rms_vol, trailing_vol,
+                            vol_targeted, volcarry_monthly, xsmom_monthly)
 
 START = "2007-01-01"
 HOLDOUT_END = "2026-01-31"        # one month past 2025 so December's option has its 21 days
@@ -108,13 +108,22 @@ def agreement(extended: pd.Series, shipped: pd.Series) -> dict:
 
 # ---------- the panel of sections 11-18, on the longer tape ----------
 
+# how the vol sleeve measures its own vol: the sample std that shipped,
+# the root mean square that keeps the mean, and the EWMA that keeps it
+# and forgets gradually
+ESTIMATORS = {"std": trailing_vol, "rms": trailing_rms_vol, "ewma": ewma_vol}
+
+
 def frames(volcarry: pd.Series, target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
-           beta_window: int = BETA_WINDOW_MONTHS, volcarry_window: int | None = None) -> dict:
+           beta_window: int = BETA_WINDOW_MONTHS, volcarry_window: int | None = None,
+           estimator: str = "std") -> dict:
     """multi_strategy.sleeve_frames with the vol sleeve handed in, so the
     only thing different from section 11 is how long that sleeve runs.
 
     `volcarry_window` sizes the vol sleeve on its own window and leaves the
     momentum sleeve on `window`; None is the shipped setting, both on 36.
+    `estimator` is how the vol sleeve measures that window - see ESTIMATORS;
+    the momentum sleeve stays on the sample std throughout.
     """
     market = market_monthly()
     xsmom = beta_hedged(xsmom_monthly(), market, beta_window)["hedged"].rename("xsmom")
@@ -123,7 +132,7 @@ def frames(volcarry: pd.Series, target: float = VOL_TARGET, window: int = VOL_WI
     volcarry = volcarry.copy()
     volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
     return {"statarb": vol_targeted(statarb, statarb_trailing_vol(), target),
-            "volcarry": vol_targeted(volcarry, trailing_vol(volcarry, volcarry_window or window), target),
+            "volcarry": vol_targeted(volcarry, ESTIMATORS[estimator](volcarry, volcarry_window or window), target),
             "xsmom": vol_targeted(xsmom, trailing_vol(xsmom, window), target)}
 
 
@@ -386,7 +395,7 @@ SLEEVE_WINDOWS = (6, 12, 24, 36, 60)
 def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
                         lookback: int = LOOKBACK_MONTHS, holdout_from: str = HOLDOUT_FROM,
                         sleeve: str = "volcarry", cap: float = LEVERAGE_CAP,
-                        target: float = VOL_TARGET) -> dict:
+                        target: float = VOL_TARGET, estimator: str = "std") -> dict:
     """Section 20's question asked of the other dial: the window the vol
     sleeve sizes itself on, with the allocator's held at `lookback`.
 
@@ -425,12 +434,12 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
 
     `cap` and `target` are the book's, applied to every sleeve: section 22
     moves them to see what the window does when the cap is not standing
-    on it.
+    on it. `estimator` is the vol sleeve's own, section 23's dial.
     """
     out = {"holdout_from": holdout_from, "sleeve": sleeve, "lookback": lookback,
-           "cap": cap, "target": target, "windows": {}}
+           "cap": cap, "target": target, "estimator": estimator, "windows": {}}
     for window in windows:
-        fr = frames(volcarry, target=target, volcarry_window=window)
+        fr = frames(volcarry, target=target, volcarry_window=window, estimator=estimator)
         panel = capped_panel(fr, cap)
         own = fr[sleeve].loc[panel.index]
         leverage = own["leverage"].clip(upper=cap)
@@ -442,6 +451,24 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
         # the raw sleeve's worst holdout month against an ordinary one, on
         # the months the sleeve itself has - the k in prediction 1
         k = float(raw.loc[worst] ** 2 / (prior.iloc[-window:] ** 2).mean())
+        # the same month against the sample variance, which is what the
+        # shipped estimator measures it against - section 22's correction
+        k_demeaned = float((raw.loc[worst] - prior.iloc[-window:].mean()) ** 2
+                           / prior.iloc[-window:].var(ddof=1))
+        # the ratio counts the month that comes in and not the one that goes
+        # out: a window is a queue, and the month it drops when April enters
+        # is the month `window` months before - for a whole number of years,
+        # an earlier April. The exact rms multiplier is 1 + (k - k_out) / w;
+        # the EWMA drops nothing and weights April against its own estimate
+        # (on the sleeve's whole history, which reaches past the panel's
+        # start: k above is on the panel's months, as sections 21 and 22 read it)
+        history = fr[sleeve]["raw"].loc[:worst].iloc[:-1]
+        out_month = history.iloc[-window]
+        var_in = own.loc[worst, "vol"] ** 2 / MONTHS_PER_YEAR
+        k_own = float(raw.loc[worst] ** 2 / var_in)
+        k_out = float(out_month ** 2 / var_in)
+        exact = {"std": None, "rms": float(np.sqrt(1 + (k_own - k_out) / window)),
+                 "ewma": float(np.sqrt((window - 1 + k_own) / window))}[estimator]
         paths, held = walk_forward_paths(panel, lookback)
         part = paths.loc[holdout_from:]
         ew = part["equal weight"]
@@ -450,6 +477,13 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
         scaled = panel[sleeve]
         row = {"worst_month": f"{worst:%Y-%m}", "months_traded": int(len(paths)),
                "worst_in_ordinary_months": k,
+               "worst_in_ordinary_months_demeaned": k_demeaned,
+               "worst_in_ordinary_months_own_estimate": k_own,
+               "month_dropped": f"{history.index[-window]:%Y-%m}",
+               "month_dropped_return": float(out_month),
+               "month_dropped_in_ordinary_months": k_out,
+               "predicted_multiplier_demeaned": float(np.sqrt((window - 1 + k_demeaned) / window)),
+               "predicted_multiplier_exact": exact,
                "vol_multiplier": float(own.loc[after[0], "vol"] / own.loc[worst, "vol"]) if len(after) else None,
                "predicted_multiplier": float(np.sqrt((window - 1 + k) / window)),
                "leverage_into_worst": lev_into, "leverage_after_worst": lev_after,
@@ -465,6 +499,11 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
                "cap_binds_share_holdout": float((own.loc[holdout_from:, "leverage"] > cap).mean()),
                "own_cut": None if lev_after is None else float(1 - lev_after / lev_into),
                "predicted_own_cut": float(1 - 1 / np.sqrt((window - 1 + k) / window)),
+               "predicted_own_cut_demeaned": float(1 - 1 / np.sqrt((window - 1 + k_demeaned) / window)),
+               # the scaled month against the scaled series' mean square on the
+               # allocator's own window: what the allocator's variance sees
+               "scaled_worst_in_ordinary_months": float(
+                   scaled.loc[worst] ** 2 / (scaled.loc[:worst].iloc[:-1].iloc[-lookback:] ** 2).mean()),
                "sleeve": {**performance(scaled.loc[holdout_from:]),
                           "worst_month_return": float(scaled.loc[worst]),
                           "raw_worst_month_return": float(raw.loc[worst]),
@@ -735,6 +774,187 @@ def print_unpinned(sweep: dict, verdicts: dict) -> None:
         f"{label} {'yes' if ok else 'no'}" for label, ok in v["risk_based_behind_equal_weight_everywhere"].items()))
 
 
+
+# ---------- section 23: keep the mean ----------
+
+# The two settings from section 22 where the cap is off the leverage going
+# into April: the shipped target at twice the cap, and half the target at
+# twice the cap (which is 10% / uncapped everywhere but 6 months).
+KEPT_MEAN = (("10% / 10x", 0.10, 10.0), ("5% / 10x", 0.05, 10.0))
+ESTIMATOR_ORDER = ("std", "rms", "ewma")
+
+
+def estimator_sweep(volcarry: pd.Series, settings=KEPT_MEAN, estimators=ESTIMATOR_ORDER,
+                    windows=SLEEVE_WINDOWS, lookback: int = LOOKBACK_MONTHS,
+                    holdout_from: str = HOLDOUT_FROM) -> dict:
+    """Section 22 again, with the sleeve sizing on an estimator that keeps
+    the mean.
+
+    Section 22 found the ratio that predicts the sleeve's own cut after
+    April was written on the mean square while the sleeve sizes on a sample
+    standard deviation, which subtracts the mean first, and that a Sharpe-2
+    sleeve keeps a third of its variance there. Put the demeaned k in the
+    formula and it lands on the measured multiplier at every window but
+    six months. This runs the same sweep three ways: the sample std that
+    shipped, a root mean square over the same window, and a RiskMetrics
+    EWMA with the newest month weighted 1/window so April enters each
+    estimate with the same weight it has in the window.
+
+    Written before it ran:
+
+    1. On the rms estimator the original ratio is right. Its k is the
+       mean-square k the ratio was written on, so the sleeve's own cut is
+       within three points of section 20's 46/36/28/24/12% at every window,
+       six months included - the six-month overshoot in section 22 was the
+       window's mean moving when April entered it, and this estimator has
+       no mean to move.
+    2. The rms sleeve is a smaller sleeve. Keeping the mean adds a third to
+       the variance, so the vol is 15% higher and the leverage 13% lower at
+       every window going into April: 6.9x at the shipped 36 months against
+       7.9x, a scaled April near -15% against -17%, the cap binding less
+       often, and the holdout Sharpe within 0.10 of the std row because the
+       two estimates differ by a factor that moves slowly.
+    3. The EWMA cuts what the window cuts. With the newest month at 1/w in
+       both, April moves the two estimates by the same amount, so the EWMA's
+       own cut is within two points of the rms window's at every w.
+    4. And then it holds on. The window drops April after w months; the
+       EWMA never does, it only decays it, and at the 6- and 12-month
+       equivalents the window has forgotten April before the holdout ends
+       while the EWMA still carries a quarter of it. So the EWMA re-levers
+       less into the recovery and its holdout Sharpe is below the rms
+       window's at 6 and 12, and within 0.05 of it at 24, 36 and 60, where
+       neither has dropped the month yet.
+    5. The allocator barely notices. Its HRP cut as a share of its weight is
+       within five points of the std row at every window on both
+       estimators: the series it is handed is the same raw sleeve at a
+       slightly different leverage, and section 22's shallow cut at 6 and
+       12 months was about the leverage swinging with each half-year's
+       calm, which keeping the mean does not change.
+    """
+    out = {"holdout_from": holdout_from, "lookback": lookback, "settings": {}}
+    for label, target, cap in settings:
+        out["settings"][label] = {
+            estimator: sleeve_window_sweep(volcarry, windows, lookback, holdout_from,
+                                           cap=cap, target=target, estimator=estimator)
+            for estimator in estimators}
+    return out
+
+
+def estimator_verdicts(sweep: dict, risk_based=RISK_BASED) -> dict:
+    """The five predictions, scored at each setting."""
+    out = {"settings": list(sweep["settings"]), "by_setting": {}}
+    for label, by_est in sweep["settings"].items():
+        per = {est: sleeve_window_verdicts(s, risk_based) for est, s in by_est.items()}
+        windows = per["std"]["windows"]
+        rows = {est: {int(w): r for w, r in by_est[est]["windows"].items()} for est in by_est}
+        own = {est: per[est]["own_cut"] for est in per}
+        # the ratio on the mean square, which is what the rms estimator uses,
+        # and section 22's demeaned correction, which is what the std does
+        mean_square = [rows["std"][w]["predicted_own_cut"] for w in windows]
+        demeaned = [rows["std"][w]["predicted_own_cut_demeaned"] for w in windows]
+        lev_in = {est: [rows[est][w]["leverage_into_worst"] for w in windows] for est in per}
+        sharpe = {est: per[est]["sleeve_sharpe"] for est in per}
+        hrp = {est: per[est]["weight_cut"]["HRP"] for est in per}
+        v = {
+            "windows": windows,
+            "own_cut": own, "ratio_mean_square": mean_square, "ratio_demeaned": demeaned,
+            # 1. the original ratio on the rms estimator
+            "rms_within_three_points_of_ratio": [abs(a - b) < 0.03 for a, b in zip(own["rms"], mean_square)],
+            "std_within_three_points_of_demeaned": [abs(a - b) < 0.03 for a, b in zip(own["std"], demeaned)],
+            "vol_multiplier": {est: [rows[est][w]["vol_multiplier"] for w in windows] for est in per},
+            "predicted_multiplier": [rows["std"][w]["predicted_multiplier"] for w in windows],
+            "predicted_multiplier_demeaned": [rows["std"][w]["predicted_multiplier_demeaned"] for w in windows],
+            "predicted_multiplier_exact": {est: [rows[est][w]["predicted_multiplier_exact"] for w in windows]
+                                           for est in per if est != "std"},
+            # the month going out, against the window's mean square (the rms row)
+            "month_dropped": [rows["rms"][w]["month_dropped"] for w in windows],
+            "month_dropped_return": [rows["rms"][w]["month_dropped_return"] for w in windows],
+            "month_dropped_in_ordinary_months": [rows["rms"][w]["month_dropped_in_ordinary_months"] for w in windows],
+            "k_on_own_estimate": {est: [rows[est][w]["worst_in_ordinary_months_own_estimate"] for w in windows]
+                                  for est in per},
+            # 2. the rms sleeve is smaller
+            "leverage_into": lev_in,
+            "rms_leverage_over_std": [a / b for a, b in zip(lev_in["rms"], lev_in["std"])],
+            "rms_leverage_lower_everywhere": all(a < b for a, b in zip(lev_in["rms"], lev_in["std"])),
+            "cap_binds_share": {est: per[est]["cap_binds_share"] for est in per},
+            "sleeve_april": {est: per[est]["sleeve_april"] for est in per},
+            "sleeve_sharpe": sharpe,
+            "rms_sharpe_within_tenth_of_std": [abs(a - b) < 0.10 for a, b in zip(sharpe["rms"], sharpe["std"])],
+            # 3. the ewma cuts what the rms window cuts
+            "ewma_within_two_points_of_rms": [abs(a - b) < 0.02 for a, b in zip(own["ewma"], own["rms"])],
+            # 4. and holds on: below the window at 6 and 12, level at 24+
+            "ewma_sharpe_minus_rms": [a - b for a, b in zip(sharpe["ewma"], sharpe["rms"])],
+            "ewma_below_rms_at_short_windows": all(sharpe["ewma"][i] < sharpe["rms"][i]
+                                                   for i, w in enumerate(windows) if w <= 12),
+            "ewma_level_with_rms_at_long_windows": all(abs(sharpe["ewma"][i] - sharpe["rms"][i]) < 0.05
+                                                       for i, w in enumerate(windows) if w >= 24),
+            "leverage_at_end": {est: [rows[est][w]["sleeve"]["mean_leverage_holdout"] for w in windows]
+                                for est in per},
+            # 5. the allocator's HRP cut within five points of the std row
+            "hrp_cut": hrp,
+            "scaled_april_in_allocator_months": {est: [rows[est][w]["scaled_worst_in_ordinary_months"] for w in windows]
+                                                 for est in per},
+            "hrp_weight_into": {est: [rows[est][w]["schemes"]["HRP"]["weight_into_worst"] for w in windows]
+                                for est in per},
+            "hrp_within_five_points_of_std": {est: [abs(a - b) < 0.05 for a, b in zip(hrp[est], hrp["std"])]
+                                              for est in per if est != "std"},
+            "sharpe_gap": {est: per[est]["sharpe_gap"] for est in per},
+            "risk_based_behind_equal_weight_everywhere": {
+                est: all(g < 0 for n in risk_based for g in per[est]["sharpe_gap"][n]) for est in per},
+        }
+        out["by_setting"][label] = v
+    return out
+
+
+def print_estimator(sweep: dict, verdicts: dict) -> None:
+    print("\nKEEP THE MEAN   section 22's sweep with the sleeve sizing on the sample std, "
+          "a root mean square, and an EWMA weighted 1/window on the newest month")
+    for label, v in verdicts["by_setting"].items():
+        windows = v["windows"]
+        print(f"\n   {label}")
+        print(f"{'window':>7} {'ratio':>6} {'demeaned':>9} " + " ".join(
+            f"{est + ' cut':>9} {est + ' x':>7}" for est in ESTIMATOR_ORDER)
+              + "   " + " ".join(f"{est + ' lev in':>12}" for est in ESTIMATOR_ORDER))
+        for i, w in enumerate(windows):
+            cuts = " ".join(f"{v['own_cut'][est][i]:>8.0%} {v['vol_multiplier'][est][i]:>7.2f}"
+                            for est in ESTIMATOR_ORDER)
+            levs = " ".join(f"{v['leverage_into'][est][i]:>11.2f}x" for est in ESTIMATOR_ORDER)
+            print(f"{w:>5}mo {v['ratio_mean_square'][i]:>6.0%} {v['ratio_demeaned'][i]:>9.0%} {cuts}   {levs}")
+        print(f"\n{'window':>7} " + " ".join(f"{est + ' April':>11} {est + ' Sharpe':>12}" for est in ESTIMATOR_ORDER)
+              + "   " + " ".join(f"{est + ' HRP cut':>12}" for est in ESTIMATOR_ORDER))
+        for i, w in enumerate(windows):
+            cells = " ".join(f"{v['sleeve_april'][est][i]:>+11.1%} {v['sleeve_sharpe'][est][i]:>+12.2f}"
+                             for est in ESTIMATOR_ORDER)
+            hrp = " ".join(f"{v['hrp_cut'][est][i]:>12.0%}" for est in ESTIMATOR_ORDER)
+            print(f"{w:>5}mo {cells}   {hrp}")
+        print("   the month each window drops when April enters, in ordinary months of its mean square: " + ", ".join(
+            f"{w}mo {m} ({k:.1f})" for w, m, k in zip(windows, v["month_dropped"], v["month_dropped_in_ordinary_months"])))
+        print("   exact multiplier, rms 1 + (k - k_out)/w and ewma on its own k: rms "
+              + "/".join(f"{m:.2f}" for m in v["predicted_multiplier_exact"]["rms"]) + ", ewma "
+              + "/".join(f"{m:.2f}" for m in v["predicted_multiplier_exact"]["ewma"])
+              + "; April on the ewma's own estimate " + "/".join(f"{k:.0f}" for k in v["k_on_own_estimate"]["ewma"]) + " months")
+        print("   scaled April in ordinary months of the allocator's 24-month mean square: " + "; ".join(
+            f"{est} " + "/".join(f"{k:.0f}" for k in v["scaled_april_in_allocator_months"][est]) for est in ESTIMATOR_ORDER))
+        print("   cap binds in " + "; ".join(
+            f"{est} " + "/".join(f"{s:.0%}" for s in v["cap_binds_share"][est]) for est in ESTIMATOR_ORDER)
+              + " of panel months")
+        print("\n   the predictions:")
+        print(f"   1. rms cut within three points of the mean-square ratio: "
+              f"{sum(v['rms_within_three_points_of_ratio'])} of {len(windows)} windows "
+              f"(std within three of the demeaned one: {sum(v['std_within_three_points_of_demeaned'])})")
+        print(f"   2. rms leverage lower at every window: {v['rms_leverage_lower_everywhere']}, "
+              "ratio " + "/".join(f"{r:.2f}" for r in v["rms_leverage_over_std"])
+              + f"; Sharpe within 0.10 of std at {sum(v['rms_sharpe_within_tenth_of_std'])} of {len(windows)}")
+        print(f"   3. ewma cut within two points of rms: {sum(v['ewma_within_two_points_of_rms'])} of {len(windows)}")
+        print(f"   4. ewma Sharpe below rms at 6 and 12: {v['ewma_below_rms_at_short_windows']}; "
+              f"within 0.05 at 24+: {v['ewma_level_with_rms_at_long_windows']} "
+              "(ewma - rms: " + "/".join(f"{d:+.2f}" for d in v["ewma_sharpe_minus_rms"]) + ")")
+        print("   5. HRP cut within five points of std: " + ", ".join(
+            f"{est} {sum(ok)}/{len(ok)}" for est, ok in v["hrp_within_five_points_of_std"].items())
+              + "; risk-based behind 1/N everywhere: " + ", ".join(
+            f"{est} {'yes' if ok else 'no'}" for est, ok in v["risk_based_behind_equal_weight_everywhere"].items()))
+
+
 # ---------- reporting ----------
 
 def print_holdout(study: dict) -> None:
@@ -786,11 +1006,33 @@ def main() -> None:
                                              LOOKBACK_MONTHS, HOLDOUT_FROM)
     study["unpinned_verdicts"] = unpinned_verdicts(study["unpinned_sweep"])
     print_unpinned(study["unpinned_sweep"], study["unpinned_verdicts"])
+    study.update(estimator_section())
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
         json.dump(study, fh, indent=1, default=float)
     print(f"\nwrote {OUT}")
 
 
+def estimator_section() -> dict:
+    sweep = estimator_sweep(volcarry_extended(), KEPT_MEAN, ESTIMATOR_ORDER, SLEEVE_WINDOWS,
+                            LOOKBACK_MONTHS, HOLDOUT_FROM)
+    verdicts = estimator_verdicts(sweep)
+    print_estimator(sweep, verdicts)
+    return {"estimator_sweep": sweep, "estimator_verdicts": verdicts}
+
+
+def main_estimator_only() -> None:
+    """Section 23 on its own, written beside the sections already in the
+    file instead of over them, so a new row does not re-run (and re-round)
+    four sections that have not changed."""
+    with open(OUT) as fh:
+        study = json.load(fh)
+    study.update(estimator_section())
+    with open(OUT, "w") as fh:
+        json.dump(study, fh, indent=1, default=float)
+    print(f"\nwrote {OUT}")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    main_estimator_only() if "--estimator" in sys.argv[1:] else main()

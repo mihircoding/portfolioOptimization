@@ -203,21 +203,36 @@ cap that was pinning the dial was also the best setting on the sweep,
 because it held the sleeve at 5× through a month the target would have
 entered at 7.9×.
 
+Section 23 sizes the sleeve on estimators that keep the mean — a root
+mean square over the same window, and an EWMA that gives the newest
+month the same 1/w weight — and finds the ratio is exact on the mean
+square once it counts the month the window drops as well as the month
+it takes in, which for a window of whole years is an earlier April:
+April 2023 was four ordinary months and April 2020 two, and that is
+the whole gap. The sample std's trouble is plainer than an
+approximation: in November 2025 its six-month window is six similar up
+months with 0.71% of annual vol between them, it asks for 14×, and the
+cap is what stops it. And the EWMA with April at 1/36 is not the window
+with soft edges — it has twice the memory, still a fifth of March 2020,
+goes into April at 4.8× instead of 7.9×, and its Sharpe rises with the
+window where the window's own had a trough. The trough was the cliff.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-379 tests.
+384 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 379 passed
+python -m pytest -q                 # 384 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result
 python holdout.py                   # the thirteen months the main study never saw, and the window sweep
+python holdout.py --estimator       # the sleeve sized on a root mean square and an EWMA, written beside the rest
 
 # the allocator
 python run_optimization.py          # frontier, walk-forward, Black-Litterman, costs

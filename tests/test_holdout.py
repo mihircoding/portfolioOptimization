@@ -372,3 +372,133 @@ def test_the_unpinned_sweep_runs_every_setting_and_the_verdicts_read_them_agains
     out = capsys.readouterr().out
     assert "UNPIN THE DIAL" in out and "the predictions:" in out
     assert len(UNPINNED) == 5 and UNPINNED[0][1:] == (0.10, 5.0)
+
+
+# ---------- section 23: keep the mean ----------
+
+from holdout import (ESTIMATOR_ORDER, KEPT_MEAN, estimator_sweep, estimator_verdicts,
+                     print_estimator)
+from multi_strategy import ewma_vol, trailing_rms_vol
+
+
+def test_the_rms_keeps_the_mean_the_sample_std_throws_away():
+    idx = pd.date_range("2015-01-31", periods=48, freq="ME")
+    # a sleeve that makes the same 0.6% every month has no sample std at
+    # all, and a root mean square of exactly that 0.6%
+    steady = pd.Series(0.006, index=idx)
+    assert trailing_vol(steady, 12).dropna().max() == pytest.approx(0.0)
+    assert trailing_rms_vol(steady, 12).dropna().iloc[0] == pytest.approx(0.006 * np.sqrt(12))
+    rng = np.random.default_rng(3)
+    noisy = pd.Series(rng.normal(0.004, 0.012, 48), index=idx)
+    std, rms = trailing_vol(noisy, 12), trailing_rms_vol(noisy, 12)
+    # same window, same shift: NaN for the same months, nothing from the month sized
+    assert std.isna().sum() == rms.isna().sum() == 12
+    bumped = noisy.copy()
+    bumped.iloc[-1] += 1.0
+    pd.testing.assert_series_equal(trailing_rms_vol(bumped, 12), rms)
+    # and the gap between them is the mean, to the digit: the mean square is
+    # the sample variance (less its n/(n-1)) plus the mean squared, so the
+    # rms is not always the larger of the two - it is when the mean is
+    window = noisy.iloc[:12]
+    assert rms.iloc[12] ** 2 == pytest.approx(12 * (11 / 12 * window.var(ddof=1) + window.mean() ** 2))
+    assert std.iloc[12] ** 2 == pytest.approx(12 * window.var(ddof=1))
+
+
+def test_the_ewma_weights_the_newest_month_one_over_the_window_and_starts_where_the_window_does():
+    idx = pd.date_range("2010-01-31", periods=200, freq="ME")
+    rng = np.random.default_rng(5)
+    x = pd.Series(rng.normal(0.004, 0.010, 200), index=idx)
+    for window in (6, 36):
+        ew = ewma_vol(x, window)
+        assert ew.isna().sum() == window
+        # one shock k ordinary months wide moves the estimate by
+        # sqrt((w - 1 + k) / w), which is the ratio with lam = 1 - 1/w
+        shocked = x.copy()
+        shocked.iloc[150] = -0.05
+        before = ewma_vol(shocked, window).iloc[150]
+        after = ewma_vol(shocked, window).iloc[151]
+        k = 0.05 ** 2 / (before ** 2 / 12)
+        assert after / before == pytest.approx(np.sqrt((window - 1 + k) / window))
+        # seeded with the first window's mean square, so it starts as the rms
+        assert ew.iloc[window] == pytest.approx(trailing_rms_vol(x, window).iloc[window])
+    # the window drops the shock after w months, the ewma only decays it
+    shocked = x.copy()
+    shocked.iloc[150] = -0.05
+    gone = trailing_rms_vol(shocked, 6).iloc[157]
+    kept = ewma_vol(shocked, 6).iloc[157]
+    assert gone == pytest.approx(trailing_rms_vol(x, 6).iloc[157])
+    assert kept > ewma_vol(x, 6).iloc[157]
+
+
+def test_frames_sizes_the_vol_sleeve_on_the_estimator_asked_for_and_nothing_else_moves(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    monthly = volcarry.copy()
+    monthly.index = monthly.index.to_period("M").to_timestamp("M")
+    shipped_frames = frames(volcarry)
+    for name, fn in (("rms", trailing_rms_vol), ("ewma", ewma_vol)):
+        fr = frames(volcarry, volcarry_window=12, estimator=name)
+        pd.testing.assert_frame_equal(fr["volcarry"], vol_targeted(monthly, fn(monthly, 12), 0.10))
+        pd.testing.assert_frame_equal(fr["xsmom"], shipped_frames["xsmom"])
+        pd.testing.assert_frame_equal(fr["statarb"], shipped_frames["statarb"])
+    pd.testing.assert_frame_equal(frames(volcarry, estimator="std")["volcarry"], shipped_frames["volcarry"])
+    with pytest.raises(KeyError):
+        frames(volcarry, estimator="garch")
+
+
+def test_the_sweep_names_the_month_the_window_drops_and_the_exact_multiplier_is_the_measured_one(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    volcarry.iloc[-9] = -0.06
+    since = f"{first_new:%Y-%m-01}"
+    worst = volcarry.index[-9]
+    for name in ("rms", "ewma"):
+        sweep = sleeve_window_sweep(volcarry, windows=(6, 24), lookback=12, holdout_from=since,
+                                    cap=10.0, estimator=name)
+        assert sweep["estimator"] == name
+        for w in (6, 24):
+            r = sweep["windows"][str(w)]
+            assert r["month_dropped"] == f"{volcarry.index[-9 - w]:%Y-%m}"
+            assert r["month_dropped_return"] == pytest.approx(volcarry.iloc[-9 - w])
+            assert not r["cap_binds_into_worst"] and not r["cap_binds_after_worst"]
+            # the formula with the month going out (rms) or on the estimator's
+            # own k (ewma) is the multiplier, not an approximation to it
+            assert r["predicted_multiplier_exact"] == pytest.approx(r["vol_multiplier"], rel=1e-6)
+            assert r["own_cut"] == pytest.approx(1 - 1 / r["predicted_multiplier_exact"], rel=1e-6)
+            assert r["worst_in_ordinary_months_own_estimate"] == pytest.approx(
+                volcarry.loc[worst] ** 2 / (r["vol_into_worst"] ** 2 / 12))
+    # the shipped estimator has no exact form; it carries section 22's correction instead
+    std = sleeve_window_sweep(volcarry, windows=(6,), lookback=12, holdout_from=since,
+                              cap=10.0)["windows"]["6"]
+    assert std["predicted_multiplier_exact"] is None
+    assert std["predicted_multiplier_demeaned"] == pytest.approx(
+        np.sqrt((6 - 1 + std["worst_in_ordinary_months_demeaned"]) / 6))
+
+
+def test_the_estimator_sweep_runs_every_estimator_at_every_setting_and_scores_the_five(monkeypatch, capsys):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    volcarry.iloc[-9] = -0.06
+    settings = (("10% / 10x", 0.10, 10.0), ("5% / 10x", 0.05, 10.0))
+    sweep = estimator_sweep(volcarry, settings, windows=(6, 12), lookback=12,
+                            holdout_from=f"{first_new:%Y-%m-01}")
+    assert list(sweep["settings"]) == ["10% / 10x", "5% / 10x"]
+    for label in sweep["settings"]:
+        assert list(sweep["settings"][label]) == list(ESTIMATOR_ORDER)
+        for est, s in sweep["settings"][label].items():
+            assert s["estimator"] == est and set(s["windows"]) == {"6", "12"}
+    v = estimator_verdicts(sweep)
+    assert v["settings"] == ["10% / 10x", "5% / 10x"]
+    for label, vs in v["by_setting"].items():
+        assert vs["windows"] == [6, 12]
+        assert set(vs["own_cut"]) == set(ESTIMATOR_ORDER)
+        assert len(vs["rms_within_three_points_of_ratio"]) == 2
+        assert set(vs["hrp_within_five_points_of_std"]) == {"rms", "ewma"}
+        assert set(vs["predicted_multiplier_exact"]) == {"rms", "ewma"}
+        assert isinstance(vs["rms_leverage_lower_everywhere"], bool)
+    # halving the target at the same cap is the same sleeve where the cap is off
+    a = v["by_setting"]["10% / 10x"]
+    b = v["by_setting"]["5% / 10x"]
+    for est in ESTIMATOR_ORDER:
+        assert a["own_cut"][est] == pytest.approx(b["own_cut"][est])
+    print_estimator(sweep, v)
+    out = capsys.readouterr().out
+    assert "KEEP THE MEAN" in out and "the predictions:" in out
+    assert [s[0] for s in KEPT_MEAN] == ["10% / 10x", "5% / 10x"]

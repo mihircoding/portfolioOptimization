@@ -1146,6 +1146,48 @@ def trailing_vol(returns: pd.Series, window: int,
     return vol.shift(1).rename("vol")
 
 
+def trailing_rms_vol(returns: pd.Series, window: int,
+                     periods_per_year: int = MONTHS_PER_YEAR) -> pd.Series:
+    """Root mean square of the last `window` returns, annualized, one late.
+
+    trailing_vol subtracts the window's mean before squaring, which is the
+    textbook estimator and the wrong one for sizing a sleeve whose mean is
+    a good part of its variance: section 22 found the vol sleeve keeps a
+    third of its mean square in its mean, and the sample std starts from
+    the other two thirds. This one squares the returns as they are. Same
+    window, same shift, same NaN until the window is full.
+    """
+    vol = np.sqrt((returns ** 2).rolling(window).mean()) * np.sqrt(periods_per_year)
+    return vol.shift(1).rename("vol")
+
+
+def ewma_vol(returns: pd.Series, window: int,
+             periods_per_year: int = MONTHS_PER_YEAR) -> pd.Series:
+    """RiskMetrics variance, parameterized by the window it stands in for.
+
+    sigma2_t = lam * sigma2_{t-1} + (1 - lam) * r_t^2, uncentered like the
+    rms estimator, with lam = 1 - 1/window so that the newest month carries
+    the same weight it would in an equal-weight window of that length -
+    which is the weight section 20's ratio acts on. The weights then decay
+    instead of dropping off a cliff, so the half-life is window * ln 2
+    months, about 25 at the shipped 36, and the mean age of what the
+    estimate remembers is window - 1 months against (window - 1) / 2 for
+    the window itself. The recursion is seeded with the first full window's
+    mean square, so the series starts where the window's would, with the
+    rms's own first value, and the newest month's weight is exactly 1/window
+    from the first step rather than renormalized over a short history.
+    """
+    r2 = (returns ** 2).to_numpy(dtype=float)
+    var = np.full(len(r2), np.nan)
+    if len(r2) >= window:
+        lam = 1.0 - 1.0 / window
+        var[window - 1] = r2[:window].mean()
+        for t in range(window, len(r2)):
+            var[t] = lam * var[t - 1] + (1.0 - lam) * r2[t]
+    vol = pd.Series(np.sqrt(var) * np.sqrt(periods_per_year), index=returns.index)
+    return vol.shift(1).rename("vol")
+
+
 def statarb_trailing_vol(path: str = "sleeves/statarb/results/portfolio.json",
                          window_days: int = VOL_WINDOW_DAYS) -> pd.Series:
     """The pairs book's vol from its daily P&L, stamped on the month it sizes.

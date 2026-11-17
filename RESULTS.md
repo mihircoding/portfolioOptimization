@@ -2105,10 +2105,202 @@ into a VIX-50 month at eight times, and the cap would not let it.
 
 What this does not do: the allocator stays at 24 months and the momentum
 sleeve at 36 throughout; the five settings are the vol target and the
-cap, not the estimator — an EWMA, or a mean-square estimator that keeps
+cap, not the estimator — ~~an EWMA, or a mean-square estimator that keeps
 the third the sample variance throws away, is the row this section
-points at; and the 6-month overshoot (2.52 predicted against 2.32) is
-left as the formula's error, not corrected for the moving mean.
+points at;~~ section 23 runs both; and the 6-month overshoot (2.52
+predicted against 2.32) is left as the formula's error, not corrected
+for the moving mean.
+
+### 23. Keep the mean, and find the ratio counts the month that comes in and not the month that goes out — on the mean square the formula is exact once the month leaving the window is in it, and an EWMA with the same weight on April is a different sleeve, because matching the newest month doubles the memory
+
+Reproduce with: `python holdout.py --estimator` (written beside sections
+19–22 in the same results file, without re-running them)
+
+Section 22 found the ratio that predicts the sleeve's own cut after April
+was written on the mean square while the sleeve sizes on a sample standard
+deviation, which subtracts the mean first, and that a Sharpe-2 sleeve keeps
+a third of its variance there. This runs the same sweep with the sleeve
+sizing on an estimator that keeps the mean, two ways: a root mean square
+over the same window (`trailing_rms_vol`), and a RiskMetrics EWMA
+(`ewma_vol`) with λ = 1 − 1/w, so the newest month carries the weight it
+would in a w-month window — the weight the ratio acts on — and the older
+ones decay instead of dropping off a cliff; its half-life is w ln 2
+months, 25 at the shipped 36. Two settings from section 22, the ones
+where the cap is off the leverage going into April: 10% / 10× and
+5% / 10×. The second is the first at half the leverage wherever the cap
+does not bind, which on the two new estimators is everywhere, so the
+tables show the first and the second is in the results file. Five
+predictions, written first: (1) on the rms estimator the original ratio
+is right — its k *is* the mean-square k — so the sleeve's own cut is
+within three points of section 20's 46 / 36 / 28 / 24 / 12% at every
+window, six months included, because this estimator has no mean to move;
+(2) the rms sleeve is a smaller sleeve, the vol about 15% higher and the
+leverage 13% lower at every window, so a shallower April and a holdout
+Sharpe within 0.10 of the std row; (3) the EWMA cuts what the rms window
+cuts, within two points, because April enters both at 1/w; (4) and then
+holds on — the window drops April after w months and the EWMA only decays
+it, so at the 6- and 12-month equivalents the EWMA re-levers less and its
+Sharpe is below the window's, and within 0.05 of it at 24 months and up;
+(5) the allocator barely notices, its HRP cut within five points of the
+std row at every window on both.
+
+One held, on its first half. The other four failed, and three of them
+failed because the formula was missing a term it is now given.
+
+**The sleeve by itself at 10% / 10×** — the ratio as section 20 wrote it,
+section 22's demeaned correction, and then for each estimator the cut the
+sleeve made on its own after April and the vol multiplier it was made
+from, and the leverage it took into April:
+
+| window | ratio | demeaned | std cut | × | rms cut | × | ewma cut | × | std in | rms in | ewma in |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 6 mo | 46% | 60% | 57% | 2.32 | 42% | 1.72 | 52% | 2.10 | 6.4× | 5.1× | 6.1× |
+| 12 mo | 36% | 42% | 43% | 1.77 | 37% | 1.59 | 38% | 1.62 | 5.9× | 5.6× | 5.9× |
+| 24 mo | 28% | 39% | 37% | 1.60 | 26% | 1.34 | 21% | 1.27 | 7.5× | 6.3× | 5.2× |
+| 36 mo | 24% | 33% | 33% | 1.49 | 25% | 1.33 | 14% | 1.16 | 7.9× | 6.8× | 4.8× |
+| 60 mo | 12% | 20% | 16% | 1.20 | 7% | 1.07 | 8% | 1.08 | 5.7× | 4.3× | 4.4× |
+
+The scaled April, the holdout Sharpe, and the allocator's HRP cut as a
+share of its weight:
+
+| window | std April | Sharpe | rms April | Sharpe | ewma April | Sharpe | std HRP cut | rms | ewma |
+|---|---|---|---|---|---|---|---|---|---|
+| 6 mo | −14.1% | +0.90 | −11.3% | +0.74 | −13.4% | +0.57 | 38% | 24% | 40% |
+| 12 mo | −13.2% | +0.59 | −12.3% | +0.68 | −13.1% | +0.73 | 34% | 31% | 48% |
+| 24 mo | −16.6% | +0.65 | −13.9% | +0.84 | −11.5% | +0.98 | 49% | 46% | 49% |
+| 36 mo | −17.4% | +0.76 | −15.1% | +0.87 | −10.6% | **+1.10** | 58% | 57% | 47% |
+| 60 mo | −12.5% | +1.06 | −9.5% | +1.22 | −9.7% | +1.18 | 56% | 45% | 44% |
+
+The 10× cap binds in 32 / 14 / 2 / 0 / 0% of panel months on the sample
+std, 21 / 5 / 0 / 0 / 0% on the rms, and 5 / 0 / 0 / 0 / 0% on the EWMA.
+
+**Prediction 1 failed at two windows, and the reason makes it exact at
+all five.** The rms cut is 42 / 37 / 26 / 25 / 7% against the ratio's
+46 / 36 / 28 / 24 / 12. Within a point at 12 and 36, four points under at
+6, five under at 60. The ratio writes the estimate after April as
+(w − 1 + k) / w times the estimate before: w − 1 ordinary months and one
+April. But a window is a queue, and when April comes in, the month w
+months before it goes out, and the formula has that month down as
+ordinary. For a window that is a whole number of years that month is an
+earlier April: 12 months drops April 2024 (+0.01%, nothing), 36 drops
+April 2022 (−0.06%, nothing), and those are the two windows where the
+ratio is within a point. 24 drops April 2023, +0.92%, four ordinary months
+of the window's mean square; 60 drops April 2020, +0.97%, the month after
+the crash, two of them; and 6 drops October 2024, +1.08% into the
+election, three and a half. Put the month going out in the formula — the estimate
+after is 1 + (k − k<sub>out</sub>) / w times the estimate before — and the
+multiplier is 1.72 / 1.59 / 1.34 / 1.33 / 1.07 against the measured
+1.72 / 1.59 / 1.34 / 1.33 / 1.07. Not close: the same number, because on
+the mean square that is the whole arithmetic. (The 60-month row has a
+second thing in it: section 21's 12% was computed on the fifty months the
+panel holds, where April is 18 ordinary months; on the sixty the sleeve's
+own window reaches, back to April 2020, it is 11, and the formula without
+the month going out says 7.4%.) The sample std has no exact form, because
+its mean moves too; section 22's demeaned k is within three points of it
+at the same three windows the mean-square ratio is within three of the
+rms.
+
+**Prediction 2 held on the leverage and failed on the Sharpe.** The rms
+sleeve went into April at 0.80 / 0.94 / 0.84 / 0.87 / 0.76 of the std
+sleeve's leverage — lower at every window, as predicted, but not by a
+flat 13%, because "a third of the variance" was the whole-history figure
+(26% of the mean square since 2007) and window by window the mean's share
+going into April was 47 / 19 / 32 / 27 / 43%, a fifth to a half. The
+12-month window had the mixed second half of 2024 in it and almost no
+mean; the 6- and 60-month windows were the sleeve's best runs. And the
+holdout Sharpe is not within 0.10 anywhere but 12 months: the rms row is
+0.09 to 0.19 *better* at 12, 24, 36 and 60, and 0.16 worse at 6. Where it
+is better it is the same mean at less variance — in at 6.8× instead of
+7.9× at the shipped window, April −15.1% instead of −17.4%, the eight
+months after +31.7% against +33.8%. Where it is worse is the clearest
+statement of what the mean does to the sample std. In November 2025 the
+6-month window is May to October 2025: six up months, 0.27% to 0.82%,
+every one of them positive, and their sample standard deviation is 0.71%
+a year. A 10% target on 0.71% asks for 14.2×, the cap gave 10×, and the
+std sleeve ran November and December at 10× for +9.3% and +11.8%. The rms
+of the same six months is 2.14% a year and asks for 4.7×. Six similar
+wins have no dispersion, so on the sample std they have no risk, and
+the cap is what stood between that estimate and the book: it bound in
+32% of panel months for the std at 6 months against 21% for the rms.
+
+**Prediction 3 failed because the same weight on April is not the same
+k.** The EWMA cut 52 / 38 / 21 / 14 / 8% against the rms window's 42 / 37
+/ 26 / 25 / 7. April enters both at 1/w; what differs is the variance it
+is measured against. With λ = 1 − 1/36 a month three years back still
+carries 36% of the newest month's weight in the EWMA and March 2020 18%
+of it — its mean age is w − 1 months against (w − 1) / 2 for the window,
+so matching the newest month's weight doubles the memory — and it went
+into April with an
+estimate of 2.09% against the window's 1.46%, at 4.8× instead of 6.8×.
+To that estimate April was 13 ordinary months, not 28, and
+√((35 + 13) / 36) is 1.16: a 14% cut. At 6 months it runs the other way.
+The EWMA has 1/6 on March 2025 but only (5/6)<sup>5</sup> / 6, under 7%,
+on October 2024, where the window has a full sixth; so it carried less of
+October's vol, went in at 6.1× against 5.1×, and April was 22 of its
+ordinary months against the window's 15. The EWMA's own formula,
+√((w − 1 + k) / w) on k against its own estimate, gives 2.10 / 1.62 /
+1.27 / 1.16 / 1.08 — exact, as it must be, since that is the recursion.
+
+**Prediction 4 failed in both halves, and the EWMA at 24 and 36 months
+is the best sleeve on the sweep.** EWMA minus rms Sharpe is −0.17 /
++0.05 / +0.14 / +0.22 / −0.04. At 6 months the "holds on" story is not
+what happened: both sleeves made +20.9% in the eight months after April,
+to the decimal — the window dropped April in November and re-levered to
+4.7×, the EWMA decayed it and crept from 2.9× to 3.8×, and the two paths
+compound to the same number. The EWMA's lower Sharpe there is the months
+*before* April, where its lighter weight on October had it at 4.8× to
+5.7× against the window's 4.2× to 4.7×. At 24 and 36 months the EWMA is
+the sleeve that never got excited: 5.2× and 4.8× going in, April −11.5%
+and −10.6%, a cut of 21% and 14%, and then the recovery at 4.1× — at the
+shipped window its leverage sat between 4.1× and 4.8× through all
+thirteen holdout months, the narrowest range on the sweep. And across the windows its Sharpe is
+0.57 / 0.73 / 0.98 / 1.10 / 1.18 — rising with the window, which is the
+shape section 21's prediction 3 called for and section 22 found a trough
+in instead. The trough was the cliff. A window forgets April all at once
+when it falls off the back, and the 6-month window did that in time to
+re-lever into the recovery; the EWMA has no back to fall off, so no
+window forgets early, and the line rises with the memory.
+
+**Prediction 5 failed on the short windows and on the EWMA, for section
+22's reason.** The HRP cut is 38 / 34 / 49 / 58 / 56% on the std, 24 /
+31 / 46 / 57 / 45 on the rms, 40 / 48 / 49 / 47 / 44 on the EWMA — within
+five points at 12, 24 and 36 for the rms, at 6 and 24 for the EWMA. What
+it tracks is the scaled April in ordinary months of the scaled series'
+own 24-month mean square, the thing the allocator's variance sees: 15 /
+11 / 20 / 31 / 40 on the std, 10 / 11 / 20 / 34 / 30 on the rms, 16 / 23
+/ 27 / 26 / 26 on the EWMA. The rms sleeve at 6 months handed the
+allocator a −11.3% month in a series it had already seen swing (10 of its
+ordinary months) and was cut 24%; the EWMA sleeve at 36 handed it −10.6%
+in a series whose leverage had sat between 4.0× and 4.8× for two years,
+26 ordinary months, and was cut 47% — the same 47% at 24, 48% at 12, 44%
+at 60, because an EWMA sleeve is nearly the same series at every window
+(its mean holdout leverage is 4.1× to 4.5× at all five). The allocator
+gives that smoother sleeve more of the book going in — HRP 0.48 at 36
+months against 0.27 for the std — and cuts it by the share April is of
+what it had seen. Every risk-based book is behind equal weight at every
+window on all three estimators; the gap for HRP is −0.43 to −0.92.
+
+So: the ratio from section 20 is right on the mean square, and exact
+once it counts the month the window drops as well as the month it takes
+in, which for a window of whole years is an earlier April. The sample
+std's error is not an approximation error; it is a sleeve whose mean is a
+fifth to a half of its mean square being measured on the rest, and on six
+similar months the rest is nothing. And the EWMA that gives April the
+same weight is not the window with soft edges: it is an estimator with
+twice the memory, which at the shipped window still remembers 2022 and a
+fifth of March 2020, goes into a VIX-50 month at 4.8× instead of 7.9×,
+and holds the narrowest leverage on the sweep through it. Section 21's
+hump, section 22's trough and this section's rising line are the same
+thirteen months under three ways of forgetting.
+
+What this does not do: two settings, both with the cap at 10×; the
+momentum sleeve sizes on the sample std throughout; λ was set by the
+weight on the newest month, and setting it by the mean age instead
+(λ = 1 − 2/(w + 1), a half-life of 12.5 months at the shipped 36) is the
+other row, and it would behave like the rms window, not like this; and
+thirteen months is thirteen months. The best sleeves on the sweep are the
+two with the longest memory, 1.22 and 1.18 at 60 months, and the sample
+that says so has one bad month in it.
 
 ### What this does not establish
 
