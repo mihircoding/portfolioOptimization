@@ -548,6 +548,102 @@ business links — suppliers and customers, the two halves of a duopoly — is a
 and this result says to expect it to behave like the same-sector pairs, not like the
 cross-sector ones.
 
+## The sector as a sign, instead of as a filter
+
+If the section above is right — a two-sigma move between two competitors is a re-ranking and
+sticks, a two-sigma move between two unrelated names is noise and comes back — then the sector
+is not a filter on which pairs to trade. It is the sign of the trade. A cross-sector pair should
+be traded against the move, as everything here trades it, and a same-sector pair should be traded
+with the move. `continuation_study.py` runs that on all 4,950 pairs with the control group's rules
+and costs, three ways, because the exit matters: *mirrored* is the shipped rules with the sign
+flipped (enter at |z| = 2 in the direction of the move, exit when |z| is back under 0.5 — the same
+turnover and the same costs, so the gross P&L is exactly the negative of the reverting trade's);
+*held h days* enters on a fresh crossing and goes flat after 5, 10 or 20 days, which is the after-
+entry table of the last section turned into a trade with costs on it; and *sign by sector* is the
+mixed book, cross-sector pairs reverting and same-sector pairs mirrored. (There is no finer GICS
+field than the sector in `universe.py`, so the split by industry group that the last section
+suggested is not made; it would mean inventing a mapping.) Five predictions were written before
+the run and three failed.
+
+| book | pairs | gross Sharpe | gross return | net Sharpe | net return |
+|---|---|---|---|---|---|
+| screened, reverting (shipped) | 930 | +0.01 | −0.04% | −0.19 | −2.14% |
+| cross sector, reverting | 4,365 | +0.09 | +0.89% | −0.09 | −1.19% |
+| same sector, reverting | 585 | −0.14 | −1.40% | −0.37 | −3.43% |
+| same sector, mirrored | 585 | **+0.14** | +1.25% | **−0.08** | −0.83% |
+| cross sector, mirrored | 4,365 | −0.09 | −1.17% | −0.26 | −3.20% |
+| same sector, held 20 days | 585 | +0.17 | +1.07% | −0.18 | −1.19% |
+| cross sector, held 20 days | 4,365 | −0.14 | −1.27% | −0.41 | −3.48% |
+| sign by sector | 4,950 | +0.11 | +0.98% | −0.11 | −1.10% |
+| sign by sector, screened | 930 | +0.25 | +2.69% | +0.06 | +0.55% |
+
+### The sign is right, and it is the sign of a zero
+
+The first prediction held: traded with the move, the 585 same-sector pairs make money gross, +1.25%
+over the five years at a Sharpe of +0.14, and give it back to costs, −0.83% net at −0.08. Held for a
+fixed twenty days instead of until the window absorbs the move, the same: +1.07% gross, −1.19% net,
+and the cross-sector continuation trade loses gross at every horizon (−0.27%, −0.47%, −1.27% at 5,
+10 and 20 days), which is the fourth prediction and it held too. The reading survives being traded.
+What it is worth is a quarter of a percent a year before costs.
+
+Then the number that says what the reading is worth per pair. The mean out-of-sample Sharpe of a
+same-sector pair is −0.043 reverting, and it is −0.043 mirrored. Its mean *gross* Sharpe is −0.0001.
+The −0.056 gap against cross-sector pairs that the last section put at p = 0.002 is not a same-sector
+pair losing gross; it is a same-sector pair having no gross edge in either direction, so that the
+whole of its net is the cost, while a cross-sector pair has +0.050 of gross to pay the cost with.
+Flipping the sign of a zero gives a zero. The book still makes +1.25% gross because the pairs that
+lost most reverting were the higher-vol ones (a pair's vol and its gross return correlate at −0.25
+inside the 585), and a book is dollar-weighted where a mean of Sharpes is not: the average
+same-sector pair lost 1.96% gross reverting at a Sharpe of nothing.
+
+### The mixed book is not better than the plain one
+
+The third prediction — that the sign-by-sector book beats the shipped book by more than 0.10 and
+beats the everything book — failed on both counts, narrowly: −0.11 against −0.19 and −0.12. Trading
+each pair in the direction its sector says is worth one hundredth of a Sharpe over trading every
+pair the same way. The second prediction failed too, and in a way that is worth reading: mirroring
+the cross-sector pairs is a bad trade (−0.26 net against −0.09), but the gap is 0.17, not the 0.20
+predicted, because the entire gross edge of cross-sector reversion is a Sharpe of +0.09, and
+flipping it is a swing of 0.18. There is not 0.20 of edge in this book to lose.
+
+One cell in the table is positive net, the first in this project: the screened sign-by-sector book,
+the 811 cross-sector survivors reverting and the 119 same-sector survivors mirrored, at +0.06 and
++0.55%. It is the mirror of the worst cell of the last section's table — the same-sector survivors,
+at −0.49 reverting — and the mirror of the worst cell in a table is the best cell in its mirror by
+construction. It was not predicted, it is 119 pairs, and it is reported here so that it is not
+reported anywhere else as a result.
+
+### Which is the lumpy one
+
+The fifth prediction was structural: if a re-ranking is an event, the continuation book is paid on
+a few days and should have the fatter tails, while the reversion book is paid by a small drift. It
+failed, inverted. The same-sector continuation book has an excess kurtosis of 4.6 in its gross daily
+P&L and its best 5% of days are 29% of its gains; the cross-sector *reverting* book has a kurtosis
+of 9.1 and takes 37% of its gains on its best 5% of days. Its best day, 9 April 2025, made +1.33%
+gross, which is more than that book made in any calendar year, and its worst, 3 April 2025, lost
+−1.03%. Those are the two days of the tariff announcement and the pause, and they are the best and
+worst days of the *same-sector mirrored* book with the signs reversed.
+
+That is the finding. The daily gross P&L of the same-sector continuation book has a correlation of
+**−0.89** with the cross-sector reverting book's — which is to say the two reverting books, same-
+sector and cross-sector, are the same book, 0.89 correlated, and the sector sign only decides which
+side of it you hold. A hundred names make one cross-section, every name sits in 99 pairs, and a day
+on which the market reverses a factor move reverses most of the 4,950 spreads at once. The reversion
+book is lumpy because it is paid on those days. The continuation book is smooth because it is paid
+in the median 22 trading days it takes the 60-day window to absorb a move, and that is drift, not
+an event. "The re-ranking sticks" was right about the sign and wrong about the shape: what sticks is
+not a jump in two names but the slow part of a factor move that the window has not caught up with.
+
+### What this does not fix
+
+The same things as before, plus one. A sign that is right by a quarter of a percent a year is a
+reading, not a trade, and the one positive cell is selection. And the correlation says the sector
+was never a property of the pair at all: it is a property of which side of the cross-section's
+reversal days a book of these 100 names ends up on. The direct test of that is a book that is
+hedged against the first principal component of the 4,950 spreads, where the sector sign should be
+worth nothing — or a book that only trades the days the factor is quiet, where it should be worth
+whatever the pair-level re-ranking actually is.
+
 ## Stretch goals
 
 - **Kalman-filter hedge ratio** - done, see above and

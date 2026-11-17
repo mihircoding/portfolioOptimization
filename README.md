@@ -223,11 +223,11 @@ window contains no 2008 and no March 2020, which inflates the volatility sleeve'
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-384 tests.
+390 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 384 passed
+python -m pytest -q                 # 390 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result
@@ -244,6 +244,7 @@ python hrp_split_study.py           # and the flaw in its published algorithm
 python sleeves/statarb/scan.py            # screen 4,950 pairs, trade the survivors
 python sleeves/statarb/control.py         # trade the 4,020 the screen REJECTED, as a control
 python -m sleeves.statarb.sector_study    # pick the universe by sector instead, and find it is worse
+python -m sleeves.statarb.continuation_study # trade the sector as the sign of the trade instead
 python sleeves/statarb/screen_validity.py # the screen's 5% test rejects 15% of the time
 python sleeves/statarb/survivorship.py    # the bias priced instead of admitted
 python sleeves/statarb/walkforward.py     # refit the formation window, trade out of sample
@@ -320,6 +321,12 @@ the 585 same-sector pairs are the worse ones, with or without the screen,
 because a two-sigma move between two competitors is the market re-ranking
 them and does not come back, while a two-sigma move between two unrelated
 names is mostly noise and does.
+Traded as a sign rather than a filter — cross-sector pairs against the move,
+same-sector pairs with it — the reading holds and is worth a quarter of a
+percent a year gross, nothing net: a same-sector pair's gross edge is zero in
+either direction, and the two books are 0.89 correlated, so the sector only
+decides which side of the cross-section's reversal days a book of these 100
+names is on.
 
 ### The volatility sleeve
 
