@@ -53,7 +53,7 @@ def realized_vol(path: np.ndarray, steps_per_year: float = 252.0) -> float:
 
 def delta_hedge(path, K, T, r, sigma_implied, option_type="call", q=0.0,
                 sigma_hedge=None, rebalance_every=1, cost_bps=0.0,
-                steps_per_year=252.0):
+                steps_per_year=252.0, max_delta_move=None):
     """Sell one option at `sigma_implied`, hedge it along `path`, report the P&L.
 
     path : the underlying's price at each step, path[0] being the trade date and
@@ -69,6 +69,11 @@ def delta_hedge(path, K, T, r, sigma_implied, option_type="call", q=0.0,
     rebalance_every : hedge every n steps. 1 is daily on daily data.
     cost_bps : proportional transaction cost on every share traded, including
         the initial hedge and the final liquidation.
+    max_delta_move : the most the hedge may move on one rebalance, in shares
+        per option. None is no limit. The first hedge and the liquidation at
+        expiry are never limited - one puts the position on and the other
+        takes it off - so the limit only slows how fast the hedge chases a
+        delta that has moved. sticky_study.py is the caller.
 
     Returns a dict with the P&L and enough of the path to check it:
     'pnl', 'premium', 'payoff', 'n_rebalances', 'shares_traded', 'costs',
@@ -103,12 +108,16 @@ def delta_hedge(path, K, T, r, sigma_implied, option_type="call", q=0.0,
             d = delta(option_type, path[step], K, max(time_left, 1e-12), r,
                       hedge_vols[step], q)
             trade = d - shares
+            if max_delta_move is not None and step > 0:
+                trade = float(np.clip(trade, -max_delta_move, max_delta_move))
             cash -= trade * path[step]
             trade_cost = abs(trade) * path[step] * cost_bps / 10_000
             cash -= trade_cost
             costs += trade_cost
             shares_traded += abs(trade)
-            shares = d
+            # the plain assignment keeps the unlimited hedge bit-for-bit what
+            # it was before the limit existed
+            shares = d if max_delta_move is None else shares + trade
             n_rebalances += 1
         deltas.append(shares)
 

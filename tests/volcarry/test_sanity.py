@@ -973,3 +973,92 @@ def test_the_capped_arm_is_sold_at_when_vix_only_rises_and_re_marked_when_it_onl
     # and on the first day, at the money, its vol is the day's VIX
     assert len({round(rising[a], 6) for a in ("sold-at", "re-marked", "realized", "strike-vol", "capped")}) == 4
     assert rising["skew_mean_pts"] != 0.0
+
+
+# ---------- sticky strike, and a limit on the delta's move ----------
+
+
+def test_the_sticky_strike_level_is_the_atm_vol_at_the_strike_and_everywhere_on_a_flat_surface():
+    from sleeves.volcarry.ssvi import SSVIParams
+    from sleeves.volcarry.sticky_study import sticky_strike_level
+    for t in (1 / 252, 10 / 252, 21 / 252):
+        for atm in (0.12, 0.33, 0.80):
+            assert sticky_strike_level(100.0, 100.0, t, atm) == pytest.approx(atm)
+    flat = SSVIParams(rho=0.0, eta=0.0, gamma=0.5, thetas=(0.0,), ts=(0.0,))
+    spots = np.array([70.0, 85.0, 100.0, 115.0, 130.0])
+    assert np.allclose(sticky_strike_level(spots, 100.0, 10 / 252, 0.25, flat), 0.25)
+
+
+def test_the_sticky_strike_level_is_the_fixed_point_and_sits_below_vix_in_a_sell_off():
+    from sleeves.volcarry.remark_study import strike_vol
+    from sleeves.volcarry.sticky_study import sticky_strike_level
+    t = 10 / 252
+    for spot, vix in ((90.0, 0.40), (80.0, 0.60), (95.0, 0.25)):
+        level = sticky_strike_level(spot, 100.0, t, vix)
+        # the pinned smile, at its level, reads today's VIX at today's spot
+        assert strike_vol(100.0, spot, t, level) == pytest.approx(vix, abs=1e-6)
+        # and the strike, at the pinned smile's money, is below it
+        assert level < vix
+    # over the strike, near the money, the call side is the smile's dip, so
+    # the level is above VIX by less than the put side puts it below
+    above = sticky_strike_level(103.0, 100.0, t, 0.20)
+    below = sticky_strike_level(97.0, 100.0, t, 0.20)
+    assert 0.20 < above < 0.23
+    assert 0.20 - below > 2 * (above - 0.20)
+
+
+def test_the_delta_limit_slows_the_hedge_and_never_touches_the_first_or_last_trade():
+    from sleeves.volcarry.hedging import delta_hedge
+    rng = np.random.default_rng(11)
+    path = 100.0 * np.exp(np.cumsum(np.r_[0.0, rng.normal(0, 0.03, 21)]))
+    free = delta_hedge(path, 100.0, 21 / 252, 0.0, 0.25)
+    slow = delta_hedge(path, 100.0, 21 / 252, 0.0, 0.25, max_delta_move=0.05)
+    moves = np.abs(np.diff(slow["deltas"]))
+    assert np.all(moves <= 0.05 + 1e-12)
+    assert np.abs(np.diff(free["deltas"])).max() > 0.05        # the limit had something to limit
+    assert slow["deltas"][0] == pytest.approx(free["deltas"][0])  # the first hedge is the full delta
+    assert slow["shares_traded"] < free["shares_traded"]
+    assert slow["premium"] == pytest.approx(free["premium"])
+    # a limit nothing reaches is no limit, to the bit
+    loose = delta_hedge(path, 100.0, 21 / 252, 0.0, 0.25, max_delta_move=5.0)
+    assert loose["pnl"] == free["pnl"]
+    assert np.array_equal(loose["deltas"], free["deltas"])
+
+
+def test_the_sticky_arm_is_the_sold_at_arm_when_the_index_sits_at_the_strike_and_vix_is_flat():
+    from sleeves.volcarry.sticky_study import trade_sticky_ways
+    idx = pd.bdate_range("2020-02-03", periods=22)
+    pinned = pd.Series(300.0, index=idx)
+    row = trade_sticky_ways(pd.DataFrame({"spy": pinned, "vix": pd.Series(20.0, index=idx)}),
+                            option_spread_vol_pts=0.0, option_spread_vix_anchor=None)
+    for arm in ("re-marked", "strike-vol", "sticky-strike"):
+        assert row[arm] == pytest.approx(row["sold-at"])
+    assert row["sticky_mean_pts"] == pytest.approx(0.0)
+    assert row["days_under_strike"] == 0
+    # nothing moved, so no limit bound and every limited arm is the re-marked arm
+    for c in (0.05, 0.10, 0.20):
+        assert row[f"days_bound_{c:.2f}"] == 0
+        assert row[f"limit-{c:.2f}"] == pytest.approx(row["re-marked"])
+
+
+def test_in_a_one_way_sell_off_the_pinned_smile_marks_the_strike_down_and_the_limit_carries_the_stock():
+    from sleeves.volcarry.sticky_study import trade_sticky_ways
+    idx = pd.bdate_range("2020-02-03", periods=22)
+    spy = pd.Series(300.0 * np.exp(np.linspace(0.0, -0.30, len(idx))), index=idx)
+    vix = pd.Series(np.linspace(20.0, 50.0, len(idx)), index=idx)
+    row = trade_sticky_ways(pd.DataFrame({"spy": spy, "vix": vix}),
+                            option_spread_vol_pts=0.0, option_spread_vix_anchor=None)
+    # the strike's vol under sticky strike is below VIX on every day the index
+    # is under it; the strike-vol arm reads the call wing, which by the end
+    # of a 30% fall is above VIX (the bowl), so the two rules disagree in sign
+    assert row["days_under_strike"] == 20
+    assert row["sticky_pts_under"] < 0 < row["strike_vol_pts_under"]
+    # a short call hedged with a lower vol buys less on the way down
+    assert row["re-marked"] < row["strike-vol"] < row["sticky-strike"]
+    # the limit binds on the days the re-mark pushed the delta; in a one-way
+    # fall it only makes the hedge carry stock it should have sold, so it
+    # loses more than the hedge it slows, and the turnover is the same
+    # because every share is sold eventually either way
+    assert row["days_bound_0.05"] > 0
+    assert row["limit-0.05"] < row["re-marked"]
+    assert row["shares_limit_0.05"] == pytest.approx(row["shares_re_marked"])

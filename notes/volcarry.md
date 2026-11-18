@@ -879,7 +879,127 @@ the plain reading of the first section's finding: re-hedging on current
 implied is a desk's practice, and the half of it that pays is the half that
 reduces the position.
 
+### Sticky strike, and a limit on the delta's move
+
+The strike-vol arm was one of the two rules a desk uses, sticky moneyness:
+the smile moves with the index and a strike that has gone out of the money
+is read on the wing. The other is sticky strike: the smile is pinned in
+strike space where it was sold, and a strike keeps its vol while the
+at-the-money vol changes, because the money has moved to a different point
+of the same smile. ~~A sticky-strike arm should sit between capped and
+strike-vol.~~ `sticky_study.py` runs it, with the word made exact. The call
+was sold at the money, so its strike *was* the level on the day it was
+sold. Pin the fitted SPY smile at the strike. On a later day the index is
+at S, VIX is the at-the-money vol at S, and on the pinned smile that is the
+point k = log(S / K). The level of the pinned smile is the number L that
+makes the smile read VIX there (`sticky_strike_level()` solves for it by
+fixed point), and the strike's own vol is L, because the strike sits at
+the pinned smile's money. In a sell-off S is under K, log(S / K) is on the
+put side, and the put side is the high side, so the strike's vol sits
+*below* VIX by the height of the put wing at that moneyness. The strike-vol
+arm reads the call wing of a smile centred at S at the mirror-image
+moneyness; the two rules disagree by the smile's asymmetry, not by the
+smile.
+
+The second thing is a limit on the hedge rather than on the vol. The
+capped arm said the up-marks were the whole tail; the obvious cruder tool
+is a cap on how far the delta may move in a day, which the last section
+said would slow the hedges that were right as well as the ones that were
+wrong. `delta_hedge(max_delta_move=...)` is that cap, on the re-marked arm,
+at 0.05, 0.10 and 0.20 shares per option per day; the first hedge and the
+liquidation are never limited. Four predictions written first; all four
+failed, and two of them failed in the direction the write-up had argued
+against.
+
+```
+                       sold-at  re-marked  strike-vol  sticky-strike  limit-0.05  limit-0.10  limit-0.20
+average P&L              0.394      0.412       0.393          0.407       0.430       0.420       0.411
+std dev of P&L           0.640      0.704       0.666          0.631       0.779       0.740       0.720
+annualized Sharpe         2.13       2.03        2.05           2.23        1.91        1.97        1.98
+months profitable        80.3%      81.5%       81.9%          84.0%       83.6%       83.2%       81.1%
+worst month             -2.697     -4.324      -3.845         -3.247      -3.582      -3.802      -4.324
+
+March 2020              -2.697     -4.324      -3.845         -3.247      -3.582      -3.802      -4.324
+October 2008            -1.184     -2.258      -1.738         -0.926      -3.277      -2.339      -2.258
+24 spike months         -0.590     -0.759      -0.609         -0.483      -0.724      -0.800      -0.793
+  ... beat sold-at                     10          14             16          10           9           9
+214 calm months          0.505      0.544       0.506          0.507       0.560       0.557       0.546
+shares traded a month               2.30                                   1.90        2.15        2.27
+```
+
+**Under sticky strike the strike kept the vol it was sold at, and VIX's rise
+was the smile being climbed.** In March 2020 the pinned level ran 33 to 50
+through the first two weeks - the call was sold at 33.4, VIX ran to 83 -
+so the re-mark that the re-marked arm read as "the strike's vol has
+doubled" the sticky rule read as "the index has walked twenty points down
+the put wing of the smile it was sold on, and the strike is where it was".
+That is a delta of 0.13 on day five against 0.08 for sold-at and 0.21 for
+re-marked, and March 2020 lands at -3.25, between the two. It is nearer the
+sold-at end by 0.05, which is the letter of the prediction, but the
+prediction's std bound failed in the other direction: 0.631 is *below* the
+sold-at arm's 0.640, the lowest of any arm this sleeve has run, with the
+best win rate (84.0%), the most spike months beaten (16 of 24) and the best
+Sharpe (2.23, over the capped arm's 2.19). October 2008 is the month that
+shows why: -0.93 against -1.18 for sold-at, because once the index was 15%
+under the strike the pinned level sat at 37 against the 39.8 the call was
+sold at - a put wing read at high variance is wide, so the level backed out
+of VIX is *under* the sold-at vol - and the arm held less stock than the
+sold-at hedge through the second leg down. Across the tape the strike's vol
+under sticky strike sat 1.8 points *below* VIX on average, the opposite sign
+to the strike-vol arm's +3.0 (held): -3.9 on the 1,816 hedge days the index
+was under the strike (the strike-vol arm: -1.0), +0.5 on the 3,182 it was
+over, and under the *sold-at* vol on 3,011 of the 4,998 days. The arm
+correlates with re-marked at 0.954, under the 0.97 called for and under
+even the sold-at arm's 0.957; it is nearer the sold-at arm (0.972) than the
+rule it was meant to refine. The two rules, read on the same fitted smile,
+are two different hedges, and the one that pins the smile where it was sold
+is the steadier one on this tape.
+
+The caveat the strike-vol arm carried applies here with the sign reversed.
+The surface's shortest fitted expiry was eight days, so the last week is
+the power law extrapolated, and under sticky strike that extrapolated wing
+is subtracted rather than added: in the last week of March 2020 the level
+was 17 to 23, under the 33 sold at. It moves no delta in a crash (0.000
+either way), but in an ordinary month a level under the sold-at vol with
+five days left lowers a near-the-money delta, and that is where part of
+the std comes from. Re-marking the last five days plainly instead puts the
+std at 0.650 - between 0.640 and 0.666, which is what was predicted - with
+the same worst month and the same mean. So the arm's lowest-std title rests
+on the extrapolated week, and its between-ness does not.
+
+**A slow hedge is a reversal trade, and the limit cannot tell a right hedge
+from a wrong one.** The delta limit got 46% of March 2020 back at 0.05 a
+day (-3.58 against -4.32; "more than half" failed), and then everything
+else went the other way. The std *rose*, 0.704 to 0.779, the mean rose,
+0.412 to 0.430, the calm months paid *more* (+0.560 against +0.544 over 214
+months) rather than less, and October 2008 went from -2.26 to -3.28. Two
+mechanisms. The mean is the tape's own daily reversal: SPY's lag-one
+autocorrelation over these 5,000 days is -0.10, and a hedge that may only
+chase a fifth of the way toward its delta is short of target after an up
+day and long of it after a down day, which is the position that collects a
+reversal. 0.016 a month across 214 calm months is what the reversal is
+worth, and the arm earned it while trading 17% less stock. The std is the
+price: an under-chased delta is an unhedged position carried overnight, and
+October 2008 is what that costs when the move does not reverse. The
+re-marked delta went 0.52 to 0.06 in the seven days to 10 October; at 0.05 a
+day the limited hedge was still at 0.17 on the day of the 14% bounce, long
+stock into it, and then still long into the three down days after it. The
+limit slowed the hedge that was wrong in March (the up-mark buying stock on
+the way down) and the hedge that was right in October (a delta that had to
+fall half a point in a week) by the same rule, which is the sentence the
+last section wrote and this one measures. It also binds where the write-up
+did not expect: on 40.7% of hedge days at 0.05 (held), 16.9% at 0.10 (over
+the 15% called for) and 2.7% at 0.20, in March 2020 on 10, 5 and 0 of 20
+days. The re-marked delta's biggest daily move in March 2020 was 0.172; the
+median month's biggest daily move is 0.173. At a vol of 80 the delta of a
+one-month option hardly moves for a 10% day, so a limit on the delta's
+speed is not a spike-month tool at all - it binds in ordinary months with
+ordinary gamma. The 0.20 arm is the re-marked arm within 0.001 on the mean
+and 0.016 on the std (the 0.01 letter failed), which is the 149 months it
+never bound against the 37% of months with a day over 0.20.
+
 ## Things to notice when comparing to the market
+
 
 - Market prices rarely match the model exactly. The model uses one flat
   historical volatility; the market prices each strike with its own implied

@@ -242,11 +242,11 @@ window contains no 2008 and no March 2020, which inflates the volatility sleeve'
 Sharpe by 0.55 — all of it in the risk, almost none in the return the optimizer
 actually acted on.
 
-394 tests.
+410 tests.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                 # 394 passed
+python -m pytest -q                 # 410 passed
 
 # all of it together
 python multi_strategy.py            # allocate across the sleeves, the headline result
@@ -272,6 +272,7 @@ python sleeves/statarb/walkforward.py     # refit the formation window, trade ou
 # the volatility sleeve
 python sleeves/volcarry/hedging_study.py  # sell and hedge an ATM call monthly since 2007
 python -m sleeves.volcarry.remark_study   # the same hedge at today's vol, the true one, the strike's own, and capped
+python -m sleeves.volcarry.sticky_study   # sticky strike proper, and a limit on how fast the delta may move
 python sleeves/volcarry/ssvi_study.py     # one arbitrage-free surface, not six smiles
 python sleeves/volcarry/arbitrage_study.py # butterfly and calendar checks on real quotes
 
@@ -386,6 +387,14 @@ strike sits below the money; by expiry an at-the-money-three-weeks-ago
 strike is on the call wing and its vol is above VIX, not below. Letting the
 desk mark down and never up keeps the sold-at tail to the cent and adds a
 cent a month of carry — the up-marks bought 0.005 of mean for 60% more tail.
+Pinning the smile at the strike instead — sticky strike proper, the level
+backed out of each day's VIX at the index's moneyness on the smile the call
+was sold on — puts the strike's vol under VIX by the put wing in a sell-off,
+lands March 2020 between the two (−3.25) and has the lowest std and best
+Sharpe of any arm (0.631, 2.23); a limit on how fast the delta may move
+gets half of March back and raises the std, because a slow hedge is a
+reversal trade on a tape with −0.10 daily autocorrelation, and it slows the
+right hedges by the same rule it slows the wrong ones (October 2008, −3.28).
 
 That P&L series is what `multi_strategy.py` allocates, and the March 2020 number
 is the one section 4 of RESULTS.md is about.
