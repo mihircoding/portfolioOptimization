@@ -217,6 +217,25 @@ with soft edges — it has twice the memory, still a fifth of March 2020,
 goes into April at 4.8× instead of 7.9×, and its Sharpe rises with the
 window where the window's own had a trough. The trough was the cliff.
 
+Section 24 runs the row section 23 said would behave like the window —
+an EWMA with λ set by the mean age of what it remembers, 1 − 2/(w + 1),
+the window's (w − 1)/2 — and it is the worst sleeve on the sweep at
+every window but one. Same mean age is not same estimate: an
+equal-weight window puts a third of its weight on each third of itself
+and nothing past its edge, and the mean-age exponential puts half on
+the newest third and an eighth past the edge, so it went into April 28%
+higher than the window at 6 months (it had forgotten October 2024) and
+20% lower at 36 (it still had March 2020 at 0.2% of the weight, which is
+5% of the estimate), and at every window it carries twice the weight on
+the month coming in and so cut twice as hard after it — 64% at 6 months
+against the window's 42%. The recovery was the same on every sleeve to
+the decimal; the whole gap is April, and a deeper cut after a bigger
+loss into the same eight months is a lower line whatever the half-life.
+Sizing the momentum sleeve on the same estimators moves its leverage by
+under 1% on the rms and 6% on the EWMAs and no book's Sharpe by more
+than 0.02: a Sharpe-0.3 sleeve keeps s²/12 of its variance in its mean,
+and 0.3² is nothing.
+
 [RESULTS.md](RESULTS.md) has the tables, the t-statistic that says in advance
 which of those two regimes you are in, and the check that matters: the overlap
 window contains no 2008 and no March 2020, which inflates the volatility sleeve's

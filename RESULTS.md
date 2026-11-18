@@ -2297,10 +2297,189 @@ What this does not do: two settings, both with the cap at 10×; the
 momentum sleeve sizes on the sample std throughout; λ was set by the
 weight on the newest month, and setting it by the mean age instead
 (λ = 1 − 2/(w + 1), a half-life of 12.5 months at the shipped 36) is the
-other row, and it would behave like the rms window, not like this; and
-thirteen months is thirteen months. The best sleeves on the sweep are the
+other row, ~~and it would behave like the rms window, not like this~~
+(section 24: it does not — it is the worst sleeve on the sweep at every
+window but one, and the reason is that an exponential has a tail and a
+window has an edge); and thirteen months is thirteen months. The best sleeves on the sweep are the
 two with the longest memory, 1.22 and 1.18 at 60 months, and the sample
 that says so has one bad month in it.
+
+### 24. Match the age instead, and find the mean-age EWMA is the worst sleeve on the sweep — same mean age is not same estimate, because an exponential puts half its weight on the newest third of the window and an eighth past its edge, and twice the weight on the month coming in is twice the reaction to a month that is already over
+
+Reproduce with: `python holdout.py --age` (written beside sections 19–23
+in the same results file, without re-running them; the rms and ewma rows
+are re-run and checked against section 23's to the digit)
+
+Section 23 closed with the row it had not run: an EWMA whose λ is set by
+the mean age of what it remembers rather than the weight on the newest
+month — λ = 1 − 2/(w + 1), so the mean age is (w − 1)/2 as the window's
+is, a half-life of 12.5 months at the shipped 36 against 24.6 — and said
+it "would behave like the rms window, not like this." It also left the
+momentum sleeve sizing on the sample std, as every section since 11 has.
+This runs both: the mean-age EWMA (`ewma_age_vol`) beside section 23's
+rms and newest-weight rows at the same two settings, and then every row
+again with the momentum sleeve sized on the same estimator as the vol
+sleeve (`frames(..., xsmom_estimator=...)`). Five predictions, written
+first: (1) the mean-age EWMA is not the window with soft edges either —
+an exponential can match the window's mean age or its newest weight, not
+both, and matching the age puts 2/(w + 1) on the month coming in, twice
+the window's 1/w, so its cut is √((w − 1 + 2k)/(w + 1)) on its own k,
+deeper than the rms window's at every w, and with the window's k in it
+56 / 48 / 40 / 36 / 13% — within five points of the sample std's
+57 / 43 / 37 / 33 / 16, reached by a different road; (2) its estimate
+going into April is the window's, same mean age, same level: leverage in
+within 10% of the rms window's, k within three ordinary months of it;
+(3) its holdout Sharpe sits between the rms window and the newest-weight
+EWMA at 24 and 36 months and within 0.10 of the window at 6; (4) sizing
+the momentum sleeve on the rms moves nothing — its mean is under 1% of
+its mean square, so its leverage moves under half a percent, the HRP
+weight on it under a point, every book's Sharpe under 0.02; on the two
+EWMAs its leverage stays within 10% and the book within 0.05; (5) the
+allocator's HRP cut on the mean-age row is within five points of the rms
+row's, because the series it is handed into April is the window's.
+
+One held, on its first half. One held on three of its four letters. The
+other three failed, and the failures are one fact about where an
+exponential puts its weight.
+
+**The three kept-mean sleeves at 10% / 10×** — the weight each estimator
+puts on the month coming in, its half-life, and for each the cut it made
+after April, the vol multiplier it was made from, and April in ordinary
+months of its own estimate going in; the sample std's cut from section
+23 for reference:
+
+| window | 1/w | age weight | half-life | rms cut | × | k | ewma cut | × | k | age cut | × | k | std cut |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 6 mo | 0.167 | 0.286 | 2.1 mo | 42% | 1.72 | 15 | 52% | 2.10 | 22 | **64%** | 2.80 | 25 | 57% |
+| 12 mo | 0.083 | 0.154 | 4.1 | 37% | 1.59 | 18 | 38% | 1.62 | 21 | **51%** | 2.04 | 21 | 43% |
+| 24 mo | 0.042 | 0.080 | 8.3 | 26% | 1.34 | 23 | 21% | 1.27 | 16 | **37%** | 1.60 | 20 | 37% |
+| 36 mo | 0.028 | 0.054 | 12.5 | 25% | 1.33 | 28 | 14% | 1.16 | 13 | **28%** | 1.38 | 18 | 33% |
+| 60 mo | 0.017 | 0.033 | 20.8 | 7% | 1.07 | 11 | 8% | 1.08 | 11 | **17%** | 1.20 | 14 | 16% |
+
+The leverage into April, the scaled April, the holdout Sharpe, and the
+allocator's HRP cut as a share of its weight:
+
+| window | rms in | April | Sharpe | ewma in | April | Sharpe | age in | April | Sharpe | std Sharpe | rms HRP cut | ewma | age |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 6 mo | 5.1× | −11.3% | +0.74 | 6.1× | −13.4% | +0.57 | **6.5×** | **−14.4%** | **+0.45** | +0.90 | 24% | 40% | 41% |
+| 12 mo | 5.6× | −12.3% | +0.68 | 5.9× | −13.1% | +0.73 | **6.0×** | **−13.4%** | **+0.58** | +0.59 | 31% | 48% | 41% |
+| 24 mo | 6.3× | −13.9% | +0.84 | 5.2× | −11.5% | +0.98 | 5.9× | −13.1% | **+0.74** | +0.65 | 46% | 49% | 48% |
+| 36 mo | 6.8× | −15.1% | +0.87 | 4.8× | −10.6% | +1.10 | 5.5× | −12.2% | +0.89 | +0.76 | 57% | 47% | 49% |
+| 60 mo | 4.3× | −9.5% | +1.22 | 4.4× | −9.7% | +1.18 | **4.9×** | **−10.9%** | **+1.06** | +1.06 | 45% | 44% | 47% |
+
+The multiplier is the recursion, as it must be: √(λ + (1 − λ)k) on the
+estimator's own k lands on the measured 2.80 / 2.04 / 1.60 / 1.38 / 1.20
+to the digit. Everything below is about which k.
+
+**Prediction 1 held on its first half and failed on the letter, and the
+letter is the finding.** The mean-age cut is deeper than the rms
+window's at all five windows — 64 / 51 / 37 / 28 / 17 against 42 / 37 /
+26 / 25 / 7 — and within five points of the sample std's at only two
+(24 and 60). The prediction's 56 / 48 / 40 / 36 / 13 was the mean-age
+formula on the *window's* k, and the mean-age EWMA does not go into
+April with the window's k: it goes in with 25 / 21 / 20 / 18 / 14
+ordinary months against the window's 15 / 18 / 23 / 28 / 11. Same month,
+different "ordinary."
+
+**Prediction 2 failed, and the reason is the whole section.** The
+mean-age sleeve went into April at 1.28 / 1.08 / 0.94 / 0.80 / 1.14 of
+the rms window's leverage — within 10% at two windows, and the two are
+the ones where it happens to cross. Matching the mean age matches the
+first moment of the weights and nothing about their shape. An
+equal-weight window puts a third of its weight on each third of itself
+and nothing past its edge; the mean-age exponential, at every w, puts
+49% on the newest third, 25% on the middle, 13% on the oldest, and 14%
+*past the edge*, on months the window does not hold at all. So which of
+the two goes into a crash higher is decided by where the last big month
+sits. At 6 months the window is October 2024 (+1.08%, into the election)
+and five quiet ones: October is 60% of the window's mean square, and
+16.7% of its weight; the exponential has 5.3% on it, five months back
+with a two-month half-life, and October is 31% of its estimate. So it
+went in 28% higher. At 36 months the window runs April 2022 to March
+2025 and holds nothing older; the exponential's estimate was 36% months
+before April 2022 — March 2020 alone, at 0.19% of the weight, is 5% of
+it, because March 2020 is 41 ordinary months of the window's own mean
+square. So it went in 20% lower. (The newest-weight EWMA's estimate was
+67% pre-2022, which is why the three sleeves went in at 6.8× / 5.5× /
+4.8× in the order of their tails: 0% / 14% / 47% of the weight past the
+window's edge.) At 60 the window reaches back to April 2020, the month
+after the crash, and 76% of its mean square is the two years that
+follow it; the exponential has those at 61% and has decayed them, and
+went in 14% higher. Three windows, three answers, one shape.
+
+**Prediction 3 failed everywhere, and the mean-age EWMA is the worst
+sleeve on the sweep at every window but one.** Sharpe against the rms
+window: −0.29 / −0.10 / −0.10 / +0.02 / −0.17; against the newest-weight
+EWMA: −0.12 / −0.15 / −0.24 / −0.21 / −0.13. Below the sample std too at
+every window but 24 and 36. And the recovery had nothing to do with it:
+the eight months after April compound to +20.2% on the mean-age sleeve
+at 6 months against +20.9% for the window and +20.9% for the other EWMA,
+and at 36 months to +25.3% against +26.0% for the newest-weight EWMA
+whose path it shadows a quarter-turn lower (3.98× to 4.15× against 4.12×
+to 4.19×, May to December). The whole gap is April. The mean-age sleeve
+is the one that cuts deepest after the loss *and* went in highest at
+three of the five windows, and a deeper cut after a bigger loss into the
+same recovery is a lower line, whatever the half-life. Vol targeting's
+cut is a reaction to a month that is over; it only pays if the next
+months are like it, and in this sample the eight months after April were
+the sleeve's best run since 2021. Twice the weight on the month coming
+in is twice the reaction, and section 23's EWMA was the best sleeve for
+the opposite reason — it reacted least, 14%, because it went in
+remembering the most.
+
+**Prediction 4 held on three letters of four, and the fourth is a
+decimal.** The momentum sleeve's mean is 1.3% of its mean square on the
+panel (1.1% on the 36 months into April — a Sharpe-0.3 sleeve keeps
+s²/12 there, as a Sharpe-2 sleeve keeps a third), so on the rms it runs
+at 0.545× instead of 0.540×: 0.9% more, not under 0.5%. The HRP weight
+on it moves by under a point at every window (0.33 / 0.34 / 0.31 /
+0.28 / 0.18 to 0.33 / 0.34 / 0.31 / 0.27 / 0.18), and the largest change
+in any book's holdout Sharpe is 0.006. On the two EWMAs the sleeve's
+leverage is 0.572× and 0.563× — 6% and 4% more than the std's, within
+the 10% — because the 36-month window into April holds January 2023
+(−16.6%, the sleeve's worst month) and November 2023 (+10.3%) at a full
+1/36 each, and both EWMAs have decayed them; the HRP weight moves two
+points at most and the book's Sharpe 0.011 and 0.022 at most. A sleeve
+that runs at 0.55× of a 10% target, with no cap in sight and a mean the
+estimator cannot see, is the same sleeve on any estimator. Every
+risk-based book is behind equal weight at every window with both sleeves
+re-sized, on all three.
+
+**Prediction 5 failed at three windows, for section 23's reason.** The
+HRP cut on the mean-age row is 41 / 41 / 48 / 49 / 47% against the rms
+row's 24 / 31 / 46 / 57 / 45 — within five at 24 and 60. It is the
+newest-weight EWMA's 40 / 48 / 49 / 47 / 44 with the edges shaved: an
+exponential sleeve is nearly the same series at every window, because
+the thing that differs between windows is the edge, and it has none. The
+scaled April in ordinary months of the allocator's own 24-month mean
+square is 19 / 17 / 23 / 26 / 27 on the mean-age row against 10 / 11 /
+20 / 34 / 30 for the window, and the HRP weight going in 0.24 / 0.25 /
+0.33 / 0.40 / 0.46 against 0.22 / 0.21 / 0.27 / 0.35 / 0.57 — the
+allocator gives the smoother series more of the book at the short
+windows and less at 60, and cuts it by the share April is of what it had
+seen.
+
+So: section 23's "would behave like the rms window" was wrong, and the
+arithmetic that would have said so was already in section 23. There are
+two numbers an exponential can be set by, and neither one makes it a
+window. Set by the newest weight it has twice the window's memory, goes
+into a crash remembering the last one, and reacts least; set by the mean
+age it has the window's memory on average and none of its shape — half
+on the newest third, an eighth past the edge — so it goes into the crash
+wherever the last big month happens to put it, and reacts twice as hard
+to the month that is already over. On this sample the first is the best
+sleeve on the sweep and the second is the worst, and the thirteen months
+that separate them are one April and one recovery. The momentum sleeve
+does not care, and the reason it does not is the reason the vol sleeve
+does: a sleeve's mean is s²/12 of its mean square, and 0.3² is nothing.
+
+What this does not do: the same two settings, the same thirteen months,
+the same one April; the mean-age EWMA's deeper cut would be the right
+cut in a sample where the month after April was another April, and this
+one had the opposite; and the third thing an exponential could be set by
+— the weight on a chosen month, March 2020 or October 2024 — is a
+backtest of where the big months sit, which is the thing none of these
+estimators is allowed to know.
 
 ### What this does not establish
 

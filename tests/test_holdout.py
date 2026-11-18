@@ -502,3 +502,144 @@ def test_the_estimator_sweep_runs_every_estimator_at_every_setting_and_scores_th
     out = capsys.readouterr().out
     assert "KEEP THE MEAN" in out and "the predictions:" in out
     assert [s[0] for s in KEPT_MEAN] == ["10% / 10x", "5% / 10x"]
+
+
+# ---------- section 24: match the age ----------
+
+from holdout import AGE_ORDER, age_sweep, age_verdicts, print_age
+from multi_strategy import ewma_age_vol, ewma_lambda
+
+
+def test_an_exponential_matches_the_windows_mean_age_or_its_newest_weight_and_not_both():
+    for w in (6, 36, 60):
+        weights = {m: (1 - ewma_lambda(w, m)) * ewma_lambda(w, m) ** np.arange(5000) for m in ("newest", "age")}
+        ages = np.arange(5000)
+        # the newest-weight lambda puts 1/w on the month coming in and has a
+        # mean age of w - 1; the mean-age lambda has the window's (w - 1)/2
+        # and puts 2/(w + 1) on the month coming in - twice the window's
+        assert weights["newest"][0] == pytest.approx(1 / w)
+        assert (weights["newest"] * ages).sum() == pytest.approx(w - 1)
+        assert weights["age"][0] == pytest.approx(2 / (w + 1))
+        assert (weights["age"] * ages).sum() == pytest.approx((w - 1) / 2)
+        # and where the weight sits is not where the window's does: half of it
+        # on the newest third, an eighth past the window's edge
+        third = w // 3
+        assert weights["age"][:third].sum() == pytest.approx(1 - ewma_lambda(w, "age") ** third)
+        assert weights["age"][w:].sum() == pytest.approx(ewma_lambda(w, "age") ** w)
+        assert 0.10 < weights["age"][w:].sum() < 0.15
+    with pytest.raises(ValueError):
+        ewma_lambda(36, "median")
+
+
+def test_the_mean_age_ewma_reacts_to_a_shock_by_its_own_recursion_and_starts_as_the_rms():
+    idx = pd.date_range("2010-01-31", periods=200, freq="ME")
+    rng = np.random.default_rng(7)
+    x = pd.Series(rng.normal(0.004, 0.010, 200), index=idx)
+    for window in (6, 36):
+        age = ewma_age_vol(x, window)
+        pd.testing.assert_series_equal(age, ewma_vol(x, window, match="age"))
+        assert age.isna().sum() == window
+        assert age.iloc[window] == pytest.approx(trailing_rms_vol(x, window).iloc[window])
+        shocked = x.copy()
+        shocked.iloc[150] = -0.05
+        before = ewma_age_vol(shocked, window).iloc[150]
+        after = ewma_age_vol(shocked, window).iloc[151]
+        k = 0.05 ** 2 / (before ** 2 / 12)
+        # sqrt(lam + (1 - lam) k) with lam = 1 - 2/(w + 1): sqrt((w - 1 + 2k) / (w + 1))
+        assert after / before == pytest.approx(np.sqrt((window - 1 + 2 * k) / (window + 1)))
+        # on the same k that is a bigger move than the newest-weight EWMA's
+        assert np.sqrt((window - 1 + 2 * k) / (window + 1)) > np.sqrt((window - 1 + k) / window)
+    # and it forgets faster: half-life (w + 1) ln 2 / 2 against w ln 2
+    lam = ewma_lambda(36, "age")
+    assert -np.log(2) / np.log(lam) == pytest.approx(12.5, abs=0.05)
+    assert -np.log(2) / np.log(ewma_lambda(36, "newest")) == pytest.approx(24.6, abs=0.1)
+
+
+def test_frames_sizes_the_momentum_sleeve_on_the_estimator_asked_for_and_the_vol_sleeve_on_its_own(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    shipped_frames = frames(volcarry)
+    market = holdout.market_monthly()
+    hedged = holdout.beta_hedged(holdout.xsmom_monthly(), market, 36)["hedged"].rename("xsmom")
+    for name, fn in (("rms", trailing_rms_vol), ("ewma", ewma_vol), ("ewma_age", ewma_age_vol)):
+        fr = frames(volcarry, xsmom_estimator=name)
+        pd.testing.assert_frame_equal(fr["xsmom"], vol_targeted(hedged, fn(hedged, 36), 0.10))
+        pd.testing.assert_frame_equal(fr["volcarry"], shipped_frames["volcarry"])
+        pd.testing.assert_frame_equal(fr["statarb"], shipped_frames["statarb"])
+        # the two dials are independent
+        both = frames(volcarry, volcarry_window=12, estimator=name, xsmom_estimator=name)
+        pd.testing.assert_frame_equal(both["xsmom"], fr["xsmom"])
+        pd.testing.assert_frame_equal(both["volcarry"], frames(volcarry, volcarry_window=12, estimator=name)["volcarry"])
+    pd.testing.assert_frame_equal(frames(volcarry, xsmom_estimator="std")["xsmom"], shipped_frames["xsmom"])
+
+
+def test_the_sweep_carries_the_momentum_sleeve_and_the_mean_age_rows_exact_multiplier(monkeypatch):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    volcarry.iloc[-9] = -0.06
+    since = f"{first_new:%Y-%m-01}"
+    worst = volcarry.index[-9]
+    solo = sleeve_window_sweep(volcarry, windows=(6, 24), lookback=12, holdout_from=since,
+                               cap=10.0, estimator="ewma_age")
+    both = sleeve_window_sweep(volcarry, windows=(6, 24), lookback=12, holdout_from=since,
+                               cap=10.0, estimator="ewma_age", xsmom_estimator="ewma_age")
+    assert solo["xsmom_estimator"] == "std" and both["xsmom_estimator"] == "ewma_age"
+    for w in (6, 24):
+        r = solo["windows"][str(w)]
+        assert r["predicted_multiplier_exact"] == pytest.approx(r["vol_multiplier"], rel=1e-6)
+        assert r["predicted_multiplier_exact"] == pytest.approx(
+            np.sqrt((w - 1 + 2 * r["worst_in_ordinary_months_own_estimate"]) / (w + 1)))
+        assert set(r["xsmom"]) >= {"leverage_into_worst", "mean_leverage_holdout", "mean_share_of_mean_square",
+                                   "holdout_sharpe"}
+        assert 0 <= r["xsmom"]["mean_share_of_mean_square"] < 1
+        for name, sc in r["schemes"].items():
+            assert 0 <= sc["xsmom_weight_into_worst"] <= 1
+        # re-sizing momentum leaves the vol sleeve's row alone and moves only momentum's
+        b = both["windows"][str(w)]
+        assert b["own_cut"] == pytest.approx(r["own_cut"])
+        assert b["leverage_into_worst"] == pytest.approx(r["leverage_into_worst"])
+        assert b["xsmom"]["leverage_into_worst"] != pytest.approx(r["xsmom"]["leverage_into_worst"])
+
+
+def test_the_age_sweep_runs_both_arms_scores_the_five_and_writes_beside_section_23(monkeypatch, tmp_path, capsys):
+    volcarry, shipped, first_new = _patch(monkeypatch)
+    volcarry.iloc[-9] = -0.06
+    since = f"{first_new:%Y-%m-01}"
+    settings = (("10% / 10x", 0.10, 10.0),)
+    sweep = age_sweep(volcarry, settings, windows=(6, 12), lookback=12, holdout_from=since)
+    assert list(sweep["settings"]) == ["10% / 10x"]
+    arms = sweep["settings"]["10% / 10x"]
+    assert set(arms) == {"vol_sleeve_only", "both_sleeves"}
+    for arm, est_rows in arms.items():
+        assert list(est_rows) == list(AGE_ORDER)
+        for est, s in est_rows.items():
+            assert s["estimator"] == est
+            assert s["xsmom_estimator"] == (est if arm == "both_sleeves" else "std")
+    # without a saved section 23 the checks against it are left empty
+    v = age_verdicts(sweep)
+    vs = v["by_setting"]["10% / 10x"]
+    assert vs["section_23_rows_reproduced"] is None and vs["std_own_cut"] is None
+    assert vs["windows"] == [6, 12] and set(vs["own_cut"]) == set(AGE_ORDER)
+    assert vs["predicted_multiplier_exact"]["ewma_age"] == pytest.approx(vs["vol_multiplier"]["ewma_age"], rel=1e-6)
+    assert isinstance(vs["age_deeper_than_rms_everywhere"], bool)
+    assert set(vs["xsmom_leverage_ratio_same_over_std"]) == set(AGE_ORDER)
+    # with one, the re-run rms and ewma rows are checked against it
+    saved = estimator_sweep(volcarry, settings, windows=(6, 12), lookback=12, holdout_from=since)
+    v = age_verdicts(sweep, saved)
+    vs = v["by_setting"]["10% / 10x"]
+    assert vs["section_23_rows_reproduced"] == {"rms": True, "ewma": True}
+    assert len(vs["age_within_five_points_of_std"]) == 2
+    print_age(sweep, v)
+    out = capsys.readouterr().out
+    assert "MATCH THE AGE" in out and "the predictions:" in out and "reproduced: rms yes, ewma yes" in out
+    # --age writes beside what is in the file and touches nothing else
+    monkeypatch.setattr("holdout.HOLDOUT_FROM", since)
+    monkeypatch.setattr("holdout.SLEEVE_WINDOWS", (6, 12))
+    monkeypatch.setattr("holdout.KEPT_MEAN", settings)
+    monkeypatch.setattr("holdout.OUT", str(tmp_path / "holdout.json"))
+    before = {"holdout_from": since, "estimator_sweep": saved, "something_else": [1, 2, 3]}
+    json.dump(before, open(tmp_path / "holdout.json", "w"))
+    holdout.main_age_only()
+    written = json.load(open(tmp_path / "holdout.json"))
+    assert written["something_else"] == [1, 2, 3]
+    assert json.dumps(written["estimator_sweep"], sort_keys=True) == json.dumps(json.loads(json.dumps(saved, default=float)), sort_keys=True)
+    assert set(written["age_sweep"]["settings"]) == {"10% / 10x"}
+    assert written["age_verdicts"]["by_setting"]["10% / 10x"]["section_23_rows_reproduced"] == {"rms": True, "ewma": True}

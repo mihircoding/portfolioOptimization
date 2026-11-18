@@ -1161,31 +1161,60 @@ def trailing_rms_vol(returns: pd.Series, window: int,
     return vol.shift(1).rename("vol")
 
 
+def ewma_lambda(window: int, match: str = "newest") -> float:
+    """The decay that stands in for a `window`-month window, two ways.
+
+    "newest" matches the weight on the newest month: lam = 1 - 1/w, so the
+    month coming in carries the 1/w it would in the window. Its mean age
+    is then w - 1 months, twice the window's. "age" matches the mean age
+    instead: lam = 1 - 2/(w + 1), so what the estimate remembers is on
+    average (w - 1)/2 months old, as the window's is - and the newest
+    month carries 2/(w + 1), twice the window's weight. You get one or the
+    other; an exponential cannot match both.
+    """
+    if match == "newest":
+        return 1.0 - 1.0 / window
+    if match == "age":
+        return 1.0 - 2.0 / (window + 1)
+    raise ValueError(f"match is 'newest' or 'age', not {match!r}")
+
+
 def ewma_vol(returns: pd.Series, window: int,
-             periods_per_year: int = MONTHS_PER_YEAR) -> pd.Series:
+             periods_per_year: int = MONTHS_PER_YEAR, match: str = "newest") -> pd.Series:
     """RiskMetrics variance, parameterized by the window it stands in for.
 
     sigma2_t = lam * sigma2_{t-1} + (1 - lam) * r_t^2, uncentered like the
-    rms estimator, with lam = 1 - 1/window so that the newest month carries
-    the same weight it would in an equal-weight window of that length -
-    which is the weight section 20's ratio acts on. The weights then decay
-    instead of dropping off a cliff, so the half-life is window * ln 2
-    months, about 25 at the shipped 36, and the mean age of what the
-    estimate remembers is window - 1 months against (window - 1) / 2 for
-    the window itself. The recursion is seeded with the first full window's
-    mean square, so the series starts where the window's would, with the
-    rms's own first value, and the newest month's weight is exactly 1/window
-    from the first step rather than renormalized over a short history.
+    rms estimator, with lam from ewma_lambda. The default, match="newest",
+    is lam = 1 - 1/window so that the newest month carries the same weight
+    it would in an equal-weight window of that length - which is the
+    weight section 20's ratio acts on. The weights then decay instead of
+    dropping off a cliff, so the half-life is window * ln 2 months, about
+    25 at the shipped 36, and the mean age of what the estimate remembers
+    is window - 1 months against (window - 1) / 2 for the window itself.
+    match="age" sets lam = 1 - 2/(window + 1) so the mean age is the
+    window's, at the price of twice the weight on the newest month; the
+    half-life is then (window + 1) ln 2 / 2, twelve and a half months at
+    36. The recursion is seeded with the first full window's mean square,
+    so the series starts where the window's would, with the rms's own
+    first value, and the newest month's weight is exactly 1 - lam from the
+    first step rather than renormalized over a short history.
     """
     r2 = (returns ** 2).to_numpy(dtype=float)
     var = np.full(len(r2), np.nan)
     if len(r2) >= window:
-        lam = 1.0 - 1.0 / window
+        lam = ewma_lambda(window, match)
         var[window - 1] = r2[:window].mean()
         for t in range(window, len(r2)):
             var[t] = lam * var[t - 1] + (1.0 - lam) * r2[t]
     vol = pd.Series(np.sqrt(var) * np.sqrt(periods_per_year), index=returns.index)
     return vol.shift(1).rename("vol")
+
+
+def ewma_age_vol(returns: pd.Series, window: int,
+                 periods_per_year: int = MONTHS_PER_YEAR) -> pd.Series:
+    """ewma_vol with the mean age matched to the window instead of the
+    newest month's weight - section 24's row."""
+    return ewma_vol(returns, window, periods_per_year, match="age")
 
 
 def statarb_trailing_vol(path: str = "sleeves/statarb/results/portfolio.json",

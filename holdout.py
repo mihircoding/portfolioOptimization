@@ -1,6 +1,8 @@
 """Thirteen months nothing in multi_strategy.py has seen.
 
-Usage:  python holdout.py
+Usage:  python holdout.py              (everything, sections 19-24)
+        python holdout.py --estimator  (section 23 only, written beside the rest)
+        python holdout.py --age        (section 24 only, written beside the rest)
 Verify with:  pytest tests/test_holdout.py
 
 Every section of multi_strategy.py ends in November 2024, because that is
@@ -47,7 +49,7 @@ import pandas as pd
 from multi_strategy import (BETA_WINDOW_MONTHS, LEVERAGE_CAP, LOOKBACK_MONTHS, MONTHS_PER_YEAR,
                             VOL_TARGET, VOL_WINDOW_MONTHS, allocators, beta_hedged,
                             estimate, market_monthly, paired_sharpe_bootstrap,
-                            ewma_vol, performance, statarb_monthly,
+                            ewma_age_vol, ewma_lambda, ewma_vol, performance, statarb_monthly,
                             statarb_trailing_vol, trailing_rms_vol, trailing_vol,
                             vol_targeted, volcarry_monthly, xsmom_monthly)
 
@@ -111,19 +113,21 @@ def agreement(extended: pd.Series, shipped: pd.Series) -> dict:
 # how the vol sleeve measures its own vol: the sample std that shipped,
 # the root mean square that keeps the mean, and the EWMA that keeps it
 # and forgets gradually
-ESTIMATORS = {"std": trailing_vol, "rms": trailing_rms_vol, "ewma": ewma_vol}
+ESTIMATORS = {"std": trailing_vol, "rms": trailing_rms_vol, "ewma": ewma_vol,
+              "ewma_age": ewma_age_vol}
 
 
 def frames(volcarry: pd.Series, target: float = VOL_TARGET, window: int = VOL_WINDOW_MONTHS,
            beta_window: int = BETA_WINDOW_MONTHS, volcarry_window: int | None = None,
-           estimator: str = "std") -> dict:
+           estimator: str = "std", xsmom_estimator: str = "std") -> dict:
     """multi_strategy.sleeve_frames with the vol sleeve handed in, so the
     only thing different from section 11 is how long that sleeve runs.
 
     `volcarry_window` sizes the vol sleeve on its own window and leaves the
     momentum sleeve on `window`; None is the shipped setting, both on 36.
     `estimator` is how the vol sleeve measures that window - see ESTIMATORS;
-    the momentum sleeve stays on the sample std throughout.
+    `xsmom_estimator` is the momentum sleeve's, on the sample std unless
+    section 24 asks otherwise.
     """
     market = market_monthly()
     xsmom = beta_hedged(xsmom_monthly(), market, beta_window)["hedged"].rename("xsmom")
@@ -133,7 +137,7 @@ def frames(volcarry: pd.Series, target: float = VOL_TARGET, window: int = VOL_WI
     volcarry.index = volcarry.index.to_period("M").to_timestamp("M")
     return {"statarb": vol_targeted(statarb, statarb_trailing_vol(), target),
             "volcarry": vol_targeted(volcarry, ESTIMATORS[estimator](volcarry, volcarry_window or window), target),
-            "xsmom": vol_targeted(xsmom, trailing_vol(xsmom, window), target)}
+            "xsmom": vol_targeted(xsmom, ESTIMATORS[xsmom_estimator](xsmom, window), target)}
 
 
 def capped_panel(frames: dict, cap: float = LEVERAGE_CAP) -> pd.DataFrame:
@@ -395,7 +399,8 @@ SLEEVE_WINDOWS = (6, 12, 24, 36, 60)
 def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
                         lookback: int = LOOKBACK_MONTHS, holdout_from: str = HOLDOUT_FROM,
                         sleeve: str = "volcarry", cap: float = LEVERAGE_CAP,
-                        target: float = VOL_TARGET, estimator: str = "std") -> dict:
+                        target: float = VOL_TARGET, estimator: str = "std",
+                        xsmom_estimator: str = "std") -> dict:
     """Section 20's question asked of the other dial: the window the vol
     sleeve sizes itself on, with the allocator's held at `lookback`.
 
@@ -434,12 +439,15 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
 
     `cap` and `target` are the book's, applied to every sleeve: section 22
     moves them to see what the window does when the cap is not standing
-    on it. `estimator` is the vol sleeve's own, section 23's dial.
+    on it. `estimator` is the vol sleeve's own, section 23's dial;
+    `xsmom_estimator` is the momentum sleeve's, section 24's.
     """
     out = {"holdout_from": holdout_from, "sleeve": sleeve, "lookback": lookback,
-           "cap": cap, "target": target, "estimator": estimator, "windows": {}}
+           "cap": cap, "target": target, "estimator": estimator,
+           "xsmom_estimator": xsmom_estimator, "windows": {}}
     for window in windows:
-        fr = frames(volcarry, target=target, volcarry_window=window, estimator=estimator)
+        fr = frames(volcarry, target=target, volcarry_window=window, estimator=estimator,
+                    xsmom_estimator=xsmom_estimator)
         panel = capped_panel(fr, cap)
         own = fr[sleeve].loc[panel.index]
         leverage = own["leverage"].clip(upper=cap)
@@ -467,15 +475,31 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
         var_in = own.loc[worst, "vol"] ** 2 / MONTHS_PER_YEAR
         k_own = float(raw.loc[worst] ** 2 / var_in)
         k_out = float(out_month ** 2 / var_in)
+        # an EWMA's multiplier is its own recursion: sqrt(lam + (1 - lam) k)
+        # on its own k, which is sqrt((w - 1 + k) / w) when the newest month
+        # is weighted 1/w and sqrt((w - 1 + 2k) / (w + 1)) when the mean age
+        # is matched instead
         exact = {"std": None, "rms": float(np.sqrt(1 + (k_own - k_out) / window)),
-                 "ewma": float(np.sqrt((window - 1 + k_own) / window))}[estimator]
+                 "ewma": float(np.sqrt((window - 1 + k_own) / window)),
+                 "ewma_age": float(np.sqrt(ewma_lambda(window, "age")
+                                           + (1 - ewma_lambda(window, "age")) * k_own))}[estimator]
         paths, held = walk_forward_paths(panel, lookback)
         part = paths.loc[holdout_from:]
         ew = part["equal weight"]
         lev_into = float(leverage.loc[worst])
         lev_after = float(leverage.loc[after[0]]) if len(after) else None
         scaled = panel[sleeve]
+        # the momentum sleeve, so section 24 can see what sizing it on the
+        # same estimator did to it (nothing, if its mean is nothing)
+        xs = fr["xsmom"].loc[panel.index]
+        xs_lev = xs["leverage"].clip(upper=cap)
         row = {"worst_month": f"{worst:%Y-%m}", "months_traded": int(len(paths)),
+               "xsmom": {"leverage_into_worst": float(xs_lev.loc[worst]),
+                         "mean_leverage_holdout": float(xs_lev.loc[holdout_from:].mean()),
+                         "mean_leverage": float(xs_lev.mean()),
+                         "mean_share_of_mean_square": float(
+                             xs["raw"].mean() ** 2 / (xs["raw"] ** 2).mean()),
+                         **{f"holdout_{k}": v for k, v in performance(panel.loc[holdout_from:, "xsmom"]).items()}},
                "worst_in_ordinary_months": k,
                "worst_in_ordinary_months_demeaned": k_demeaned,
                "worst_in_ordinary_months_own_estimate": k_own,
@@ -518,6 +542,7 @@ def sleeve_window_sweep(volcarry: pd.Series, windows=SLEEVE_WINDOWS,
             x_after = None if w_after is None else w_after * lev_after
             row["schemes"][name] = {
                 **performance(part[name]),
+                "xsmom_weight_into_worst": float(held.loc[worst][name]["xsmom"]),
                 "vs_equal_weight": paired_sharpe_bootstrap(part[name].to_numpy(), ew.to_numpy()),
                 "sharpe_gap": float(performance(part[name])["sharpe"] - performance(ew)["sharpe"]),
                 "worst_month_return": float(part.loc[worst, name]),
@@ -955,6 +980,248 @@ def print_estimator(sweep: dict, verdicts: dict) -> None:
             f"{est} {'yes' if ok else 'no'}" for est, ok in v["risk_based_behind_equal_weight_everywhere"].items()))
 
 
+
+# ---------- section 24: match the age, and size the momentum sleeve the same way ----------
+
+AGE_ORDER = ("rms", "ewma", "ewma_age")
+
+
+def age_sweep(volcarry: pd.Series, settings=KEPT_MEAN, windows=SLEEVE_WINDOWS,
+              lookback: int = LOOKBACK_MONTHS, holdout_from: str = HOLDOUT_FROM) -> dict:
+    """Section 23 closed by saying an EWMA whose lambda is set by the mean
+    age instead of the newest month's weight - lambda = 1 - 2/(w + 1), a
+    half-life of twelve and a half months at the shipped 36 - "would
+    behave like the rms window, not like this". This runs that row beside
+    the two kept-mean rows of section 23 (which are re-run here and
+    checked against the saved ones), and in a second pass sizes the
+    momentum sleeve on the same estimator as the vol sleeve instead of
+    leaving it on the sample std, which every section since 11 has done.
+
+    Written before it ran:
+
+    1. The mean-age EWMA is not the window with soft edges either. An
+       exponential can match the window's mean age or its weight on the
+       newest month, not both, and matching the age puts 2/(w + 1) on the
+       month coming in - twice the window's 1/w. So its cut is
+       sqrt((w - 1 + 2k) / (w + 1)) on its own k, exact by construction,
+       and deeper than the rms window's at every w: with the window's k
+       in it, 55 / 48 / 40 / 36 / 13% against 42 / 37 / 26 / 25 / 7 -
+       within five points of the sample std's 57 / 43 / 37 / 33 / 16,
+       which it reaches by a different road.
+    2. Its estimate going into April is the window's. Same mean age, same
+       level: leverage into April within 10% of the rms window's at every
+       w, and April in ordinary months of its own estimate within three
+       of the rms window's k.
+    3. Its holdout Sharpe sits between the rms window and the newest-
+       weight EWMA at 24 and 36 months - it cuts deeper than that EWMA
+       and then re-levers on a 12.5-month half-life instead of carrying
+       April for three years - and within 0.10 of the rms window at 6,
+       where its half-life is two months and both have forgotten April by
+       the summer.
+    4. Sizing the momentum sleeve on the rms moves nothing. Its mean is
+       under 1% of its mean square (a Sharpe-0.3 sleeve keeps s^2 / 12 of
+       its variance there), so its leverage changes by under half a
+       percent at every window, the allocator's HRP weight on it by under
+       a point, and every book's holdout Sharpe by under 0.02. On the two
+       EWMAs it moves more, because what they remember of the sleeve's
+       own 2020 differs from the window's, but the sleeve runs de-levered
+       at about 0.55x of a 10% target and its leverage into April stays
+       within 10% of the std's; the book's Sharpe moves under 0.05.
+    5. The allocator's HRP cut on the mean-age row is within five points
+       of the rms row's 24 / 31 / 46 / 57 / 45%, because the series it is
+       handed into April is the window's series.
+    """
+    out = {"holdout_from": holdout_from, "lookback": lookback, "settings": {}}
+    for label, target, cap in settings:
+        out["settings"][label] = {
+            "vol_sleeve_only": {est: sleeve_window_sweep(volcarry, windows, lookback, holdout_from,
+                                                         cap=cap, target=target, estimator=est)
+                                for est in AGE_ORDER},
+            "both_sleeves": {est: sleeve_window_sweep(volcarry, windows, lookback, holdout_from,
+                                                      cap=cap, target=target, estimator=est,
+                                                      xsmom_estimator=est)
+                             for est in AGE_ORDER}}
+    return out
+
+
+def age_verdicts(sweep: dict, saved: dict | None = None, risk_based=RISK_BASED) -> dict:
+    """The five predictions, scored at each setting. `saved` is section
+    23's estimator_sweep, if the file has it, so the re-run rms and ewma
+    rows can be checked against the ones already written down."""
+    out = {"settings": list(sweep["settings"]), "by_setting": {}}
+    for label, arms in sweep["settings"].items():
+        solo, both = arms["vol_sleeve_only"], arms["both_sleeves"]
+        per = {est: sleeve_window_verdicts(s, risk_based) for est, s in solo.items()}
+        per_both = {est: sleeve_window_verdicts(s, risk_based) for est, s in both.items()}
+        windows = per["rms"]["windows"]
+        rows = {est: {int(w): r for w, r in solo[est]["windows"].items()} for est in solo}
+        rows_both = {est: {int(w): r for w, r in both[est]["windows"].items()} for est in both}
+        own = {est: per[est]["own_cut"] for est in per}
+        sharpe = {est: per[est]["sleeve_sharpe"] for est in per}
+        lev_in = {est: [rows[est][w]["leverage_into_worst"] for w in windows] for est in per}
+        k_own = {est: [rows[est][w]["worst_in_ordinary_months_own_estimate"] for w in windows] for est in per}
+        hrp = {est: per[est]["weight_cut"]["HRP"] for est in per}
+        # the window's own cut with the mean-age EWMA's weight on April: what
+        # prediction 1 said the row would be, before the estimate moved
+        age_cut_on_window_k = [1 - 1 / np.sqrt((w - 1 + 2 * rows["rms"][w]["worst_in_ordinary_months_own_estimate"])
+                                               / (w + 1)) for w in windows]
+        saved_std = None
+        if saved is not None and label in saved.get("settings", {}):
+            std_rows = {int(w): r for w, r in saved["settings"][label]["std"]["windows"].items()}
+            saved_std = {"own_cut": [std_rows[w]["own_cut"] for w in windows],
+                         "sharpe": [std_rows[w]["sleeve"]["sharpe"] for w in windows],
+                         "hrp_cut": [std_rows[w]["schemes"]["HRP"]["weight_cut_share"] for w in windows],
+                         "xsmom_leverage_into": [std_rows[w]["xsmom"]["leverage_into_worst"]
+                                                 if "xsmom" in std_rows[w] else None for w in windows]}
+            match = {est: all(abs(rows[est][w]["own_cut"]
+                                  - saved["settings"][label][est]["windows"][str(w)]["own_cut"]) < 1e-9
+                              and abs(rows[est][w]["sleeve"]["sharpe"]
+                                      - saved["settings"][label][est]["windows"][str(w)]["sleeve"]["sharpe"]) < 1e-9
+                              for w in windows) for est in ("rms", "ewma")}
+        else:
+            match = None
+        # 4. the momentum sleeve on the same estimator
+        xs_lev = {est: {"std": [rows[est][w]["xsmom"]["leverage_into_worst"] for w in windows],
+                        "same": [rows_both[est][w]["xsmom"]["leverage_into_worst"] for w in windows]}
+                  for est in per}
+        xs_ratio = {est: [a / b for a, b in zip(xs_lev[est]["same"], xs_lev[est]["std"])] for est in per}
+        xs_hrp = {est: {"std": [rows[est][w]["schemes"]["HRP"]["xsmom_weight_into_worst"] for w in windows],
+                        "same": [rows_both[est][w]["schemes"]["HRP"]["xsmom_weight_into_worst"] for w in windows]}
+                  for est in per}
+        names = list(rows["rms"][windows[0]]["schemes"])
+        book_gap = {est: {n: [rows_both[est][w]["schemes"][n]["sharpe"] - rows[est][w]["schemes"][n]["sharpe"]
+                              for w in windows] for n in names} for est in per}
+        v = {
+            "windows": windows,
+            "section_23_rows_reproduced": match,
+            "own_cut": own, "k_on_own_estimate": k_own,
+            "vol_multiplier": {est: [rows[est][w]["vol_multiplier"] for w in windows] for est in per},
+            "predicted_multiplier_exact": {est: [rows[est][w]["predicted_multiplier_exact"] for w in windows]
+                                           for est in per},
+            "newest_month_weight": {"window": [1 / w for w in windows],
+                                    "ewma": [1 - ewma_lambda(w, "newest") for w in windows],
+                                    "ewma_age": [1 - ewma_lambda(w, "age") for w in windows]},
+            "half_life_months": {"ewma": [-np.log(2) / np.log(ewma_lambda(w, "newest")) for w in windows],
+                                 "ewma_age": [-np.log(2) / np.log(ewma_lambda(w, "age")) for w in windows]},
+            # 1. deeper than the rms window everywhere, near the std's cuts
+            "age_cut_on_window_k": age_cut_on_window_k,
+            "age_deeper_than_rms_everywhere": all(a > b for a, b in zip(own["ewma_age"], own["rms"])),
+            "age_within_five_points_of_std": None if saved_std is None else
+                [abs(a - b) < 0.05 for a, b in zip(own["ewma_age"], saved_std["own_cut"])],
+            "std_own_cut": None if saved_std is None else saved_std["own_cut"],
+            # 2. the window's estimate going in
+            "leverage_into": lev_in,
+            "age_leverage_over_rms": [a / b for a, b in zip(lev_in["ewma_age"], lev_in["rms"])],
+            "age_leverage_within_tenth_of_rms": [abs(a / b - 1) < 0.10 for a, b in zip(lev_in["ewma_age"], lev_in["rms"])],
+            "age_k_within_three_of_rms": [abs(a - b) < 3 for a, b in zip(k_own["ewma_age"], k_own["rms"])],
+            # 3. the Sharpe between the two at 24 and 36, near the window at 6
+            "sleeve_sharpe": sharpe,
+            "std_sleeve_sharpe": None if saved_std is None else saved_std["sharpe"],
+            "sleeve_april": {est: per[est]["sleeve_april"] for est in per},
+            "leverage_holdout_mean": {est: [rows[est][w]["sleeve"]["mean_leverage_holdout"] for w in windows]
+                                      for est in per},
+            "age_between_rms_and_ewma_at_long_windows": all(
+                min(sharpe["rms"][i], sharpe["ewma"][i]) <= sharpe["ewma_age"][i] <= max(sharpe["rms"][i], sharpe["ewma"][i])
+                for i, w in enumerate(windows) if w in (24, 36)),
+            "age_within_tenth_of_rms_at_six": all(abs(sharpe["ewma_age"][i] - sharpe["rms"][i]) < 0.10
+                                                  for i, w in enumerate(windows) if w == 6),
+            "age_sharpe_minus_rms": [a - b for a, b in zip(sharpe["ewma_age"], sharpe["rms"])],
+            "age_sharpe_minus_ewma": [a - b for a, b in zip(sharpe["ewma_age"], sharpe["ewma"])],
+            # 4. the momentum sleeve on the same estimator
+            "xsmom_mean_share_of_mean_square": float(rows["rms"][windows[0]]["xsmom"]["mean_share_of_mean_square"]),
+            "xsmom_leverage_into": xs_lev,
+            "xsmom_leverage_ratio_same_over_std": xs_ratio,
+            "xsmom_rms_moves_under_half_a_percent": all(abs(r - 1) < 0.005 for r in xs_ratio["rms"]),
+            "xsmom_ewma_within_ten_percent": {est: all(abs(r - 1) < 0.10 for r in xs_ratio[est])
+                                              for est in ("ewma", "ewma_age")},
+            "xsmom_hrp_weight_into": xs_hrp,
+            "xsmom_hrp_weight_moves_under_a_point_on_rms": all(
+                abs(a - b) < 0.01 for a, b in zip(xs_hrp["rms"]["same"], xs_hrp["rms"]["std"])),
+            "book_sharpe_change": book_gap,
+            "book_sharpe_within_two_hundredths_on_rms": all(abs(g) < 0.02 for n in names for g in book_gap["rms"][n]),
+            "book_sharpe_within_five_hundredths_on_ewmas": {est: all(abs(g) < 0.05 for n in names for g in book_gap[est][n])
+                                                            for est in ("ewma", "ewma_age")},
+            "xsmom_holdout_sharpe": {est: {"std": [rows[est][w]["xsmom"]["holdout_sharpe"] for w in windows],
+                                           "same": [rows_both[est][w]["xsmom"]["holdout_sharpe"] for w in windows]}
+                                     for est in per},
+            # 5. the allocator's HRP cut on the mean-age row
+            "hrp_cut": hrp,
+            "hrp_cut_both": {est: per_both[est]["weight_cut"]["HRP"] for est in per_both},
+            "age_hrp_within_five_points_of_rms": [abs(a - b) < 0.05 for a, b in zip(hrp["ewma_age"], hrp["rms"])],
+            "scaled_april_in_allocator_months": {est: [rows[est][w]["scaled_worst_in_ordinary_months"] for w in windows]
+                                                 for est in per},
+            "hrp_weight_into": {est: [rows[est][w]["schemes"]["HRP"]["weight_into_worst"] for w in windows]
+                                for est in per},
+            "sharpe_gap": {est: per[est]["sharpe_gap"] for est in per},
+            "risk_based_behind_equal_weight_everywhere": {
+                est: all(g < 0 for n in risk_based for g in per_both[est]["sharpe_gap"][n]) for est in per_both},
+        }
+        out["by_setting"][label] = v
+    return out
+
+
+def print_age(sweep: dict, verdicts: dict) -> None:
+    print("\nMATCH THE AGE   section 23's kept-mean rows beside an EWMA whose lambda is set by the "
+          "mean age, 1 - 2/(w + 1), and then the momentum sleeve sized on the same estimator")
+    for label, v in verdicts["by_setting"].items():
+        windows = v["windows"]
+        print(f"\n   {label}")
+        if v["section_23_rows_reproduced"] is not None:
+            print("   section 23's rms and ewma rows reproduced: " + ", ".join(
+                f"{est} {'yes' if ok else 'NO'}" for est, ok in v["section_23_rows_reproduced"].items()))
+        print(f"{'window':>7} {'w(new) win':>10} {'ewma':>6} {'age':>6} {'t1/2 ewma':>10} {'age':>6}   "
+              + " ".join(f"{est + ' cut':>9} {'x':>5} {'k':>5}" for est in AGE_ORDER) + f" {'std cut':>8}")
+        for i, w in enumerate(windows):
+            cells = " ".join(f"{v['own_cut'][est][i]:>8.0%} {v['vol_multiplier'][est][i]:>5.2f} "
+                             f"{v['k_on_own_estimate'][est][i]:>5.0f}" for est in AGE_ORDER)
+            std = "" if v["std_own_cut"] is None else f"{v['std_own_cut'][i]:>8.0%}"
+            print(f"{w:>5}mo {v['newest_month_weight']['window'][i]:>10.3f} {v['newest_month_weight']['ewma'][i]:>6.3f} "
+                  f"{v['newest_month_weight']['ewma_age'][i]:>6.3f} {v['half_life_months']['ewma'][i]:>10.1f} "
+                  f"{v['half_life_months']['ewma_age'][i]:>6.1f}   {cells} {std}")
+        print(f"\n{'window':>7} " + " ".join(f"{est + ' in':>9} {est + ' Apr':>10} {est + ' Sh':>9}" for est in AGE_ORDER)
+              + f" {'std Sh':>7}   " + " ".join(f"{est + ' HRP':>9}" for est in AGE_ORDER))
+        for i, w in enumerate(windows):
+            cells = " ".join(f"{v['leverage_into'][est][i]:>8.2f}x {v['sleeve_april'][est][i]:>+10.1%} "
+                             f"{v['sleeve_sharpe'][est][i]:>+9.2f}" for est in AGE_ORDER)
+            std = "" if v["std_sleeve_sharpe"] is None else f"{v['std_sleeve_sharpe'][i]:>+7.2f}"
+            hrp = " ".join(f"{v['hrp_cut'][est][i]:>9.0%}" for est in AGE_ORDER)
+            print(f"{w:>5}mo {cells} {std}   {hrp}")
+        print("   the mean-age cut the window's own k would give: "
+              + "/".join(f"{c:.0%}" for c in v["age_cut_on_window_k"]))
+        print("   mean holdout leverage: " + "; ".join(
+            f"{est} " + "/".join(f"{x:.1f}" for x in v["leverage_holdout_mean"][est]) for est in AGE_ORDER))
+        print(f"\n   the momentum sleeve on the same estimator (its mean is "
+              f"{v['xsmom_mean_share_of_mean_square']:.2%} of its mean square):")
+        print(f"{'window':>7} " + " ".join(f"{est + ' lev':>10} {'same':>6} {'HRP w':>6} {'same':>6}" for est in AGE_ORDER))
+        for i, w in enumerate(windows):
+            cells = " ".join(f"{v['xsmom_leverage_into'][est]['std'][i]:>9.3f}x {v['xsmom_leverage_into'][est]['same'][i]:>5.3f}x "
+                             f"{v['xsmom_hrp_weight_into'][est]['std'][i]:>6.2f} {v['xsmom_hrp_weight_into'][est]['same'][i]:>6.2f}"
+                             for est in AGE_ORDER)
+            print(f"{w:>5}mo {cells}")
+        print("   largest book Sharpe change from re-sizing momentum: " + "; ".join(
+            f"{est} {max(abs(g) for n in v['book_sharpe_change'][est] for g in v['book_sharpe_change'][est][n]):.3f}"
+            for est in AGE_ORDER))
+        print("\n   the predictions:")
+        print(f"   1. age cut deeper than rms everywhere: {v['age_deeper_than_rms_everywhere']}; "
+              + ("" if v["age_within_five_points_of_std"] is None else
+                 f"within five points of std at {sum(v['age_within_five_points_of_std'])} of {len(windows)}"))
+        print(f"   2. age leverage within 10% of rms at {sum(v['age_leverage_within_tenth_of_rms'])} of {len(windows)} "
+              "(ratio " + "/".join(f"{r:.2f}" for r in v["age_leverage_over_rms"]) + "); "
+              f"k within three at {sum(v['age_k_within_three_of_rms'])}")
+        print(f"   3. age Sharpe between rms and ewma at 24 and 36: {v['age_between_rms_and_ewma_at_long_windows']}; "
+              f"within 0.10 of rms at 6: {v['age_within_tenth_of_rms_at_six']} "
+              "(age - rms " + "/".join(f"{d:+.2f}" for d in v["age_sharpe_minus_rms"])
+              + ", age - ewma " + "/".join(f"{d:+.2f}" for d in v["age_sharpe_minus_ewma"]) + ")")
+        print(f"   4. momentum on rms moves leverage under 0.5%: {v['xsmom_rms_moves_under_half_a_percent']}, "
+              f"HRP weight under a point: {v['xsmom_hrp_weight_moves_under_a_point_on_rms']}, "
+              f"book Sharpe under 0.02: {v['book_sharpe_within_two_hundredths_on_rms']}; on the EWMAs leverage within 10%: "
+              + ", ".join(f"{e} {ok}" for e, ok in v["xsmom_ewma_within_ten_percent"].items())
+              + ", book Sharpe under 0.05: " + ", ".join(f"{e} {ok}" for e, ok in v["book_sharpe_within_five_hundredths_on_ewmas"].items()))
+        print(f"   5. age HRP cut within five points of rms at {sum(v['age_hrp_within_five_points_of_rms'])} of {len(windows)}; "
+              "risk-based behind 1/N everywhere with both sleeves re-sized: " + ", ".join(
+            f"{est} {'yes' if ok else 'no'}" for est, ok in v["risk_based_behind_equal_weight_everywhere"].items()))
+
+
 # ---------- reporting ----------
 
 def print_holdout(study: dict) -> None:
@@ -1007,6 +1274,7 @@ def main() -> None:
     study["unpinned_verdicts"] = unpinned_verdicts(study["unpinned_sweep"])
     print_unpinned(study["unpinned_sweep"], study["unpinned_verdicts"])
     study.update(estimator_section())
+    study.update(age_section(study))
     os.makedirs("results", exist_ok=True)
     with open(OUT, "w") as fh:
         json.dump(study, fh, indent=1, default=float)
@@ -1019,6 +1287,23 @@ def estimator_section() -> dict:
     verdicts = estimator_verdicts(sweep)
     print_estimator(sweep, verdicts)
     return {"estimator_sweep": sweep, "estimator_verdicts": verdicts}
+
+
+def age_section(study: dict | None = None) -> dict:
+    sweep = age_sweep(volcarry_extended(), KEPT_MEAN, SLEEVE_WINDOWS, LOOKBACK_MONTHS, HOLDOUT_FROM)
+    verdicts = age_verdicts(sweep, None if study is None else study.get("estimator_sweep"))
+    print_age(sweep, verdicts)
+    return {"age_sweep": sweep, "age_verdicts": verdicts}
+
+
+def main_age_only() -> None:
+    """Section 24 on its own, beside sections 19-23."""
+    with open(OUT) as fh:
+        study = json.load(fh)
+    study.update(age_section(study))
+    with open(OUT, "w") as fh:
+        json.dump(study, fh, indent=1, default=float)
+    print(f"\nwrote {OUT}")
 
 
 def main_estimator_only() -> None:
@@ -1035,4 +1320,9 @@ def main_estimator_only() -> None:
 
 if __name__ == "__main__":
     import sys
-    main_estimator_only() if "--estimator" in sys.argv[1:] else main()
+    if "--age" in sys.argv[1:]:
+        main_age_only()
+    elif "--estimator" in sys.argv[1:]:
+        main_estimator_only()
+    else:
+        main()
