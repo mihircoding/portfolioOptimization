@@ -639,10 +639,104 @@ not a jump in two names but the slow part of a factor move that the window has n
 The same things as before, plus one. A sign that is right by a quarter of a percent a year is a
 reading, not a trade, and the one positive cell is selection. And the correlation says the sector
 was never a property of the pair at all: it is a property of which side of the cross-section's
-reversal days a book of these 100 names ends up on. The direct test of that is a book that is
+reversal days a book of these 100 names ends up on. ~~The direct test of that is a book that is
 hedged against the first principal component of the 4,950 spreads, where the sector sign should be
 worth nothing — or a book that only trades the days the factor is quiet, where it should be worth
-whatever the pair-level re-ranking actually is.
+whatever the pair-level re-ranking actually is.~~ (Both run in the next section. The sign is worth
+nothing hedged, but not because of the factor: the two books hold the same names.)
+
+## Hedging the factor out, and finding the factor was never the point
+
+The last section ended on a correlation of −0.89 between the same-sector continuation book and
+the cross-sector reverting book, and read it as the cross-section's reversal days: a hundred names
+make one factor, and the sector only picks which side of that factor's reversals a book is on. The
+direct test is to take the factor out. `factor_study.py` fits the first principal component of the
+hundred names' daily returns on the trailing 250 days ending the day before, refits it monthly, and
+reads every name's loading on it over the same window, so nothing in the fit has seen the day it is
+applied to (the first year runs into the formation tape, so the hedge is on from the first day of
+2021). The component is scaled to a basket — loadings sum to one — so a loading is a notional. Each
+pair's P&L is then its spread return less its net loading times the basket's return, with the hedge
+charged 5bps a side on changes in its notional like any other leg. The positions are the shipped
+ones; the z-score is still read on the raw spread, so the only thing that changes is what the trade
+is paid in. Two more views: the shipped positions traded *only in a quiet regime* (the factor's
+trailing 20-day vol under its trailing-year median, known the day before — on 54% of days), and the
+raw book's gross P&L *attributed* to quintiles of the factor's move that day. Six predictions were
+written before the run and two failed, and the two that failed are the section.
+
+| book | pairs | raw gross Sh | raw net Sh | hedged gross Sh | hedged net Sh | quiet gross Sh | quiet net Sh |
+|---|---|---|---|---|---|---|---|
+| everything, reverting | 4,950 | +0.07 | −0.12 | +0.14 | −0.14 | −0.45 | −0.74 |
+| screened, reverting (shipped) | 930 | +0.01 | −0.19 | +0.16 | −0.13 | −0.15 | −0.45 |
+| cross sector, reverting | 4,365 | +0.09 | −0.09 | +0.17 | −0.10 | −0.41 | −0.69 |
+| same sector, reverting | 585 | −0.14 | −0.37 | −0.17 | −0.47 | −0.78 | −1.09 |
+| same sector, mirrored | 585 | +0.14 | −0.08 | +0.17 | −0.13 | +0.78 | +0.46 |
+| sign by sector | 4,950 | +0.11 | −0.11 | +0.21 | −0.13 | −0.35 | −0.70 |
+| sign by sector, screened | 930 | +0.25 | +0.06 | +0.39 | +0.09 | −0.11 | −0.42 |
+
+### The hedge takes the tails and leaves the correlation
+
+The component explains 34% of the trailing-year variance on average and the hedge removes 35% of the
+everything-book's daily variance, which is the hedge doing its job. The cross-sector reverting
+book's gross daily P&L goes from an excess kurtosis of 9.1 to 3.3; 3 and 9 April 2025 stop being its
+worst and best days (the worst is now 6 November 2024, the election, at −0.53%, the best 4 April
+2025 at +0.83% — still the tariff week, half the size); and the gross Sharpe of every reverting book
+goes *up*, +0.09 to +0.17 cross-sector, because the net loading the book carried — 0.24 of notional
+per pair on average, short the high-loading names after a rally — was losing money. The fourth
+prediction, that the hedged gross would land between 0 and +0.20 and the hedge's tickets would
+cost more than that, held: −0.10 net against −0.09. The second failed on one of three counts: the
+best 5% of days are still 34% of the gains, not under 30%, because the days that are left are
+still the days the cross-section reverses, only without the market in them.
+
+And the first prediction failed by the whole of its range. The same-sector continuation book and
+the cross-sector reverting book were −0.89 correlated raw. Hedged, they are **−0.87**. Taking out
+the component that explains a third of the cross-section's variance moves the number the last
+section was built on by two hundredths.
+
+### What the two books actually hold
+
+So the thing the two books share is not the factor. It is the names. A book of pairs is, name by
+name, a net position: each pair puts +½ on one leg and −½ on the other, and a name in 99 pairs is
+held 99 times. Written out that way, the cross-sector reverting book's weights and the same-sector
+reverting book's weights correlate at **+0.76 across the hundred names on an average day, and are
+positively correlated on every one of the 1,254 days**. The cross-sector book's weight on a name
+correlates at −0.73 with that name's trailing 60-day return. It is a reversal portfolio: short what
+went up over the z-score window, long what went down, in every name at once. A long-the-worst-ten,
+short-the-best-ten 60-day reversal portfolio with no pairs in it at all correlates at +0.86 with the
+cross-sector reverting book and +0.79 with the same-sector one, and has a Sharpe of −0.12 over the
+five years.
+
+That is why the sector sign could never be worth anything, and why hedging the market out of it
+could not change that. Reverting 4,365 pairs and reverting 585 pairs are the same trade, the
+60-day cross-sectional reversal of the S&P 100, held at two sizes; mirroring one of them is holding
+the trade at +1 and −0.13 at once. The −0.89 was never two books reacting to a factor's reversal
+days. It was one portfolio and a fraction of its own short. The third prediction — that the sector
+sign is worth nothing hedged — held, at a hundredth of a Sharpe, for that reason and not for the
+reason it was written down.
+
+### The loud days are the trade
+
+The sixth prediction held and says the same thing from the other side. The raw everything-book's
+gross P&L, split by quintile of the factor's absolute move that day: +0.45% and +0.50% in the two
+quietest fifths, **−2.22% and −2.59% in the middle two, +4.61% in the loudest fifth**, against a
+total of +0.62%. The book earns on the days the factor is quiet enough to leave the names to each
+other, loses on the ordinary days a trend is running, and makes it all back and more on the days the
+trend reverses. Traded only in the ex-ante quiet regime, it is out on exactly those days, and the
+everything-book goes from +0.07 gross to −0.45. The one cell that improves is the same-sector
+mirrored book in the quiet regime, +0.78 gross and **+0.46 net** on 54% of days — and it is the
+mirror of the same-sector reverting book's worst cell, −1.09, which is the same thing that made the
+screened sign-by-sector cell look good in the last section. A regime filter picks the half of the
+tape where continuation beats reversion, and then the sign that was worth nothing is worth a lot,
+in both directions.
+
+### What this does not fix
+
+The reading the project has carried for three sections — that something happens between two
+competitors after a two-sigma move — has now been tested with the factor hedged out and with the
+loud days removed, and what is left is a cross-sectional reversal portfolio and a sector sign that
+chooses a fraction of it. A pairs trade on a full cross-section with a shared window is not 4,950
+spreads; it is one portfolio. Testing a pair-level mechanism needs a pair-level book: pairs that
+share no names, or a spread hedged against the *rest of the book* rather than against the market,
+so that what is traded is actually the residual between two names.
 
 ## Stretch goals
 

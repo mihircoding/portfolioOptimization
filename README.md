@@ -264,6 +264,7 @@ python sleeves/statarb/scan.py            # screen 4,950 pairs, trade the surviv
 python sleeves/statarb/control.py         # trade the 4,020 the screen REJECTED, as a control
 python -m sleeves.statarb.sector_study    # pick the universe by sector instead, and find it is worse
 python -m sleeves.statarb.continuation_study # trade the sector as the sign of the trade instead
+python -m sleeves.statarb.factor_study    # hedge every spread against the cross-section's first component
 python sleeves/statarb/screen_validity.py # the screen's 5% test rejects 15% of the time
 python sleeves/statarb/survivorship.py    # the bias priced instead of admitted
 python sleeves/statarb/walkforward.py     # refit the formation window, trade out of sample
@@ -346,6 +347,11 @@ percent a year gross, nothing net: a same-sector pair's gross edge is zero in
 either direction, and the two books are 0.89 correlated, so the sector only
 decides which side of the cross-section's reversal days a book of these 100
 names is on.
+Hedge the first principal component out of every spread and the tails go
+(kurtosis 9.1 to 3.3) but the correlation stays at 0.87: the two books hold
+the same names, because a book of pairs on a full cross-section with a shared
+window is one 60-day reversal portfolio, and the sector sign only sizes a
+fraction of its own short.
 
 ### The volatility sleeve
 
